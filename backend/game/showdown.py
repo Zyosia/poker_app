@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from game.hand_evaluator import (
+from .hand_evaluator import (
     CATEGORY_FLUSH,
     CATEGORY_FOUR_OF_A_KIND,
     CATEGORY_FULL_HOUSE,
@@ -15,12 +15,12 @@ from game.hand_evaluator import (
     HandEvaluation,
     evaluate_hand,
 )
-from game.models import (
+from .models import (
     Hand,
     Player,
     PotResult,
 )
-from game.pots import (
+from .pots import (
     Pot,
     build_pots,
     total_pot_amount,
@@ -39,14 +39,10 @@ def resolve_hand(
     the main pot and side pots according to hand strength.
     """
 
-    active_players = (
-        hand.table.get_active_players()
-    )
+    active_players = hand.table.get_active_players()
 
     if not active_players:
-        raise RuntimeError(
-            "Cannot resolve a hand with no active players."
-        )
+        raise RuntimeError("Cannot resolve a hand with no active players.")
 
     if len(active_players) == 1:
         resolve_by_fold(
@@ -56,9 +52,7 @@ def resolve_hand(
         return
 
     if len(hand.community_cards) != 5:
-        raise RuntimeError(
-            "Showdown requires a complete five-card board."
-        )
+        raise RuntimeError("Showdown requires a complete five-card board.")
 
     evaluate_showdown(
         hand=hand,
@@ -112,9 +106,7 @@ def evaluate_showdown(
             community_cards=hand.community_cards,
         )
 
-        hand.showdown_evaluations[
-            player.name
-        ] = evaluation
+        hand.showdown_evaluations[player.name] = evaluation
 
 
 def distribute_pots(
@@ -162,9 +154,7 @@ def distribute_single_pot(
     """Determine winners and distribute one pot."""
 
     if not pot.eligible_players:
-        raise RuntimeError(
-            "A pot has no eligible players."
-        )
+        raise RuntimeError("A pot has no eligible players.")
 
     eligible_players = list(
         pot.eligible_players,
@@ -178,18 +168,12 @@ def distribute_single_pot(
     decisive_tiebreaker = None
 
     if len(winners) == 1:
-        opponents = [
-            player
-            for player in eligible_players
-            if player is not winners[0]
-        ]
+        opponents = [player for player in eligible_players if player is not winners[0]]
 
-        decisive_tiebreaker = (
-            get_decisive_tiebreaker(
-                hand=hand,
-                winner=winners[0],
-                opponents=opponents,
-            )
+        decisive_tiebreaker = get_decisive_tiebreaker(
+            hand=hand,
+            winner=winners[0],
+            opponents=opponents,
         )
 
     payout_by_player = split_pot(
@@ -220,24 +204,12 @@ def distribute_single_pot(
     hand.pot_results.append(
         PotResult(
             amount=pot.amount,
-            eligible_players=tuple(
-                player.name
-                for player in pot.eligible_players
-            ),
-            winners=tuple(
-                player.name
-                for player in winners
-            ),
+            eligible_players=tuple(player.name for player in pot.eligible_players),
+            winners=tuple(player.name for player in winners),
             decisive_tiebreaker=(
-                decisive_tiebreaker[0]
-                if decisive_tiebreaker
-                else None
+                decisive_tiebreaker[0] if decisive_tiebreaker else None
             ),
-            decisive_value=(
-                decisive_tiebreaker[1]
-                if decisive_tiebreaker
-                else None
-            ),
+            decisive_value=(decisive_tiebreaker[1] if decisive_tiebreaker else None),
         )
     )
 
@@ -249,42 +221,28 @@ def get_best_players(
     """Return every player tied for the best hand."""
 
     if not players:
-        raise ValueError(
-            "At least one player is required."
-        )
+        raise ValueError("At least one player is required.")
 
-    evaluations: list[
-        tuple[Player, HandEvaluation]
-    ] = []
+    evaluations: list[tuple[Player, HandEvaluation]] = []
 
     for player in players:
-        evaluation = (
-            hand.showdown_evaluations.get(
-                player.name,
-            )
+        evaluation = hand.showdown_evaluations.get(
+            player.name,
         )
 
         if evaluation is None:
-            raise RuntimeError(
-                f"No showdown evaluation for "
-                f"{player.name}."
-            )
+            raise RuntimeError(f"No showdown evaluation for {player.name}.")
 
         evaluations.append(
             (player, evaluation),
         )
 
-    best_key = max(
-        evaluation.comparison_key()
-        for _, evaluation in evaluations
-    )
+    best_key = max(evaluation.comparison_key() for _, evaluation in evaluations)
 
     return [
         player
-        for player, evaluation
-        in evaluations
-        if evaluation.comparison_key()
-        == best_key
+        for player, evaluation in evaluations
+        if evaluation.comparison_key() == best_key
     ]
 
 
@@ -302,38 +260,26 @@ def split_pot(
     """
 
     if not winners:
-        raise ValueError(
-            "A pot must have at least one winner."
-        )
+        raise ValueError("A pot must have at least one winner.")
 
     base_amount, remainder = divmod(
         pot.amount,
         len(winners),
     )
 
-    payouts: dict[str, int] = {
-        player.name: base_amount
-        for player in winners
-    }
+    payouts: dict[str, int] = {player.name: base_amount for player in winners}
 
     if remainder == 0:
         return payouts
 
-    winner_names = {
-        player.name
-        for player in winners
-    }
+    winner_names = {player.name for player in winners}
 
-    ordered_players = (
-        get_players_left_of_dealer(
-            hand=hand,
-        )
+    ordered_players = get_players_left_of_dealer(
+        hand=hand,
     )
 
     ordered_winners = [
-        player
-        for player in ordered_players
-        if player.name in winner_names
+        player for player in ordered_players if player.name in winner_names
     ]
 
     for player in ordered_winners[:remainder]:
@@ -358,10 +304,7 @@ def get_players_left_of_dealer(
         dealer,
     )
 
-    ordered = (
-        players[dealer_index + 1:]
-        + players[:dealer_index + 1]
-    )
+    ordered = players[dealer_index + 1 :] + players[: dealer_index + 1]
 
     return ordered
 
@@ -375,23 +318,12 @@ def get_decisive_tiebreaker(
     Return the tiebreaker that made the winner win.
     """
 
-    winner_evaluation = (
-        hand.showdown_evaluations[
-            winner.name
-        ]
-    )
+    winner_evaluation = hand.showdown_evaluations[winner.name]
 
     for opponent in opponents:
-        opponent_evaluation = (
-            hand.showdown_evaluations[
-                opponent.name
-            ]
-        )
+        opponent_evaluation = hand.showdown_evaluations[opponent.name]
 
-        if (
-            winner_evaluation.rank
-            != opponent_evaluation.rank
-        ):
+        if winner_evaluation.rank != opponent_evaluation.rank:
             continue
 
         for index, (
@@ -420,6 +352,7 @@ def get_decisive_tiebreaker(
             )
 
     return None
+
 
 def get_tiebreaker_name(
     rank: int,

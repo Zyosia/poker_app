@@ -22,7 +22,6 @@ import logging
 import sys
 from pathlib import Path
 
-
 # Prevent duplicate configuration
 _LOGGERS = {}
 
@@ -72,7 +71,6 @@ def get_logger(
 
     # File handler (optional)
     if log_filename:
-
         log_path = Path(f"../logs/{log_folder}/{log_filename}.log")
 
         # Create logs directory if needed
@@ -87,11 +85,14 @@ def get_logger(
     _LOGGERS[name] = logger
     return logger
 
+
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
 
 def create_log_folder(log_folder_name):
     # Current timestamp (clean, sortable format)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    timestamp = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y-%m-%d_%H-%M")
     # Final folder name
     folder_name = f"{log_folder_name}_{timestamp}_log"
     # Build path (adjust base directory if needed)
@@ -99,6 +100,7 @@ def create_log_folder(log_folder_name):
     # Create the directory
     log_path.mkdir(parents=True, exist_ok=True)
     return folder_name
+
 
 # Quick Test
 if __name__ == "__main__":

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import random
 
-from game.constants import (
-    Card,
+from .constants import (
     RANKS,
     SUITS,
+    Card,
 )
 
 
@@ -15,11 +15,7 @@ class Deck:
     """Standard 52-card Texas Hold'em deck."""
 
     def __init__(self) -> None:
-        self.cards: list[Card] = [
-            rank + suit
-            for rank in RANKS
-            for suit in SUITS
-        ]
+        self.cards: list[Card] = [rank + suit for rank in RANKS for suit in SUITS]
 
         self.shuffle()
 
@@ -32,9 +28,7 @@ class Deck:
         """Draw and remove the top card."""
 
         if not self.cards:
-            raise RuntimeError(
-                "Cannot draw from an empty deck."
-            )
+            raise RuntimeError("Cannot draw from an empty deck.")
 
         return self.cards.pop()
 

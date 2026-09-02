@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from game.hand import start_hand
-from game.helper import wait
-from game.session import (
+from .hand import start_hand
+from .helper import wait
+from .session import (
     GameConfig,
     GameSession,
     create_session,
 )
-from game.terminal_ui import (
+from .terminal_ui import (
     ask_player_count,
     display_hand_result,
     display_table,
@@ -25,37 +25,33 @@ def handle_rebuys(
 
     for player in busted_players:
         print()
-        print(
-            f"{player.name} has busted."
-        )
+        print(f"{player.name} has busted.")
 
         while True:
-            choice = input(
-                f"Rebuy for {player.name} "
-                f"({session.config.rebuy_stack} chips)? "
-                "[y/n] > "
-            ).strip().lower()
+            choice = (
+                input(
+                    f"Rebuy for {player.name} "
+                    f"({session.config.rebuy_stack} chips)? "
+                    "[y/n] > "
+                )
+                .strip()
+                .lower()
+            )
 
             if choice in {"y", "yes"}:
                 session.rebuy_player(player)
                 player.eliminated = False
-                print(
-                    f"{player.name} rebought for "
-                    f"{session.config.rebuy_stack} chips."
-                )
+                print(f"{player.name} rebought for {session.config.rebuy_stack} chips.")
 
                 break
 
             if choice in {"n", "no"}:
                 player.eliminated = True
-                print(
-                    f"{player.name} is eliminated."
-                )
+                print(f"{player.name} is eliminated.")
                 break
 
-            print(
-                "Please answer y or n."
-            )
+            print("Please answer y or n.")
+
 
 def start_session() -> GameSession:
     """Create and run a complete poker session."""
@@ -85,19 +81,13 @@ def start_session() -> GameSession:
     )
 
     print()
-    print(
-        f"Starting session with "
-        f"{player_count} players."
-    )
+    print(f"Starting session with {player_count} players.")
 
     wait()
 
     while session.can_continue():
         print()
-        print(
-            f"Starting Hand "
-            f"#{session.hand_number + 1}"
-        )
+        print(f"Starting Hand #{session.hand_number + 1}")
 
         hand = start_hand(
             session=session,
@@ -125,16 +115,12 @@ def start_session() -> GameSession:
     print(" SESSION FINISHED ")
     print("=" * 72)
 
-    remaining_players = (
-        session.get_players_with_chips()
-    )
+    remaining_players = session.get_players_with_chips()
 
     if remaining_players:
         winner = remaining_players[0]
 
-        print(
-            f"\n{winner.name} wins the session."
-        )
+        print(f"\n{winner.name} wins the session.")
 
     return session
 

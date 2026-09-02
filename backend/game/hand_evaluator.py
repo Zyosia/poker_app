@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import combinations
 
-from game.constants import Card, RANKS
-
+from .constants import RANKS, Card
 
 CATEGORY_HIGH_CARD = 0
 CATEGORY_PAIR = 1
@@ -65,21 +64,14 @@ def evaluate_hand(
     and the community cards.
     """
 
-    all_cards = (
-        hole_cards
-        + community_cards
-    )
+    all_cards = hole_cards + community_cards
 
     if len(all_cards) < 5:
-        raise ValueError(
-            "At least five cards are required "
-            "to evaluate a poker hand."
-        )
+        raise ValueError("At least five cards are required to evaluate a poker hand.")
 
     if len(all_cards) > 7:
         raise ValueError(
-            "A Texas Hold'em hand cannot contain "
-            "more than seven available cards."
+            "A Texas Hold'em hand cannot contain more than seven available cards."
         )
 
     evaluations = [
@@ -104,19 +96,11 @@ def evaluate_five_cards(
     """Evaluate exactly five cards."""
 
     if len(cards) != 5:
-        raise ValueError(
-            "Exactly five cards are required."
-        )
+        raise ValueError("Exactly five cards are required.")
 
-    ranks = [
-        card_rank(card)
-        for card in cards
-    ]
+    ranks = [card_rank(card) for card in cards]
 
-    suits = [
-        card_suit(card)
-        for card in cards
-    ]
+    suits = [card_suit(card) for card in cards]
 
     sorted_ranks = sorted(
         ranks,
@@ -126,20 +110,11 @@ def evaluate_five_cards(
     counts: dict[int, int] = {}
 
     for rank in ranks:
-        counts[rank] = (
-            counts.get(rank, 0) + 1
-        )
-
-    unique_ranks = sorted(
-        counts,
-        reverse=True,
-    )
+        counts[rank] = counts.get(rank, 0) + 1
 
     straight_high = get_straight_high(ranks)
 
-    is_flush = (
-        len(set(suits)) == 1
-    )
+    is_flush = len(set(suits)) == 1
 
     if is_flush and straight_high is not None:
         return make_evaluation(
@@ -149,20 +124,12 @@ def evaluate_five_cards(
         )
 
     four_rank = next(
-        (
-            rank
-            for rank, count in counts.items()
-            if count == 4
-        ),
+        (rank for rank, count in counts.items() if count == 4),
         None,
     )
 
     if four_rank is not None:
-        kicker = max(
-            rank
-            for rank in ranks
-            if rank != four_rank
-        )
+        kicker = max(rank for rank in ranks if rank != four_rank)
 
         return make_evaluation(
             rank=CATEGORY_FOUR_OF_A_KIND,
@@ -174,31 +141,19 @@ def evaluate_five_cards(
         )
 
     triple_ranks = sorted(
-        (
-            rank
-            for rank, count in counts.items()
-            if count == 3
-        ),
+        (rank for rank, count in counts.items() if count == 3),
         reverse=True,
     )
 
     pair_ranks = sorted(
-        (
-            rank
-            for rank, count in counts.items()
-            if count >= 2
-        ),
+        (rank for rank, count in counts.items() if count >= 2),
         reverse=True,
     )
 
     if triple_ranks:
         triple_rank = triple_ranks[0]
 
-        remaining_pairs = [
-            rank
-            for rank in pair_ranks
-            if rank != triple_rank
-        ]
+        remaining_pairs = [rank for rank in pair_ranks if rank != triple_rank]
 
         if remaining_pairs:
             return make_evaluation(
@@ -230,11 +185,7 @@ def evaluate_five_cards(
         triple_rank = triple_ranks[0]
 
         kickers = sorted(
-            (
-                rank
-                for rank in ranks
-                if rank != triple_rank
-            ),
+            (rank for rank in ranks if rank != triple_rank),
             reverse=True,
         )
 
@@ -247,11 +198,7 @@ def evaluate_five_cards(
             ),
         )
 
-    pairs = [
-        rank
-        for rank, count in counts.items()
-        if count == 2
-    ]
+    pairs = [rank for rank, count in counts.items() if count == 2]
 
     pairs.sort(reverse=True)
 
@@ -262,7 +209,8 @@ def evaluate_five_cards(
         kicker = max(
             rank
             for rank in ranks
-            if rank not in {
+            if rank
+            not in {
                 high_pair,
                 low_pair,
             }
@@ -282,11 +230,7 @@ def evaluate_five_cards(
         pair_rank = pairs[0]
 
         kickers = sorted(
-            (
-                rank
-                for rank in ranks
-                if rank != pair_rank
-            ),
+            (rank for rank in ranks if rank != pair_rank),
             reverse=True,
         )
 
@@ -331,18 +275,14 @@ def card_rank(
     """Return the numerical rank of a card."""
 
     if len(card) != 2:
-        raise ValueError(
-            f"Invalid card: {card}"
-        )
+        raise ValueError(f"Invalid card: {card}")
 
     rank = card[0]
 
     try:
         return RANKS.index(rank) + 2
     except ValueError as exc:
-        raise ValueError(
-            f"Invalid card rank: {card}"
-        ) from exc
+        raise ValueError(f"Invalid card rank: {card}") from exc
 
 
 def card_suit(
@@ -351,9 +291,7 @@ def card_suit(
     """Return the suit of a card."""
 
     if len(card) != 2:
-        raise ValueError(
-            f"Invalid card: {card}"
-        )
+        raise ValueError(f"Invalid card: {card}")
 
     return card[1]
 
@@ -383,12 +321,8 @@ def get_straight_high(
         reverse=True,
     )
 
-    for index in range(
-        len(sorted_unique) - 4
-    ):
-        window = sorted_unique[
-            index:index + 5
-        ]
+    for index in range(len(sorted_unique) - 4):
+        window = sorted_unique[index : index + 5]
 
         if window[0] - window[4] == 4:
             return window[0]
