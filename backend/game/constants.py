@@ -19,6 +19,7 @@ ActionType: TypeAlias = Literal[
     "check",
     "call",
     "raise",
+    "all_in",
 ]
 
 Position: TypeAlias = Literal[
@@ -55,4 +56,5 @@ ACTIONS: Final[tuple[ActionType, ...]] = (
     "check",
     "call",
     "raise",
+    "all_in",
 )
