@@ -6,9 +6,9 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 ---
 
-# V1.0
+# Alpha - 1.0
 
-La V1.0 constitue une première version fonctionnelle du cœur du moteur de poker.
+La Alpha - 1.0 constitue une première version fonctionnelle du cœur du moteur de poker.
 
 Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 joueurs**, incluant les phases de mise, les all-ins, le showdown, les side pots et la redistribution automatique des jetons.
 
@@ -16,7 +16,7 @@ Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 jo
 
 ### 👥 Gestion des joueurs & de la table
 
-| Fonctionnalité | V1.0 |
+| Fonctionnalité | Alpha - 1.0 |
 |---|:---:|
 | 2–6 joueurs | ✅ |
 | Positions à la table | ✅ |
@@ -26,7 +26,7 @@ Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 jo
 
 ### 🃏 Gestion des mains
 
-| Fonctionnalité | V1.0 |
+| Fonctionnalité | Alpha - 1.0 |
 |---|:---:|
 | Small Blind / Big Blind | ✅ |
 | Distribution des cartes privatives | ✅ |
@@ -37,7 +37,7 @@ Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 jo
 
 ### 💰 Système de mise
 
-| Fonctionnalité | V1.0 |
+| Fonctionnalité | Alpha - 1.0 |
 |---|:---:|
 | Fold | ✅ |
 | Check | ✅ |
@@ -49,7 +49,7 @@ Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 jo
 
 ### 🏆 Évaluation des mains
 
-| Fonctionnalité | V1.0 |
+| Fonctionnalité | Alpha - 1.0 |
 |---|:---:|
 | Évaluation des meilleures combinaisons de 5 cartes | ✅ |
 | 9 catégories de mains | ✅ |
@@ -57,7 +57,7 @@ Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 jo
 | Comparaison des mains | ✅ |
 | Détection des égalités | ✅ |
 
-Les rankings de mains implémentés en V1.0 sont :
+Les rankings de mains implémentés en Alpha - 1.0 sont :
 
 1. High Card
 2. Pair
@@ -71,7 +71,7 @@ Les rankings de mains implémentés en V1.0 sont :
 
 ### 🏦 Gestion des pots
 
-| Fonctionnalité | V1.0 |
+| Fonctionnalité | Alpha - 1.0 |
 |---|:---:|
 | Main pot | ✅ |
 | Side pots | ✅ |
@@ -84,7 +84,7 @@ Les rankings de mains implémentés en V1.0 sont :
 
 ### 🔄 Déroulement d'une session
 
-| Fonctionnalité | V1.0 |
+| Fonctionnalité | Alpha - 1.0 |
 |---|:---:|
 | Enchaînement automatique des hands | ✅ |
 | Gestion de la fin d'une hand | ✅ |
@@ -418,7 +418,7 @@ La session se termine lorsqu'il ne reste plus qu'un joueur possédant des jetons
 
 # Interface actuelle
 
-La V1.0 utilise une interface **terminal**.
+La Alpha - 1.0 utilise une interface **terminal**.
 
 Au lancement d'une session, le moteur demande le nombre de joueurs :
 
@@ -453,7 +453,7 @@ ou :
 
 ---
 
-# Limites volontairement exclues de la V1.0
+# Limites volontairement exclues de la Alpha - 1.0
 
 Certaines fonctionnalités ne sont volontairement pas incluses dans cette première version.
 
@@ -535,13 +535,13 @@ Il n'existe pas encore de système permettant de simuler automatiquement des mil
 
 ## IA
 
-Aucune intelligence artificielle de poker n'est intégrée à la V1.0.
+Aucune intelligence artificielle de poker n'est intégrée à la Alpha - 1.0.
 
 ---
 
 # Roadmap
 
-## V1.1 — Robustesse du moteur
+## ALPHA 1.1 — Robustesse du moteur
 
 Priorité : renforcer le cœur existant.
 
@@ -563,7 +563,7 @@ Objectif :
 
 ---
 
-# V1.2 — Historique et observabilité
+# ALPHA 1.2 — Historique et observabilité
 
 Ajouter un véritable historique de la main.
 
@@ -602,7 +602,7 @@ Fonctionnalités prévues :
 
 ---
 
-# V1.3 — Abstraction des joueurs
+# ALPHA - 1.3 — Abstraction des joueurs
 
 Découpler complètement le moteur de poker de l'interface terminal.
 
@@ -636,7 +636,7 @@ sans savoir si la réponse provient :
 
 ---
 
-# V1.4 — Simulation
+# BETA - 1.0 — Simulation
 
 Une fois l'architecture des joueurs abstraite, ajouter un moteur de simulation.
 
@@ -668,7 +668,7 @@ Split pots : 4.7%
 
 ---
 
-# V2.0 — Fonctionnalités de poker avancées
+# V1.0 — Fonctionnalités de poker avancées
 
 Après stabilisation du moteur V1.x :
 
@@ -731,7 +731,7 @@ Les futures interfaces graphiques, bots, simulations et API doivent pouvoir util
 
 # Objectif du projet
 
-La V1.0 constitue le **socle du moteur de poker**.
+La Alpha - 1.0 constitue le **socle du moteur de poker**.
 
 L'objectif n'est pas encore de proposer une application complète de poker, mais de disposer d'un moteur capable de reproduire correctement le déroulement d'une session Texas Hold'em No-Limit classique :
 
