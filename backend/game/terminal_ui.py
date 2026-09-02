@@ -139,60 +139,95 @@ def ask_player_action(
     allowed_actions: list[ActionType],
 ) -> tuple[ActionType, int | None]:
     """Ask the current player for an action."""
-
     action_mapping: dict[str, ActionType] = {}
 
     print(
         f"\n{player.name}'s turn"
     )
-
     print(
         f"Stack: {player.stack}"
     )
-
     print("Available actions:")
 
-    minimum_raise = hand.current_bet + hand.last_raise_size
+    call_amount = max(
+        0,
+        hand.current_bet - player.current_bet,
+    )
 
-    for index, action in enumerate(
-        allowed_actions,
-        start=1,
-    ):
-        action_mapping[str(index)] = action
+    actual_call_amount = min(
+        call_amount,
+        player.stack,
+    )
 
+    minimum_raise = (
+        hand.current_bet
+        + hand.last_raise_size
+    )
+
+    display_index = 1
+
+    for action in allowed_actions:
+        # --------------------------------------------------
+        # CALL
+        # --------------------------------------------------
         if action == "call":
-            call_amount = (
-                hand.current_bet
-                - player.current_bet
-            )
-
-            actual_call_amount = min(
-                max(0, call_amount),
-                player.stack,
-            )
+            action_mapping[str(display_index)] = action
 
             if actual_call_amount == player.stack:
                 print(
-                    f"[{index}] CALL ALL-IN "
+                    f"[{display_index}] CALL ALL-IN "
                     f"({actual_call_amount})"
                 )
             else:
                 print(
-                    f"[{index}] CALL "
+                    f"[{display_index}] CALL "
                     f"({actual_call_amount})"
                 )
 
+            display_index += 1
+
+        # --------------------------------------------------
+        # RAISE
+        # --------------------------------------------------
         elif action == "raise":
+            action_mapping[str(display_index)] = action
+
             print(
-                f"[{index}] RAISE "
-                f"(minimum: "
-                f"{minimum_raise})"
+                f"[{display_index}] RAISE "
+                f"(minimum: {minimum_raise})"
             )
 
-        else:
+            display_index += 1
+
+        # --------------------------------------------------
+        # ALL-IN
+        # --------------------------------------------------
+        elif action == "all_in":
+            # If calling already puts the player all-in,
+            # the separate ALL-IN action is redundant.
+            if actual_call_amount == player.stack:
+                continue
+
+            action_mapping[str(display_index)] = action
+
             print(
-                f"[{index}] {action.upper()}"
+                f"[{display_index}] ALL-IN "
+                f"({player.stack})"
             )
+
+            display_index += 1
+
+        # --------------------------------------------------
+        # OTHER ACTIONS (fold, check, ...)
+        # --------------------------------------------------
+        else:
+            action_mapping[str(display_index)] = action
+
+            print(
+                f"[{display_index}] {action.upper()}"
+            )
+
+            display_index += 1
 
     while True:
         choice = input(
@@ -209,39 +244,58 @@ def ask_player_action(
             )
             continue
 
+        # --------------------------------------------------
+        # RAISE
+        # --------------------------------------------------
         if action == "raise":
             while True:
                 try:
-                    amount = int(input("Raise amount: "))
+                    amount = int(
+                        input("Raise amount: ")
+                    )
 
                     if amount <= 0:
-                        print("ERROR: Raise amount must be greater than 0.")
+                        print(
+                            "ERROR: Raise amount "
+                            "must be greater than 0."
+                        )
                         continue
 
                     if amount > player.stack:
                         print(
-                            f"ERROR: You cannot raise more than your stack "
+                            f"ERROR: You cannot raise "
+                            f"more than your stack "
                             f"({player.stack})."
                         )
                         continue
 
                     if amount < minimum_raise:
                         print(
-                            f"ERROR: Minimum raise is {minimum_raise}."
+                            f"ERROR: Minimum raise "
+                            f"is {minimum_raise}."
                         )
                         continue
 
                     break
 
                 except ValueError:
-                    print("ERROR: Please enter a valid amount.")
+                    print(
+                        "ERROR: Please enter "
+                        "a valid amount."
+                    )
 
             return action, amount
 
-        return (
-            action,
-            None,
-        )
+        # --------------------------------------------------
+        # ALL-IN
+        # --------------------------------------------------
+        if action == "all_in":
+            return action, player.stack
+
+        # --------------------------------------------------
+        # CALL / CHECK / FOLD
+        # --------------------------------------------------
+        return action, None
 
 
 def ask_player_count(

@@ -180,6 +180,42 @@ def betting_round(
                 player_index + 1
             ) % len(players)
 
+        elif action == "all_in":
+            if amount is None:
+                raise RuntimeError(
+                    "Raise amount cannot be None."
+                )
+
+            raise_bet(
+                player=player,
+                hand=hand,
+                raise_to=amount,
+            )
+
+            # A raise reopens the action.
+            #
+            # Every other player who can still act must
+            # respond to the new bet.
+            pending_players = {
+                id(other_player)
+                for other_player in players
+                if (
+                    other_player is not player
+                    and other_player.can_act
+                )
+            }
+
+            # CRITICAL:
+            #
+            # Do NOT restart from players[0].
+            #
+            # Action resumes with the player immediately
+            # after the raiser.
+            current_index = (
+                player_index + 1
+            ) % len(players)
+
+
         else:
             raise RuntimeError(
                 f"Unsupported action: {action}"
@@ -420,6 +456,9 @@ def get_allowed_actions(
         and maximum_raise_to >= minimum_raise_to
     ):
         actions.append("raise")
+
+    if call_amount < player.stack:
+        actions.append("all_in")
 
     return actions
 

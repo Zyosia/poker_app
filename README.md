@@ -44,6 +44,7 @@ Elle couvre le déroulement complet d'une session Texas Hold'em avec **2 à 6 jo
 | Call | ✅ |
 | Raise | ✅ |
 | Re-raise | ✅ |
+| All-in directement | ✅ |
 | Ordre de parole circulaire | ✅ |
 | Reprise correcte de l'action après un raise | ✅ |
 
