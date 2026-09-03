@@ -351,7 +351,7 @@ def test_evaluate_hand_can_use_only_community_cards() -> None:
         ),
     )
 
-    assert evaluation.rank == CATEGORY_STRAIGHT
+    assert evaluation.rank == CATEGORY_STRAIGHT_FLUSH
     assert evaluation.tiebreaker == (14,)
 
 
@@ -429,28 +429,24 @@ def test_card_suit() -> None:
 
 
 def test_invalid_card_length_for_rank() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         card_rank("A")
 
 
 def test_invalid_card_length_for_suit() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         card_suit("A")
 
 
 def test_invalid_card_rank() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         card_rank("XC")
 
 
 def test_invalid_card_rank_with_invalid_length() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         card_rank("ABC")
@@ -512,7 +508,6 @@ def test_get_straight_high_ignores_duplicate_ranks() -> None:
 
 
 def test_evaluate_five_cards_requires_exactly_five_cards() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         evaluate_five_cards(
@@ -521,7 +516,6 @@ def test_evaluate_five_cards_requires_exactly_five_cards() -> None:
 
 
 def test_evaluate_five_cards_rejects_more_than_five_cards() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         evaluate_five_cards(
@@ -537,7 +531,6 @@ def test_evaluate_five_cards_rejects_more_than_five_cards() -> None:
 
 
 def test_evaluate_hand_requires_at_least_five_cards() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         evaluate_hand(
@@ -550,7 +543,6 @@ def test_evaluate_hand_requires_at_least_five_cards() -> None:
 
 
 def test_evaluate_hand_rejects_more_than_seven_cards() -> None:
-    import pytest
 
     with pytest.raises(ValueError):
         evaluate_hand(

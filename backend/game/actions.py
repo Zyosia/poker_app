@@ -84,7 +84,7 @@ def can_check(
 ) -> bool:
     """Return True if the player can check."""
 
-    return player.current_bet == hand.current_bet
+    return player.current_bet >= hand.current_bet
 
 
 def check(
@@ -204,3 +204,30 @@ def raise_bet(
     player.acted_this_round = True
 
     return new_bet
+
+
+def all_in(
+    player: Player,
+    hand: Hand,
+) -> int:
+    """
+    Move the player's entire remaining stack into the pot.
+
+    The all-in may constitute a full raise or a short all-in.
+    A short all-in does not necessarily reopen the betting action.
+    """
+
+    if player.stack <= 0:
+        raise ValueError("Player has no chips available.")
+
+    amount = player.stack
+
+    actual_amount = put_chips_in_pot(
+        player=player,
+        hand=hand,
+        amount=amount,
+    )
+
+    player.acted_this_round = True
+
+    return actual_amount
