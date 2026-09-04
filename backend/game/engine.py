@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.data_handler.handler import save_session
+
 from .hand import start_hand
 from .helper import wait
 from .session import (
@@ -53,13 +55,17 @@ def handle_rebuys(
             print("Please answer y or n.")
 
 
-def start_session() -> GameSession:
+def start_session(
+    starting_stack: int = 1000,
+    small_blind: int = 5,
+    big_blind: int = 10,
+) -> GameSession:
     """Create and run a complete poker session."""
 
     config = GameConfig(
-        starting_stack=1000,
-        small_blind=5,
-        big_blind=10,
+        starting_stack=starting_stack,
+        small_blind=small_blind,
+        big_blind=big_blind,
         max_players=6,
     )
 
@@ -92,6 +98,15 @@ def start_session() -> GameSession:
         hand = start_hand(
             session=session,
         )
+
+        session.hands.append(hand)
+
+        session_save_file_path = save_session(
+            session=session,
+            file_path=session.session_save_file_path,
+        )
+        if session.session_save_file_path is None:
+            session.session_save_file_path = session_save_file_path
 
         display_table(
             hand=hand,

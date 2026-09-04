@@ -1,19 +1,19 @@
 # game/constants.py
 
-from typing import Final, Literal, TypeAlias
+from typing import Final, Literal
 
-Card: TypeAlias = str
-Rank: TypeAlias = str
-Suit: TypeAlias = str
+Card = str
+Rank = str
+Suit = str
 
-Street: TypeAlias = Literal[
+Street = Literal[
     "PREFLOP",
     "FLOP",
     "TURN",
     "RIVER",
 ]
 
-ActionType: TypeAlias = Literal[
+ActionType = Literal[
     "fold",
     "check",
     "call",
@@ -21,7 +21,7 @@ ActionType: TypeAlias = Literal[
     "all_in",
 ]
 
-Position: TypeAlias = Literal[
+Position = Literal[
     "BTN",
     "SB",
     "BB",

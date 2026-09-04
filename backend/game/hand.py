@@ -9,6 +9,7 @@ from .actions import (
 from .betting import betting_round
 from .constants import Position
 from .deck import Deck
+from .history import record_action, record_street
 from .models import Hand
 from .session import GameSession
 from .showdown import resolve_hand
@@ -54,6 +55,8 @@ def start_hand(
 
     hand.street = "PREFLOP"
 
+    record_street(hand)
+
     if not play_betting_round(
         session=session,
         hand=hand,
@@ -83,6 +86,8 @@ def start_hand(
     # --------------------------------------------------
 
     deal_flop(hand)
+
+    record_street(hand)
 
     hand.reset_street_betting()
 
@@ -116,6 +121,8 @@ def start_hand(
 
     deal_turn(hand)
 
+    record_street(hand)
+
     hand.reset_street_betting()
 
     if not play_betting_round(
@@ -147,6 +154,8 @@ def start_hand(
     # --------------------------------------------------
 
     deal_river(hand)
+
+    record_street(hand)
 
     hand.reset_street_betting()
 
@@ -345,18 +354,11 @@ def post_blinds(
     if len(players) < 2:
         raise RuntimeError("At least two players are required to post blinds.")
 
-    # --------------------------------------------------
-    # Heads-up
-    # --------------------------------------------------
-    #
-    # BTN is also the Small Blind.
-    #
     if len(players) == 2:
         small_blind_player = next(
             (player for player in players if player.position == "BTN"),
             None,
         )
-
     else:
         small_blind_player = next(
             (player for player in players if player.position == "SB"),
@@ -374,16 +376,38 @@ def post_blinds(
     if big_blind_player is None:
         raise RuntimeError("Big Blind player could not be determined.")
 
-    post_small_blind(
+    small_blind_before = small_blind_player.current_bet
+
+    small_blind_amount = post_small_blind(
         player=small_blind_player,
         hand=hand,
         amount=session.config.small_blind,
     )
 
-    post_big_blind(
+    record_action(
+        hand=hand,
+        player=small_blind_player,
+        action="post_sb",
+        amount=small_blind_amount,
+        bet_before=small_blind_before,
+        bet_initiator=False,
+    )
+
+    big_blind_before = big_blind_player.current_bet
+
+    big_blind_amount = post_big_blind(
         player=big_blind_player,
         hand=hand,
         amount=session.config.big_blind,
+    )
+
+    record_action(
+        hand=hand,
+        player=big_blind_player,
+        action="post_bb",
+        amount=big_blind_amount,
+        bet_before=big_blind_before,
+        bet_initiator=True,
     )
 
 

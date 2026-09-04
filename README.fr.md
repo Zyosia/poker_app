@@ -34,11 +34,11 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [Alpha 1.1 — Robustesse et tests](#alpha-11--robustesse-et-tests)
 
-* [Limites restantes de la Alpha - 1.x](#limites-restantes-de-la-alpha---1x)
-
 * [Alpha 1.2 — Historique et observabilité](#alpha-12--historique-et-observabilité)
 
 * [Alpha 1.3 — Abstraction des joueurs](#alpha-13--abstraction-des-joueurs)
+
+* [Limites restantes de la Alpha - 1.x](#limites-restantes-de-la-alpha---1x)
 
 * [Beta 1.0 — Simulation](#beta-10--simulation)
 
@@ -700,9 +700,15 @@ game/
 
 │
 
+├── history.py
+
+│   └── Historique des actions, streets et pots
+
+│
+
 ├── models.py
 
-│   └── Player, Table, Hand et états associés
+│   └── Player, Table, Hand et modèles d'historique
 
 │
 
@@ -785,11 +791,9 @@ Le dealer est déterminé par un index correspondant à l'ordre de création des
 Par exemple :
 
 ```python
-
 session = make_session(alice, bob, charlie)
 
 session.table.dealer_index = 0
-
 ```
 
 signifie que **Alice est au bouton**.
@@ -942,7 +946,7 @@ Chip integrity
 
 ```text
 
-176 passed
+All tests passing
 
 ```
 
@@ -1000,97 +1004,11 @@ Objectif :
 
 ---
 
-# Limites restantes de la Alpha - 1.x
-
-Certaines fonctionnalités restent volontairement exclues de cette première version.
-
-L'objectif est de stabiliser le cœur du moteur avant d'ajouter des mécaniques plus avancées.
-
-## Antes
-
-Les antes ne sont pas encore supportées.
-
-## Straddle
-
-Les straddles ne sont pas supportés.
-
-## Betting Cap
-
-Le moteur ne possède pas encore de limite configurable sur le nombre de raises par street.
-
-## Tournament Blinds
-
-Les blinds restent fixes pendant toute la session.
-
-Il n'existe pas encore de structure de tournoi avec augmentation automatique des blinds.
-
-## Rebuy
-
-Le système de rebuy n'est pas encore intégré au fonctionnement complet d'une session.
-
-## Cash-game Rebuy
-
-Il n'existe pas encore de mécanisme permettant à un joueur éliminé d'ajouter des jetons à son stack dans le cadre d'une partie cash game.
-
-## Action abstraite pour les bots
-
-Le moteur fonctionne actuellement avec une interface utilisateur terminal.
-
-L'architecture n'intègre pas encore une abstraction permettant de remplacer facilement l'entrée utilisateur par :
-
-* une IA ;
-
-* un bot ;
-
-* une stratégie automatique ;
-
-* une API externe.
-
-## Historique complet des actions
-
-Le moteur conserve l'état nécessaire au déroulement de la main, mais ne possède pas encore un historique structuré complet de toutes les actions.
-
-Par exemple :
-
-```text
-
-Player1 → CALL 10
-
-Player2 → RAISE 30
-
-Player3 → FOLD
-
-Player1 → CALL 20
-
-```
-
-n'est pas encore enregistré comme un historique exploitable.
-
-## Event Sourcing
-
-Le moteur n'utilise pas encore une architecture event-sourced.
-
-Les changements d'état sont effectués directement sur les objets `Player`, `Hand` et `Table`.
-
-## Simulation
-
-Il n'existe pas encore de système permettant de simuler automatiquement des
-milliers ou millions de mains de manière autonome.
-
-Les tests de stress actuels exécutent cependant plusieurs scénarios critiques
-100 fois afin de vérifier la stabilité du moteur.
-
-## IA
-
-Aucune intelligence artificielle de poker n'est intégrée à la Alpha - 1.x.
-
-[↑ Retour au sommaire](#sommaire)
-
----
-
 # Alpha 1.2 — Historique et observabilité
 
-Ajouter un véritable historique de la main.
+**Alpha 1.2 est terminée.**
+
+Le moteur conserve désormais un historique structuré de chaque main terminée et persiste l'historique complet de la session dans un fichier `.dat`.
 
 Exemple :
 
@@ -1123,28 +1041,31 @@ SHOWDOWN
 PAYOUT
 
 ...
-
 ```
 
-Fonctionnalités prévues :
+Fonctionnalités implémentées :
 
-* [ ] `ActionEvent`
+* [x] `ActionEvent`
 
-* [ ] Historique des actions
+* [x] Historique des actions
 
-* [ ] Historique des streets
+* [x] Historique des streets
 
-* [ ] Historique des pots
+* [x] Historique des pots
 
-* [ ] Historique des payouts
+* [x] Historique des payouts
 
-* [ ] Identification du joueur ayant initié chaque bet
+* [x] Identification du joueur ayant initié chaque bet
 
-* [ ] Logs structurés
+* [x] Historique de session contenant les mains terminées
+
+* [x] Sauvegarde de la session dans un fichier `.dat`
+
+* [x] Tests de persistence
+
+Les données sauvegardées contiennent les informations nécessaires pour reconstruire le déroulement d'une main et constituent la base d'un futur replayer.
 
 [↑ Retour au sommaire](#sommaire)
-
----
 
 # Alpha 1.3 — Abstraction des joueurs
 
@@ -1193,6 +1114,100 @@ sans savoir si la réponse provient :
 * d'une interface graphique ;
 
 * d'une API.
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# Limites restantes de la Alpha - 1.x
+
+Certaines fonctionnalités restent volontairement exclues de cette première version.
+
+L'objectif est de stabiliser le cœur du moteur avant d'ajouter des mécaniques plus avancées.
+
+## Antes
+
+Les antes ne sont pas encore supportées.
+
+## Straddle
+
+Les straddles ne sont pas supportés.
+
+## Betting Cap
+
+Le moteur ne possède pas encore de limite configurable sur le nombre de raises par street.
+
+## Tournament Blinds
+
+Les blinds restent fixes pendant toute la session.
+
+Il n'existe pas encore de structure de tournoi avec augmentation automatique des blinds.
+
+## Rebuy
+
+Le système de rebuy n'est pas encore intégré au fonctionnement complet d'une session.
+
+## Cash-game Rebuy
+
+Il n'existe pas encore de mécanisme permettant à un joueur éliminé d'ajouter des jetons à son stack dans le cadre d'une partie cash game.
+
+## Action abstraite pour les bots
+
+Le moteur fonctionne actuellement avec une interface utilisateur terminal.
+
+L'architecture n'intègre pas encore une abstraction permettant de remplacer facilement l'entrée utilisateur par :
+
+* une IA ;
+
+* un bot ;
+
+* une stratégie automatique ;
+
+* une API externe.
+
+## Historique complet des actions
+
+Un historique structuré est désormais disponible pour chaque main terminée.
+
+Le moteur conserve notamment :
+
+* chaque action des joueurs, y compris les blinds ;
+
+* l'ordre des actions et la street ;
+
+* la position du joueur ;
+
+* l'état de la mise avant et après l'action ;
+
+* l'état du pot après l'action ;
+
+* l'identification des joueurs ayant initié les bets ;
+
+* les cartes communes de chaque street ;
+
+* les résultats des pots et les payouts ;
+
+* les évaluations du showdown.
+
+Les mains terminées sont conservées dans l'historique de la session et persistées dans un fichier de session `.dat`.
+
+## Event Sourcing
+
+Le moteur n'utilise pas encore une architecture event-sourced.
+
+Les changements d'état sont effectués directement sur les objets `Player`, `Hand` et `Table`.
+
+## Simulation
+
+Il n'existe pas encore de système permettant de simuler automatiquement des
+milliers ou millions de mains de manière autonome.
+
+Les tests de stress actuels exécutent cependant plusieurs scénarios critiques
+100 fois afin de vérifier la stabilité du moteur.
+
+## IA
+
+Aucune intelligence artificielle de poker n'est intégrée à la Alpha - 1.x.
 
 [↑ Retour au sommaire](#sommaire)
 

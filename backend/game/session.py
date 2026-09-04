@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
-from .models import Player, Table
+from .models import Hand, Player, Table
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,10 @@ class GameSession:
         )
 
         self.hand_number = 0
+
+        self.session_save_file_path: Path | None = None
+
+        self.hands: list[Hand] = []
 
     # TODO: Duplicated function (also in models.py)
     def get_players_with_chips(self) -> list[Player]:

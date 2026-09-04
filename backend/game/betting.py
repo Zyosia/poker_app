@@ -12,6 +12,7 @@ from .actions import (
     raise_bet,
 )
 from .constants import ActionType
+from .history import record_action
 from .models import Hand, Player
 from .session import GameSession
 from .terminal_ui import (
@@ -107,7 +108,16 @@ def betting_round(
         hand.last_player_to_act = player
 
         if action == "fold":
+            bet_before = player.current_bet
             fold(player)
+
+            record_action(
+                hand=hand,
+                player=player,
+                action="fold",
+                amount=0,
+                bet_before=bet_before,
+            )
 
             pending_players.discard(player_id)
 
@@ -115,9 +125,19 @@ def betting_round(
             current_index = (player_index + 1) % len(players)
 
         elif action == "check":
+            bet_before = player.current_bet
+
             check(
                 player=player,
                 hand=hand,
+            )
+
+            record_action(
+                hand=hand,
+                player=player,
+                action="check",
+                amount=0,
+                bet_before=bet_before,
             )
 
             pending_players.discard(player_id)
@@ -125,9 +145,19 @@ def betting_round(
             current_index = (player_index + 1) % len(players)
 
         elif action == "call":
-            call(
+            bet_before = player.current_bet
+
+            actual_amount = call(
                 player=player,
                 hand=hand,
+            )
+
+            record_action(
+                hand=hand,
+                player=player,
+                action="call",
+                amount=actual_amount,
+                bet_before=bet_before,
             )
 
             pending_players.discard(player_id)
@@ -138,10 +168,22 @@ def betting_round(
             if amount is None:
                 raise RuntimeError("Raise amount cannot be None.")
 
+            bet_before = player.current_bet
+            previous_current_bet = hand.current_bet
+
             raise_bet(
                 player=player,
                 hand=hand,
                 raise_to=amount,
+            )
+
+            record_action(
+                hand=hand,
+                player=player,
+                action="raise",
+                amount=player.current_bet - bet_before,
+                bet_before=bet_before,
+                bet_initiator=previous_current_bet == 0,
             )
 
             pending_players = {
