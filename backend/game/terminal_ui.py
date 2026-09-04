@@ -90,7 +90,7 @@ def get_player_status(
 ) -> str:
     """Return a human-readable player status."""
 
-    if player.eliminated:
+    if player.is_eliminated:
         return "ELIMINATED"
 
     if player.folded:
@@ -286,7 +286,7 @@ def display_hand_result(
                 player for player in hand.table.players if player.name == player_name
             )
 
-            if player.eliminated:
+            if player.is_eliminated:
                 continue
 
             hole_cards = " ".join(f"[{card}]" for card in player.hand)

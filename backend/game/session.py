@@ -62,7 +62,7 @@ class GameSession:
         return [
             player
             for player in self.players
-            if (not player.eliminated and not player.is_busted)
+            if (not player.is_eliminated and not player.is_busted)
         ]
 
     def can_continue(self) -> bool:
@@ -79,7 +79,7 @@ class GameSession:
         return [
             player
             for player in self.players
-            if player.is_busted and not player.eliminated
+            if player.is_busted and not player.is_eliminated
         ]
 
     def rebuy_player(

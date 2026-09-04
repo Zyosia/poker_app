@@ -65,6 +65,11 @@ class Player:
         return self.stack <= 0
 
     @property
+    def is_eliminated(self) -> bool:
+        """Return True when the player is eliminated."""
+        return self.eliminated
+
+    @property
     def is_active(self) -> bool:
         """
         Return True when the player is still involved
@@ -97,7 +102,7 @@ class Table:
         return [
             player
             for player in self.players
-            if (not player.eliminated and not player.is_busted)
+            if (not player.is_eliminated and not player.is_busted)
         ]
 
     def get_active_players(self) -> list[Player]:

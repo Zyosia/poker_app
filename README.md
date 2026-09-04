@@ -1,102 +1,101 @@
 # Poker Engine
 
-Moteur de session **Texas Hold'em No-Limit** développé en Python.
+A **Texas Hold'em No-Limit** session engine developed in Python.
 
-L'objectif de ce projet est de construire progressivement un moteur de poker fiable et extensible, capable de gérer une session complète de plusieurs mains, depuis la distribution des cartes jusqu'à la détermination du ou des gagnants et à la redistribution des pots.
+The goal of this project is to progressively build a reliable and extensible poker engine capable of managing a complete multi-hand session, from card dealing to winner determination and pot distribution.
 
 ---
 
-# Sommaire
+# Table of Contents
 
-* [Alpha - 1.0](#alpha---10)
-
-  * [Fonctionnalités](#fonctionnalités)
-* [Déroulement d'une main](#déroulement-dune-main)
-* [Gestion de l'ordre de parole](#gestion-de-lordre-de-parole)
-* [Gestion des all-ins](#gestion-des-all-ins)
-* [Évaluation des mains](#évaluation-des-mains)
-* [Main pots et side pots](#main-pots-et-side-pots)
-* [Split Pots](#split-pots)
-* [Conservation des jetons](#conservation-des-jetons)
-* [Architecture](#architecture)
-* [Session](#session)
-* [Interface actuelle](#interface-actuelle)
-* [Alpha 1.1 — Robustesse et tests](#alpha-11--robustesse-et-tests)
-* [Limites restantes de la Alpha - 1.x](#limites-restantes-de-la-alpha---1x)
-* [Alpha 1.2 — Historique et observabilité](#alpha-12--historique-et-observabilité)
-* [Alpha 1.3 — Abstraction des joueurs](#alpha-13--abstraction-des-joueurs)
-* [Beta 1.0 — Simulation](#beta-10--simulation)
-* [V1.0 — Fonctionnalités de poker avancées](#v10--fonctionnalités-de-poker-avancées)
-* [V2.x — IA et stratégies](#v2x--ia-et-stratégies)
-* [Principes de développement](#principes-de-développement)
-* [Objectif du projet](#objectif-du-projet)
+- [Alpha - 1.0](#alpha---10)
+  - [Features](#features)
+- [Hand Flow](#hand-flow)
+- [Action Order](#action-order)
+- [All-ins](#all-ins)
+- [Hand Evaluation](#hand-evaluation)
+- [Main Pots and Side Pots](#main-pots-and-side-pots)
+- [Split Pots](#split-pots)
+- [Chip Conservation](#chip-conservation)
+- [Architecture](#architecture)
+- [Session](#session)
+- [Current Interface](#current-interface)
+- [Alpha 1.1 — Robustness and Testing](#alpha-11--robustness-and-testing)
+- [Remaining Alpha 1.x Limitations](#remaining-alpha-1x-limitations)
+- [Alpha 1.2 — History and Observability](#alpha-12--history-and-observability)
+- [Alpha 1.3 — Player Abstraction](#alpha-13--player-abstraction)
+- [Beta 1.0 — Simulation](#beta-10--simulation)
+- [V1.0 — Advanced Poker Features](#v10--advanced-poker-features)
+- [V2.x — AI and Strategies](#v2x--ai-and-strategies)
+- [Development Principles](#development-principles)
+- [Project Goal](#project-goal)
 
 ---
 
 # Alpha - 1.0
 
-La **Alpha - 1.0** constitue une première version fonctionnelle et robuste du cœur du moteur de poker.
+The **Alpha - 1.0** is the first functional and robust version of the poker engine core.
 
-Elle couvre le déroulement d'une session Texas Hold'em avec **2 à 6 joueurs**, incluant les phases de mise, les all-ins, les short all-ins, le showdown, les side pots, les splits et la redistribution automatique des jetons.
+It covers a Texas Hold'em session with **2 to 6 players**, including betting rounds, all-ins, short all-ins, showdown, side pots, splits, and automatic chip distribution.
 
-## Fonctionnalités
+## Features
 
-### 👥 Gestion des joueurs & de la table
+### 👥 Player & Table Management
 
-| Fonctionnalité          | Alpha - 1.0 |
-| ----------------------- | :---------: |
-| 2–6 joueurs             |      ✅      |
-| Positions à la table    |      ✅      |
-| Rotation du dealer      |      ✅      |
-| Élimination des joueurs |      ✅      |
-| Sessions multi-hands    |      ✅      |
+| Feature | Alpha - 1.0 |
+| --- | :---: |
+| 2–6 players | ✅ |
+| Table positions | ✅ |
+| Dealer rotation | ✅ |
+| Player elimination | ✅ |
+| Multi-hand sessions | ✅ |
 
-### 🃏 Gestion des mains
+### 🃏 Hand Management
 
-| Fonctionnalité                     | Alpha - 1.0 |
-| ---------------------------------- | :---------: |
-| Small Blind / Big Blind            |      ✅      |
-| Distribution des cartes privatives |      ✅      |
-| Flop / Turn / River                |      ✅      |
-| Gestion du board communautaire     |      ✅      |
-| All-in                             |      ✅      |
-| Short all-in                       |      ✅      |
-| Auto-runout                        |      ✅      |
+| Feature | Alpha - 1.0 |
+| --- | :---: |
+| Small Blind / Big Blind | ✅ |
+| Hole card dealing | ✅ |
+| Flop / Turn / River | ✅ |
+| Community board management | ✅ |
+| All-in | ✅ |
+| Short all-in | ✅ |
+| Auto-runout | ✅ |
 
-### 💰 Système de mise
+### 💰 Betting System
 
-| Fonctionnalité                              | Alpha - 1.0 |
-| ------------------------------------------- | :---------: |
-| Fold                                        |      ✅      |
-| Check                                       |      ✅      |
-| Call                                        |      ✅      |
-| Raise                                       |      ✅      |
-| Re-raise                                    |      ✅      |
-| All-in directement                          |      ✅      |
-| Short all-in                                |      ✅      |
-| Minimum raise                               |      ✅      |
-| Ordre de parole circulaire                  |      ✅      |
-| Reprise correcte de l'action après un raise |      ✅      |
-| Reopening après un re-raise                 |      ✅      |
-| Gestion du dernier joueur ayant agi         |      ✅      |
+| Feature | Alpha - 1.0 |
+| --- | :---: |
+| Fold | ✅ |
+| Check | ✅ |
+| Call | ✅ |
+| Raise | ✅ |
+| Re-raise | ✅ |
+| Direct all-in | ✅ |
+| Short all-in | ✅ |
+| Minimum raise | ✅ |
+| Circular action order | ✅ |
+| Correct action resumption after a raise | ✅ |
+| Reopening after a re-raise | ✅ |
+| Tracking of the last player to act | ✅ |
 
-Le moteur respecte l'ordre de parole du Texas Hold'em et ne redémarre pas arbitrairement l'action au début de la liste des joueurs après un raise.
+The engine respects Texas Hold'em action order and does not arbitrarily restart action from the beginning of the player list after a raise.
 
-Les règles de reopening sont également prises en compte lorsqu'un joueur effectue un all-in constituant ou non une raise complète.
+Reopening rules are also handled when an all-in does or does not constitute a full raise.
 
-### 🏆 Évaluation des mains
+### 🏆 Hand Evaluation
 
-| Fonctionnalité                                     | Alpha - 1.0 |
-| -------------------------------------------------- | :---------: |
-| Évaluation des meilleures combinaisons de 5 cartes |      ✅      |
-| 9 catégories de mains                              |      ✅      |
-| Comparaison des kickers                            |      ✅      |
-| Comparaison des mains                              |      ✅      |
-| Détection des égalités                             |      ✅      |
-| Ace-low straight                                   |      ✅      |
-| Ace-low straight flush                             |      ✅      |
+| Feature | Alpha - 1.0 |
+| --- | :---: |
+| Best five-card combination evaluation | ✅ |
+| 9 hand categories | ✅ |
+| Kicker comparison | ✅ |
+| Hand comparison | ✅ |
+| Tie detection | ✅ |
+| Ace-low straight | ✅ |
+| Ace-low straight flush | ✅ |
 
-Les rankings de mains implémentés en Alpha - 1.0 sont :
+The hand rankings implemented in Alpha - 1.0 are:
 
 1. High Card
 2. Pair
@@ -108,178 +107,240 @@ Les rankings de mains implémentés en Alpha - 1.0 sont :
 8. Four of a Kind
 9. Straight Flush
 
-### 🏦 Gestion des pots
+### 🏦 Pot Management
 
-| Fonctionnalité                                           | Alpha - 1.0 |
-| -------------------------------------------------------- | :---------: |
-| Main pot                                                 |      ✅      |
-| Side pots                                                |      ✅      |
-| Side pots multiples                                      |      ✅      |
-| Prise en compte des contributions des joueurs ayant fold |      ✅      |
-| Éligibilité des joueurs aux différents pots              |      ✅      |
-| All-in players au showdown                               |      ✅      |
-| Split pot                                                |      ✅      |
-| Gestion des jetons indivisibles                          |      ✅      |
-| Distribution automatique des gains                       |      ✅      |
-| Vérification de la cohérence du pot                      |      ✅      |
+| Feature | Alpha - 1.0 |
+| --- | :---: |
+| Main pot | ✅ |
+| Side pots | ✅ |
+| Multiple side pots | ✅ |
+| Contributions from folded players are accounted for | ✅ |
+| Player eligibility for different pots | ✅ |
+| All-in players at showdown | ✅ |
+| Split pot | ✅ |
+| Indivisible chip handling | ✅ |
+| Automatic payout distribution | ✅ |
+| Pot consistency verification | ✅ |
 
-Les contributions de chaque joueur sont conservées pendant toute la main afin de permettre la reconstruction des différents pots.
+Each player's contribution is tracked throughout the hand so that the different pots can be reconstructed.
 
-### 🔄 Déroulement d'une session
+### 🔄 Session Flow
 
-| Fonctionnalité                                      | Alpha - 1.0 |
-| --------------------------------------------------- | :---------: |
-| Enchaînement des hands                              |      ✅      |
-| Gestion de la fin d'une hand                        |      ✅      |
-| Showdown automatique                                |      ✅      |
-| Attribution des pots                                |      ✅      |
-| Rotation du dealer                                  |      ✅      |
-| Élimination automatique des joueurs sans jetons     |      ✅      |
-| Arrêt de la session lorsqu'il ne reste qu'un joueur |      ✅      |
+| Feature | Alpha - 1.0 |
+| --- | :---: |
+| Multiple hands in sequence | ✅ |
+| Hand completion handling | ✅ |
+| Automatic showdown | ✅ |
+| Pot distribution | ✅ |
+| Dealer rotation | ✅ |
+| Automatic elimination of players without chips | ✅ |
+| Session stops when only one player remains | ✅ |
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Déroulement d'une main
+# Hand Flow
 
-Une main suit le cycle général suivant :
+A hand follows the general cycle below:
 
 ```text
-Nouvelle main
+New hand
 
     │
-    ├── Attribution des positions
+
+    ├── Position assignment
+
     │
+
     ├── Small Blind / Big Blind
+
     │
-    ├── Distribution des cartes privées
+
+    ├── Hole card dealing
+
     │
+
     ▼
+
  PREFLOP
+
     │
+
     ├── Betting round
+
     │
-    ├── Fold ?
-    │     └── Oui → joueur restant gagne
+
+    ├── Fold?
+
+    │     └── Yes → remaining player wins
+
     │
-    ├── Tous les joueurs encore en jeu sont all-in ?
-    │     └── Oui → Auto-runout
+
+    ├── Are all players still in the hand all-in?
+
+    │     └── Yes → Auto-runout
+
     │
+
     ▼
+
   FLOP
+
     │
+
     ├── Betting round
+
     │
-    ├── Auto-runout si nécessaire
+
+    ├── Auto-runout if necessary
+
     │
+
     ▼
+
   TURN
+
     │
+
     ├── Betting round
+
     │
-    ├── Auto-runout si nécessaire
+
+    ├── Auto-runout if necessary
+
     │
+
     ▼
+
   RIVER
+
     │
+
     ├── Betting round
+
     │
+
     ▼
+
  SHOWDOWN
+
     │
-    ├── Évaluation des mains
+
+    ├── Hand Evaluation
+
     │
-    ├── Construction des pots
+
+    ├── Pot construction
+
     │
-    ├── Détermination des gagnants
+
+    ├── Winner determination
+
     │
-    ├── Gestion des splits
+
+    ├── Split handling
+
     │
-    └── Distribution des pots
+
+    └── Pot distribution
+
     │
+
     ▼
-Fin de la main
+
+End of hand
 
     │
-    └── Rotation du dealer
+
+    └── Dealer rotation
 ```
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Gestion de l'ordre de parole
+# Action Order
 
-Le moteur conserve l'état nécessaire pour maintenir un ordre de parole circulaire cohérent.
+The engine maintains the state required to preserve a consistent circular action order.
 
-Lorsqu'un joueur effectue un raise, l'action est rouverte pour les autres joueurs encore capables d'agir.
+When a player raises, action is reopened for the other players who are still able to act.
 
-L'action reprend **immédiatement après le raiser**, et non au début de la liste des joueurs.
+Action resumes **immediately after the raiser**, rather than from the beginning of the player list.
 
-Exemple :
+Example:
 
 ```text
 Player1
+
 Player2
+
 Player3
 
 Player2 → RAISE
 
 Player3
+
    ↓
+
 Player1
 ```
 
-Si Player3 effectue ensuite une sur-relance :
+If Player3 then re-raises:
 
 ```text
 Player2 → RAISE
+
     ↓
+
 Player3 → RAISE
+
     ↓
+
 Player1
+
     ↓
+
 Player2
 ```
 
-Cette mécanique permet de gérer les séquences de raises et de re-raises sans dépendre de la position des joueurs dans la liste Python.
+This mechanism handles raise and re-raise sequences without depending on the players' positions in the Python list.
 
-Le moteur conserve également le dernier joueur ayant agi ainsi que le dernier raiser et la taille du dernier raise lorsque ces informations sont nécessaires au déroulement du betting round.
+The engine also tracks the last player to act, the last raiser, and the size of the last raise when required by the betting round.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Gestion des all-ins
+# All-ins
 
-Un joueur all-in reste **dans la main**, mais ne peut plus effectuer d'action.
+An all-in player remains **in the hand**, but can no longer act.
 
-Le moteur distingue notamment :
+The engine distinguishes between:
 
-* joueur encore dans la main ;
-* joueur capable d'agir ;
-* joueur all-in ;
-* joueur ayant fold ;
-* joueur éliminé.
+- player still in the hand
+- player able to act
+- all-in player
+- folded player
+- eliminated player
 
-Un joueur all-in reste éligible au showdown et aux pots pour lesquels il a contribué.
+An all-in player remains eligible for showdown and for the pots to which they contributed.
 
-Le moteur gère également les **short all-ins**.
+The engine also handles **short all-ins**.
 
-Un short all-in peut augmenter le montant engagé sans nécessairement constituer une raise complète. Dans ce cas, il ne doit pas automatiquement rouvrir l'action aux joueurs ayant déjà agi.
+A short all-in can increase the amount committed without necessarily constituting a full raise. In that case, it must not automatically reopen action for players who have already acted.
 
-À l'inverse, un all-in constituant une raise complète peut rouvrir l'action.
+Conversely, an all-in that constitutes a full raise can reopen action.
 
-Ces comportements sont couverts par les tests du moteur.
+These behaviors are covered by the engine's tests.
 
-Si tous les joueurs encore dans la main sont all-in, aucune nouvelle action n'est demandée.
+If all players still in the hand are all-in, no further action is requested.
 
-Le moteur effectue automatiquement le reste du board.
+The engine automatically deals the remaining board cards.
 
-### Exemple
+### Example
 
-Si tous les joueurs sont all-in préflop :
+If all players are all-in preflop:
 
 ```text
 PREFLOP
@@ -305,7 +366,7 @@ RIVER
 SHOWDOWN
 ```
 
-Si les joueurs sont all-in au flop :
+If players are all-in on the flop:
 
 ```text
 FLOP
@@ -327,18 +388,18 @@ RIVER
 SHOWDOWN
 ```
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Évaluation des mains
+# Hand Evaluation
 
-Le moteur évalue la meilleure combinaison possible de cinq cartes parmi :
+The engine evaluates the best possible five-card combination from:
 
-* les 2 cartes privées du joueur ;
-* les cartes communes disponibles.
+- the player's 2 hole cards
+- the available community cards
 
-Les catégories supportées sont :
+The supported hand categories are:
 
 1. High Card
 2. Pair
@@ -350,205 +411,257 @@ Les catégories supportées sont :
 8. Four of a Kind
 9. Straight Flush
 
-Les égalités sont départagées grâce aux **tiebreakers / kickers**.
+Ties are resolved using **tiebreakers / kickers**.
 
-Le moteur gère également les cas où plusieurs joueurs possèdent exactement la même meilleure combinaison.
+The engine also handles cases where multiple players have exactly the same best hand.
 
-Dans ce cas, le pot est partagé entre les joueurs concernés.
+In that case, the pot is split between the relevant players.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Main pots et side pots
+# Main Pots and Side Pots
 
-Les contributions de chaque joueur sont conservées pendant toute la main.
+Each player's contribution is tracked throughout the hand.
 
-Le moteur peut ainsi reconstruire les différents pots à partir des contributions totales.
+The engine can therefore reconstruct the different pots from total contributions.
 
-### Exemple
+### Example
 
 ```text
 Player1 : 100
+
 Player2 : 300
+
 Player3 : 500
 ```
 
-Le moteur construit :
+The engine builds:
 
 ```text
 Main Pot
 
 100 × 3
+
 = 300
 
 
 Side Pot #1
 
 (300 - 100) × 2
+
 = 400
 
 
 Side Pot #2
 
 (500 - 300) × 1
+
 = 200
 ```
 
-Chaque pot possède son propre ensemble de joueurs éligibles.
+Each pot has its own set of eligible players.
 
-Un joueur ayant fold peut avoir contribué à un pot, mais **ne peut jamais gagner ce pot**.
+A folded player may have contributed to a pot, but **can never win that pot**.
 
-Les joueurs all-in restent éligibles aux pots correspondant à leur niveau de contribution.
+All-in players remain eligible for pots corresponding to their contribution level.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
 # Split Pots
 
-Lorsqu'au moins deux joueurs possèdent une main de valeur strictement identique, le pot concerné est partagé entre eux.
+When at least two players have exactly the same hand value, the relevant pot is split between them.
 
-Exemple :
+Example:
 
 ```text
 Pot = 200
 
-Player1 → meilleure main
-Player2 → meilleure main
+Player1 → best hand
+
+Player2 → best hand
 ```
 
-Résultat :
+Result:
 
 ```text
 Player1 : +100
+
 Player2 : +100
 ```
 
-Les éventuels jetons indivisibles sont attribués de manière déterministe selon l'ordre de la table.
+Any indivisible chips are awarded deterministically according to table order.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Conservation des jetons
+# Chip Conservation
 
-Le moteur vérifie que les mouvements de jetons restent cohérents pendant le déroulement d'une main.
+The engine verifies that chip movements remain consistent throughout a hand.
 
-L'invariant principal est :
+The main invariant is:
 
 ```text
-Somme des stacks des joueurs
+Sum of player stacks
+
 +
-pot de la hand
+
+hand pot
+
 =
-nombre total de jetons avant la hand
+
+total number of chips before the hand
 ```
 
-Les contributions des joueurs sont incluses dans le pot et ne doivent donc pas être comptabilisées une seconde fois.
+Player contributions are included in the pot and must therefore not be counted a second time.
 
-Cette propriété est couverte par des tests dédiés de conservation des jetons.
+This property is covered by dedicated chip-conservation tests.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
 # Architecture
 
-Le moteur sépare les principales responsabilités afin de limiter le couplage entre les différentes parties du système.
+The engine separates the main responsibilities to limit coupling between system components.
 
 ```text
 game/
 
 │
+
 ├── actions.py
-│   └── Actions des joueurs et gestion des mises
+
+│   └── Player actions and bet management
+
 │
+
 ├── betting.py
-│   └── Ordre de parole et betting rounds
+
+│   └── Action order and betting rounds
+
 │
+
 ├── constants.py
-│   └── Types, positions, streets et constantes
+
+│   └── Types, positions, streets, and constants
+
 │
+
 ├── deck.py
-│   └── Deck de 52 cartes
+
+│   └── 52-card deck
+
 │
+
 ├── engine.py
-│   └── Boucle principale de la session
+
+│   └── Main session loop
+
 │
+
 ├── hand.py
-│   └── Déroulement complet d'une main
+
+│   └── Complete hand flow
+
 │
+
 ├── hand_evaluator.py
-│   └── Évaluation et comparaison des mains
+
+│   └── Hand evaluation and comparison
+
 │
+
 ├── helper.py
-│   └── Fonctions utilitaires
+
+│   └── Utility functions
+
 │
+
 ├── models.py
-│   └── Player, Table, Hand et états associés
+
+│   └── Player, Table, Hand, and associated states
+
 │
+
 ├── pots.py
-│   └── Construction du main pot et des side pots
+
+│   └── Main pot and side pot construction
+
 │
+
 ├── session.py
-│   └── Configuration et gestion de la session
+
+│   └── Session configuration and management
+
 │
+
 ├── showdown.py
-│   └── Détermination des gagnants et redistribution
+
+│   └── Winner determination and payout distribution
+
 │
+
 └── terminal_ui.py
-    └── Interface terminal
+
+    └── Terminal interface
 ```
 
-Le principe architectural est notamment de séparer :
+The architectural principle is to separate:
 
 ```text
 BETTING
 
-"Qui doit parler ?"
+"Who acts next?"
 
         │
+
         ▼
 
 HAND EVALUATOR
 
-"Quelle est la valeur de sa main ?"
+"What is the value of their hand?"
 
         │
+
         ▼
 
 SHOWDOWN
 
-"Qui gagne chaque pot ?"
+"Who wins each pot?"
 
         │
+
         ▼
 
 POTS
 
-"Combien doit recevoir chaque joueur ?"
+"How much does each player receive?"
 ```
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
 # Session
 
-Une session peut contenir plusieurs mains.
+A session can contain multiple hands.
 
-Le dealer tourne entre les joueurs encore en possession de jetons.
+The dealer rotates among players who still have chips.
 
-La session continue tant qu'au moins deux joueurs disposent encore de jetons.
+The session continues as long as at least two players still have chips.
 
-Lorsqu'un joueur n'a plus de jetons après une main, il peut être éliminé de la session.
+When a player has no chips left after a hand, they can be eliminated from the session.
 
-La session se termine lorsqu'il ne reste plus qu'un joueur possédant des jetons.
+The session ends when only one player with chips remains.
 
-Le dealer est déterminé par un index correspondant à l'ordre de création des joueurs.
+The dealer is determined by an index corresponding to player creation order.
 
-Par exemple :
+For example:
 
 ```python
 session = make_session(alice, bob, charlie)
@@ -556,19 +669,19 @@ session = make_session(alice, bob, charlie)
 session.table.dealer_index = 0
 ```
 
-signifie que **Alice est au bouton**.
+means that **Alice is on the button**.
 
-La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les joueurs ne pouvant plus participer à la session.
+The dealer then rotates clockwise, skipping players who can no longer participate in the session.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Interface actuelle
+# Current Interface
 
-La Alpha - 1.0 utilise une interface **terminal**.
+Alpha - 1.0 currently uses a **terminal** interface.
 
-Au lancement d'une session, le moteur demande le nombre de joueurs :
+When starting a session, the engine asks for the number of players:
 
 ```text
 ==================================================
@@ -580,208 +693,267 @@ Choose the number of players (2-6).
 Number of players >
 ```
 
-Les joueurs sont ensuite générés automatiquement :
+Players are then generated automatically:
 
 ```text
-2 joueurs
+2 players
 
 → Player1
+
 → Player2
 ```
 
-ou :
+or:
 
 ```text
-6 joueurs
+6 players
 
 → Player1
+
 → Player2
+
 → Player3
+
 → Player4
+
 → Player5
+
 → Player6
 ```
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Alpha 1.1 — Robustesse et tests
+# Alpha 1.1 — Robustness and Testing
 
-La **Alpha 1.1** est dédiée à la robustesse du moteur et à sa couverture de tests.
+**Alpha 1.1** is dedicated to engine robustness and test coverage.
 
 ## Tests
 
-Le cœur du moteur dispose actuellement d'une suite de tests automatisés couvrant les principales règles du Texas Hold'em.
+The engine core currently has an automated test suite covering the main Texas Hold'em rules.
 
-Les tests couvrent notamment :
+The tests cover:
 
 ```text
 Hand evaluator
-    ├── 9 catégories de mains
+
+    ├── 9 hand categories
+
     ├── Kickers
+
     ├── Straights
+
     ├── Ace-low
-    └── Comparaison
+
+    └── Comparison
+
 
 Betting
+
     ├── Fold
+
     ├── Check
+
     ├── Call
+
     ├── Raise
+
     ├── Re-raise
-    ├── Ordre de parole
+
+    ├── Action order
+
     └── Reopening
+
 
 All-ins
+
     ├── Full all-in
+
     ├── Short all-in
+
     ├── Minimum raise
+
     └── Reopening
 
+
 Pots
+
     ├── Main pot
+
     ├── Side pots
+
     ├── Multiple side pots
+
     └── Eligibility
 
+
 Showdown
+
     ├── Best hand
+
     ├── Fold resolution
+
     ├── Split pots
+
     └── Pot accounting
 
+
 Session
+
     ├── Dealer rotation
+
     └── Eliminations
 
+
 Chip integrity
-    └── Conservation des jetons
+
+    └── Chip conservation
 ```
 
-État actuel de la suite :
+Current test suite status:
 
 ```text
-176 passed
+883 passed
 ```
 
-### État actuel
+### Current Status
 
-* [x] Tests unitaires complets de l'évaluateur
-* [x] Tests des side pots
-* [x] Tests des splits
-* [x] Tests des all-ins
-* [x] Tests de l'ordre de parole
-* [x] Tests des re-raises
-* [x] Tests des éliminations
-* [x] Tests de conservation des jetons
-* [x] Gestion des short all-ins
-* [x] Validation des actions utilisateur
-* [x] Vérification de l'intégrité du pot
-* [x] Gestion correcte de la reprise de l'action après un raise
-* [x] Rotation du dealer
+- [x] Complete hand evaluator tests
+- [x] Side pot tests
+- [x] Split pot tests
+- [x] All-in tests
+- [x] Action order tests
+- [x] Re-raise tests
+- [x] Elimination tests
+- [x] Chip conservation tests
+- [x] Short all-in handling
+- [x] User action validation
+- [x] Pot integrity verification
+- [x] Correct action resumption after a raise
+- [x] Dealer rotation
 
-### Prochaine étape
+### Integration Tests
 
-Ajouter des tests d'intégration couvrant des mains et des sessions complètes :
+Integration tests now cover complete hands and sessions:
 
-* [ ] Hand complète jusqu'au showdown
-* [ ] Hand terminée par fold
-* [ ] Hand avec all-in et auto-runout
-* [ ] Hand avec side pot
-* [ ] Plusieurs hands consécutives
-* [ ] Rotation du dealer entre plusieurs hands
-* [ ] Vérification de la conservation des jetons sur une session complète
+- [x] Complete hand through showdown
+- [x] Hand ending by fold
+- [x] Hand with all-in and auto-runout
+- [x] Hand with side pot
+- [x] Multiple consecutive hands
+- [x] Dealer rotation between multiple hands
+- [x] Chip conservation across a complete session
 
-Objectif :
+### Stress Tests
 
-> Garantir qu'une session complète de Texas Hold'em puisse être exécutée sans produire d'état de jeu ou financier incohérent.
+The main integration scenarios are also executed repeatedly to detect inconsistent states and non-deterministic behavior:
 
-[↑ Retour au sommaire](#sommaire)
+```text
+Complete hand       → 100 runs
+Fold hand           → 100 runs
+All-in auto-runout  → 100 runs
+Side pot            → 100 runs
+Multiple hands      → 100 runs
+Raise / re-raise    → 100 runs
+```
+
+The full suite currently contains **883 passing tests**.
+
+Goal:
+
+> Ensure that a complete Texas Hold'em session can run without producing inconsistent game or financial state, including across repeated executions of critical scenarios.
+
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Limites restantes de la Alpha - 1.x
+# Remaining Alpha 1.x Limitations
 
-Certaines fonctionnalités restent volontairement exclues de cette première version.
+Some features are intentionally excluded from this first version.
 
-L'objectif est de stabiliser le cœur du moteur avant d'ajouter des mécaniques plus avancées.
+The goal is to stabilize the engine core before adding more advanced mechanics.
 
 ## Antes
 
-Les antes ne sont pas encore supportées.
+Antes are not yet supported.
 
 ## Straddle
 
-Les straddles ne sont pas supportés.
+Straddles are not supported.
 
 ## Betting Cap
 
-Le moteur ne possède pas encore de limite configurable sur le nombre de raises par street.
+The engine does not yet have a configurable limit on the number of raises per street.
 
 ## Tournament Blinds
 
-Les blinds restent fixes pendant toute la session.
+Blinds remain fixed throughout the session.
 
-Il n'existe pas encore de structure de tournoi avec augmentation automatique des blinds.
+There is not yet a tournament structure with automatic blind increases.
 
 ## Rebuy
 
-Le système de rebuy n'est pas encore intégré au fonctionnement complet d'une session.
+The rebuy system is not yet integrated into the complete session flow.
 
 ## Cash-game Rebuy
 
-Il n'existe pas encore de mécanisme permettant à un joueur éliminé d'ajouter des jetons à son stack dans le cadre d'une partie cash game.
+There is not yet a mechanism allowing an eliminated player to add chips to their stack in a cash game.
 
-## Action abstraite pour les bots
+## Action Abstraction for Bots
 
-Le moteur fonctionne actuellement avec une interface utilisateur terminal.
+The engine currently operates through a terminal user interface.
 
-L'architecture n'intègre pas encore une abstraction permettant de remplacer facilement l'entrée utilisateur par :
+The architecture does not yet include an abstraction allowing user input to be easily replaced by:
 
-* une IA ;
-* un bot ;
-* une stratégie automatique ;
-* une API externe.
+- an AI
+- a bot
+- an automated strategy
+- an external API
 
-## Historique complet des actions
+## Complete Action History
 
-Le moteur conserve l'état nécessaire au déroulement de la main, mais ne possède pas encore un historique structuré complet de toutes les actions.
+The engine maintains the state required to play the hand, but does not yet have a complete structured history of all actions.
 
-Par exemple :
+For example:
 
 ```text
 Player1 → CALL 10
+
 Player2 → RAISE 30
+
 Player3 → FOLD
+
 Player1 → CALL 20
 ```
 
-n'est pas encore enregistré comme un historique exploitable.
+is not yet stored as a usable history.
 
 ## Event Sourcing
 
-Le moteur n'utilise pas encore une architecture event-sourced.
+The engine does not yet use an event-sourced architecture.
 
-Les changements d'état sont effectués directement sur les objets `Player`, `Hand` et `Table`.
+State changes are currently applied directly to the `Player`, `Hand`, and `Table` objects.
 
 ## Simulation
 
-Il n'existe pas encore de système permettant de simuler automatiquement des milliers ou millions de mains.
+There is not yet a system for automatically simulating thousands or millions of hands autonomously.
 
-## IA
+The current stress tests nevertheless execute several critical scenarios 100 times to verify engine stability.
 
-Aucune intelligence artificielle de poker n'est intégrée à la Alpha - 1.x.
+## AI
 
-[↑ Retour au sommaire](#sommaire)
+No poker AI is integrated into Alpha 1.x.
+
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Alpha 1.2 — Historique et observabilité
+# Alpha 1.2 — History and Observability
 
-Ajouter un véritable historique de la main.
+Add a proper hand history.
 
-Exemple :
+Example:
 
 ```text
 Hand #42
@@ -789,10 +961,15 @@ Hand #42
 PREFLOP
 
 Player1 → POST SB 5
+
 Player2 → POST BB 10
+
 Player3 → CALL 10
+
 Player1 → RAISE 30
+
 Player2 → CALL 20
+
 Player3 → FOLD
 
 FLOP
@@ -808,29 +985,28 @@ PAYOUT
 ...
 ```
 
-Fonctionnalités prévues :
+Planned features:
 
-* [ ] `ActionEvent`
-* [ ] Historique des actions
-* [ ] Historique des streets
-* [ ] Historique des pots
-* [ ] Historique des payouts
-* [ ] Identification du joueur ayant initié chaque bet
-* [ ] Logs structurés
+- [ ] `ActionEvent`
+- [ ] Action history
+- [ ] Street history
+- [ ] Pot history
+- [ ] Payout history
+- [ ] Identification of the player who initiated each bet
+- [ ] Structured logs
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Alpha 1.3 — Abstraction des joueurs
+# Alpha 1.3 — Player Abstraction
 
-Découpler complètement le moteur de poker de l'interface terminal.
+Fully decouple the poker engine from the terminal interface.
 
-Créer une abstraction du type :
+Create an abstraction such as:
 
 ```text
 PlayerController
-
        │
        ├── HumanController
        │
@@ -841,132 +1017,134 @@ PlayerController
        └── AIPlayer
 ```
 
-Le moteur pourrait alors demander :
+The engine could then ask:
 
 ```text
-"Quelle action doit effectuer Player3 ?"
+"What action should Player3 take?"
 ```
 
-sans savoir si la réponse provient :
+without knowing whether the response comes from:
 
-* du terminal ;
-* d'un bot ;
-* d'une IA ;
-* d'une interface graphique ;
-* d'une API.
+- the terminal
+- a bot
+- an AI
+- a graphical interface
+- an API
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
 # Beta 1.0 — Simulation
 
-Une fois l'architecture des joueurs abstraite, ajouter un moteur de simulation.
+Once player abstraction is in place, add a simulation engine.
 
-Objectifs :
+Objectives:
 
-* [ ] Jouer automatiquement des milliers de mains
-* [ ] Mesurer les statistiques
-* [ ] Calculer les fréquences d'actions
-* [ ] Tester la distribution des mains
-* [ ] Tester statistiquement l'équité
-* [ ] Tester la fréquence des splits
-* [ ] Tester les side pots
-* [ ] Benchmark du moteur
+- [ ] Automatically play thousands of hands
+- [ ] Measure statistics
+- [ ] Calculate action frequencies
+- [ ] Test hand distribution
+- [ ] Statistically test equity
+- [ ] Test split frequency
+- [ ] Test side pots
+- [ ] Benchmark the engine
 
-Exemple :
+Example:
 
 ```text
 Simulation
-
 ──────────────
 
 Hands played : 1,000,000
 
 Player1 wins : 24.8%
+
 Player2 wins : 25.1%
+
 Player3 wins : 25.0%
+
 Player4 wins : 25.1%
 
 Split pots : 4.7%
 ```
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# V1.0 — Fonctionnalités de poker avancées
+# V1.0 — Advanced Poker Features
 
-Après stabilisation du moteur V1.x :
+After stabilizing the V1.x engine:
 
-* [ ] Antes
-* [ ] Straddle
-* [ ] Blind levels
-* [ ] Tournament mode
-* [ ] Cash-game mode
-* [ ] Rebuy
-* [ ] Add-on
-* [ ] Time bank
-* [ ] Betting cap configurable
-* [ ] Table balancing
-* [ ] Late registration
-* [ ] Elimination tracking
+- [ ] Antes
+- [ ] Straddle
+- [ ] Blind levels
+- [ ] Tournament mode
+- [ ] Cash-game mode
+- [ ] Rebuy
+- [ ] Add-on
+- [ ] Time bank
+- [ ] Configurable betting cap
+- [ ] Table balancing
+- [ ] Late registration
+- [ ] Elimination tracking
 
-[↑ Retour au sommaire](#sommaire)
-
----
-
-# V2.x — IA et stratégies
-
-Une fois l'interface joueur abstraite et la simulation disponibles :
-
-* [ ] Bots basiques
-* [ ] Bot random
-* [ ] Bot basé sur des ranges
-* [ ] Monte-Carlo equity
-* [ ] Pot odds
-* [ ] Expected Value
-* [ ] Hand range modelling
-* [ ] Adaptive strategies
-* [ ] Poker AI
-
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Principes de développement
+# V2.x — AI and Strategies
 
-Le moteur doit rester :
+Once player abstraction and simulation are available:
 
-### Déterministe lorsque possible
+- [ ] Basic bots
+- [ ] Random bot
+- [ ] Range-based bot
+- [ ] Monte Carlo equity
+- [ ] Pot odds
+- [ ] Expected Value
+- [ ] Hand range modelling
+- [ ] Adaptive strategies
+- [ ] Poker AI
 
-Les règles du poker doivent produire un résultat prévisible à partir d'un état donné.
+[↑ Back to table of contents](#table-of-contents)
 
-### Typé
+---
 
-Le code doit conserver une compatibilité propre avec **Pylance** et utiliser les annotations de type partout où elles apportent de la valeur.
+# Development Principles
 
-### Modulaire
+The engine should remain:
 
-Les règles de betting, l'évaluation des mains, la gestion des pots et l'interface utilisateur doivent rester indépendantes.
+### Deterministic whenever possible
+
+Poker rules should produce a predictable result from a given state.
+
+### Typed
+
+The code should maintain clean **Pylance** compatibility and use type annotations wherever they provide value.
+
+### Modular
+
+Betting rules, hand evaluation, pot management, and the user interface should remain independent.
 
 ### Testable
 
-Les règles métier importantes doivent pouvoir être testées sans passer par l'interface terminal.
+Important business rules should be testable without going through the terminal interface.
 
 ### Extensible
 
-Les futures interfaces graphiques, bots, simulations et API doivent pouvoir utiliser le moteur sans modifier ses règles fondamentales.
+Future graphical interfaces, bots, simulations, and APIs should be able to use the engine without modifying its fundamental rules.
 
-[↑ Retour au sommaire](#sommaire)
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# Objectif du projet
+# Project Goal
 
-La **Alpha - 1.0** constitue le **socle du moteur de poker**.
+The **Alpha - 1.0** is the **foundation of the poker engine**.
 
-L'objectif n'est pas encore de proposer une application complète de poker, mais de disposer d'un moteur capable de reproduire correctement le déroulement d'une session Texas Hold'em No-Limit classique :
+The goal is not yet to provide a complete poker application, but to have an engine capable of correctly reproducing a standard Texas Hold'em No-Limit session:
 
 ```text
 Players
@@ -1008,10 +1186,14 @@ Updated Stacks
 Next Hand
 ```
 
-Le cœur du moteur dispose désormais d'une couverture de tests importante et les principales règles de betting, d'évaluation, de pots et de gestion des jetons sont sécurisées.
+The engine core now has substantial test coverage, and the main rules for betting, hand evaluation, pot management, and chip management are covered by tests.
 
-La **Alpha 1.1** poursuit cette stabilisation avec des tests d'intégration couvrant le déroulement de mains et de sessions complètes.
+**Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-Une fois ce cœur stabilisé et validé de bout en bout, les fonctionnalités avancées pourront être ajoutées sans remettre en cause les règles fondamentales du moteur.
+The suite now contains **883 passing tests**, covering betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
-[↑ Retour au sommaire](#sommaire)
+The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
+
+Once this architecture is stabilized, advanced features can be added without compromising the engine's fundamental rules.
+
+[↑ Back to table of contents](#table-of-contents)

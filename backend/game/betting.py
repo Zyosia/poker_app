@@ -329,7 +329,7 @@ def get_table_order(
 
     dealer = session.table.dealer
 
-    if dealer.is_busted:
+    if dealer.is_eliminated:
         raise RuntimeError("Dealer is busted.")
 
     dealer_index = session.table.players.index(dealer)
@@ -338,7 +338,7 @@ def get_table_order(
         session.table.players[dealer_index:] + session.table.players[:dealer_index]
     )
 
-    return [player for player in table_order if not player.eliminated]
+    return [player for player in table_order if not player.is_eliminated]
 
 
 def get_allowed_actions(
