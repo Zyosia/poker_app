@@ -5,16 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from game.constants import (
-    ActionType,
+from .constants import (
     Card,
     Position,
     Street,
 )
 
 if TYPE_CHECKING:
-    from game.deck import Deck
-    from game.hand_evaluator import HandEvaluation
+    from .deck import Deck
+    from .hand_evaluator import HandEvaluation
 
 
 @dataclass
@@ -66,6 +65,11 @@ class Player:
         return self.stack <= 0
 
     @property
+    def is_eliminated(self) -> bool:
+        """Return True when the player is eliminated."""
+        return self.eliminated
+
+    @property
     def is_active(self) -> bool:
         """
         Return True when the player is still involved
@@ -80,10 +84,7 @@ class Player:
     def can_act(self) -> bool:
         """Return True when the player can perform an action."""
 
-        return (
-            self.is_active
-            and not self.all_in
-        )
+        return self.is_active and not self.all_in
 
     def __str__(self) -> str:
         return f"{self.name} ({self.stack})"
@@ -101,10 +102,7 @@ class Table:
         return [
             player
             for player in self.players
-            if (
-                not player.eliminated
-                and not player.is_busted
-            )
+            if (not player.is_eliminated and not player.is_busted)
         ]
 
     def get_active_players(self) -> list[Player]:
@@ -115,11 +113,7 @@ class Table:
         All-in players remain included.
         """
 
-        return [
-            player
-            for player in self.players
-            if player.is_active
-        ]
+        return [player for player in self.players if player.is_active]
 
     def move_dealer(self) -> None:
         """Move the dealer button to the next player with chips."""
@@ -132,18 +126,12 @@ class Table:
         player_count = len(self.players)
 
         for _ in range(player_count):
-            self.dealer_index = (
-                self.dealer_index + 1
-            ) % player_count
+            self.dealer_index = (self.dealer_index + 1) % player_count
 
-            if self.players[
-                self.dealer_index
-            ].is_busted is False:
+            if self.players[self.dealer_index].is_busted is False:
                 return
 
-        raise RuntimeError(
-            "Could not find a valid dealer."
-        )
+        raise RuntimeError("Could not find a valid dealer.")
 
     @property
     def dealer(self) -> Player:

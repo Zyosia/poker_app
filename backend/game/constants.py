@@ -2,7 +2,6 @@
 
 from typing import Final, Literal, TypeAlias
 
-
 Card: TypeAlias = str
 Rank: TypeAlias = str
 Suit: TypeAlias = str

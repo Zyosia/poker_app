@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from game.actions import (
+from .actions import (
     post_big_blind,
     post_small_blind,
 )
-from game.betting import betting_round
-from game.constants import Position
-from game.deck import Deck
-from game.models import Hand, Player
-from game.session import GameSession
-from game.showdown import resolve_hand
+from .betting import betting_round
+from .constants import Position
+from .deck import Deck
+from .models import Hand
+from .session import GameSession
+from .showdown import resolve_hand
 
 
 def start_hand(
@@ -87,14 +87,14 @@ def start_hand(
     hand.reset_street_betting()
 
     if not play_betting_round(
-            session=session,
+        session=session,
+        hand=hand,
+    ):
+        resolve_hand(
             hand=hand,
-        ):
-            resolve_hand(
-                hand=hand,
-            )
-    
-            return hand
+        )
+
+        return hand
 
     if is_hand_finished(hand):
         return hand
@@ -119,14 +119,14 @@ def start_hand(
     hand.reset_street_betting()
 
     if not play_betting_round(
-            session=session,
+        session=session,
+        hand=hand,
+    ):
+        resolve_hand(
             hand=hand,
-        ):
-            resolve_hand(
-                hand=hand,
-            )
-    
-            return hand
+        )
+
+        return hand
 
     if is_hand_finished(hand):
         return hand
@@ -151,14 +151,14 @@ def start_hand(
     hand.reset_street_betting()
 
     if not play_betting_round(
-            session=session,
+        session=session,
+        hand=hand,
+    ):
+        resolve_hand(
             hand=hand,
-        ):
-            resolve_hand(
-                hand=hand,
-            )
-    
-            return hand
+        )
+
+        return hand
 
     if is_hand_finished(hand):
         return hand
@@ -202,18 +202,12 @@ def should_run_out(
     and that player has already matched the current bet.
     """
 
-    active_players = (
-        hand.table.get_active_players()
-    )
+    active_players = hand.table.get_active_players()
 
     if len(active_players) <= 1:
         return False
 
-    players_who_can_act = [
-        player
-        for player in active_players
-        if player.can_act
-    ]
+    players_who_can_act = [player for player in active_players if player.can_act]
 
     if not players_who_can_act:
         return True
@@ -221,10 +215,7 @@ def should_run_out(
     if len(players_who_can_act) == 1:
         player = players_who_can_act[0]
 
-        return (
-            player.current_bet
-            >= hand.current_bet
-        )
+        return player.current_bet >= hand.current_bet
 
     return False
 
@@ -252,32 +243,23 @@ def assign_positions(
 
     table = session.table
 
-    active_players = (
-        table.get_players_with_chips()
-    )
+    active_players = table.get_players_with_chips()
 
     player_count = len(active_players)
 
     if player_count < 2:
-        raise RuntimeError(
-            "A hand requires at least two players."
-        )
+        raise RuntimeError("A hand requires at least two players.")
 
     dealer = table.dealer
 
     if dealer not in active_players:
-        raise RuntimeError(
-            "Dealer is not an active player."
-        )
+        raise RuntimeError("Dealer is not an active player.")
 
     dealer_index = active_players.index(
         dealer,
     )
 
-    ordered_players = (
-        active_players[dealer_index:]
-        + active_players[:dealer_index]
-    )
+    ordered_players = active_players[dealer_index:] + active_players[:dealer_index]
 
     positions_by_player_count: dict[
         int,
@@ -320,9 +302,7 @@ def assign_positions(
     )
 
     if positions is None:
-        raise RuntimeError(
-            f"Unsupported player count: {player_count}"
-        )
+        raise RuntimeError(f"Unsupported player count: {player_count}")
 
     for player in active_players:
         player.position = None
@@ -340,25 +320,18 @@ def assign_positions(
     big_blind_index = next(
         (
             index
-            for index, player
-            in enumerate(ordered_players)
+            for index, player in enumerate(ordered_players)
             if player.position == "BB"
         ),
         None,
     )
 
     if big_blind_index is None:
-        raise RuntimeError(
-            "Big Blind player could not be determined."
-        )
+        raise RuntimeError("Big Blind player could not be determined.")
 
-    first_to_act_index = (
-        big_blind_index + 1
-    ) % player_count
+    first_to_act_index = (big_blind_index + 1) % player_count
 
-    hand.first_to_act = (
-        ordered_players[first_to_act_index]
-    )
+    hand.first_to_act = ordered_players[first_to_act_index]
 
 
 def post_blinds(
@@ -370,9 +343,7 @@ def post_blinds(
     players = session.get_players_with_chips()
 
     if len(players) < 2:
-        raise RuntimeError(
-            "At least two players are required to post blinds."
-        )
+        raise RuntimeError("At least two players are required to post blinds.")
 
     # --------------------------------------------------
     # Heads-up
@@ -382,42 +353,26 @@ def post_blinds(
     #
     if len(players) == 2:
         small_blind_player = next(
-            (
-                player
-                for player in players
-                if player.position == "BTN"
-            ),
+            (player for player in players if player.position == "BTN"),
             None,
         )
 
     else:
         small_blind_player = next(
-            (
-                player
-                for player in players
-                if player.position == "SB"
-            ),
+            (player for player in players if player.position == "SB"),
             None,
         )
 
     big_blind_player = next(
-        (
-            player
-            for player in players
-            if player.position == "BB"
-        ),
+        (player for player in players if player.position == "BB"),
         None,
     )
 
     if small_blind_player is None:
-        raise RuntimeError(
-            "Small Blind player could not be determined."
-        )
+        raise RuntimeError("Small Blind player could not be determined.")
 
     if big_blind_player is None:
-        raise RuntimeError(
-            "Big Blind player could not be determined."
-        )
+        raise RuntimeError("Big Blind player could not be determined.")
 
     post_small_blind(
         player=small_blind_player,
@@ -439,9 +394,7 @@ def deal_hole_cards(
     """Deal two private cards to every player."""
 
     if hand.deck is None:
-        raise RuntimeError(
-            "Hand deck has not been initialized."
-        )
+        raise RuntimeError("Hand deck has not been initialized.")
 
     players = session.get_players_with_chips()
 
@@ -458,9 +411,7 @@ def deal_flop(
     """Burn one card and deal the flop."""
 
     if hand.deck is None:
-        raise RuntimeError(
-            "Hand deck has not been initialized."
-        )
+        raise RuntimeError("Hand deck has not been initialized.")
 
     hand.deck.burn()
 
@@ -478,9 +429,7 @@ def deal_turn(
     """Burn one card and deal the turn."""
 
     if hand.deck is None:
-        raise RuntimeError(
-            "Hand deck has not been initialized."
-        )
+        raise RuntimeError("Hand deck has not been initialized.")
 
     hand.deck.burn()
 
@@ -497,9 +446,7 @@ def deal_river(
     """Burn one card and deal the river."""
 
     if hand.deck is None:
-        raise RuntimeError(
-            "Hand deck has not been initialized."
-        )
+        raise RuntimeError("Hand deck has not been initialized.")
 
     hand.deck.burn()
 
@@ -518,9 +465,7 @@ def is_hand_finished(
     player remains.
     """
 
-    active_players = (
-        hand.table.get_active_players()
-    )
+    active_players = hand.table.get_active_players()
 
     if len(active_players) <= 1:
         if active_players:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from game.models import Hand, Player
+from .models import Hand, Player
 
 
 def put_chips_in_pot(
@@ -18,9 +18,7 @@ def put_chips_in_pot(
     """
 
     if amount < 0:
-        raise ValueError(
-            "Chip amount cannot be negative."
-        )
+        raise ValueError("Chip amount cannot be negative.")
 
     actual_amount = min(
         amount,
@@ -86,10 +84,7 @@ def can_check(
 ) -> bool:
     """Return True if the player can check."""
 
-    return (
-        player.current_bet
-        == hand.current_bet
-    )
+    return player.current_bet >= hand.current_bet
 
 
 def check(
@@ -102,10 +97,7 @@ def check(
         player=player,
         hand=hand,
     ):
-        raise ValueError(
-            "Cannot check. "
-            "You must call, raise or fold."
-        )
+        raise ValueError("Cannot check. You must call, raise or fold.")
 
     player.acted_this_round = True
 
@@ -118,8 +110,7 @@ def get_call_amount(
 
     return max(
         0,
-        hand.current_bet
-        - player.current_bet,
+        hand.current_bet - player.current_bet,
     )
 
 
@@ -160,10 +151,7 @@ def get_minimum_raise_to(
     if hand.current_bet == 0:
         return 0
 
-    return (
-        hand.current_bet
-        + hand.last_raise_size
-    )
+    return hand.current_bet + hand.last_raise_size
 
 
 def raise_bet(
@@ -183,29 +171,19 @@ def raise_bet(
     """
 
     if raise_to <= hand.current_bet:
-        raise ValueError(
-            "Raise must be greater than "
-            "the current bet."
-        )
+        raise ValueError("Raise must be greater than the current bet.")
 
     minimum_raise_to = get_minimum_raise_to(
         hand,
     )
 
     if raise_to < minimum_raise_to:
-        raise ValueError(
-            f"Minimum raise is to {minimum_raise_to}."
-        )
+        raise ValueError(f"Minimum raise is to {minimum_raise_to}.")
 
-    amount_to_add = (
-        raise_to
-        - player.current_bet
-    )
+    amount_to_add = raise_to - player.current_bet
 
     if amount_to_add > player.stack:
-        raise ValueError(
-            "Not enough chips for this raise."
-        )
+        raise ValueError("Not enough chips for this raise.")
 
     previous_bet = hand.current_bet
 
@@ -219,12 +197,37 @@ def raise_bet(
 
     hand.current_bet = new_bet
 
-    hand.last_raise_size = (
-        new_bet - previous_bet
-    )
+    hand.last_raise_size = new_bet - previous_bet
 
     hand.last_raiser = player
 
     player.acted_this_round = True
 
     return new_bet
+
+
+def all_in(
+    player: Player,
+    hand: Hand,
+) -> int:
+    """
+    Move the player's entire remaining stack into the pot.
+
+    The all-in may constitute a full raise or a short all-in.
+    A short all-in does not necessarily reopen the betting action.
+    """
+
+    if player.stack <= 0:
+        raise ValueError("Player has no chips available.")
+
+    amount = player.stack
+
+    actual_amount = put_chips_in_pot(
+        player=player,
+        hand=hand,
+        amount=amount,
+    )
+
+    player.acted_this_round = True
+
+    return actual_amount

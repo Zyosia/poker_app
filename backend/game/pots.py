@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from game.models import Player
+from .models import Player
 
 
 @dataclass(frozen=True)
@@ -50,25 +50,14 @@ def build_pots(
 
     for level in contribution_levels:
         contributors = tuple(
-            player
-            for player in players
-            if player.total_contribution >= level
+            player for player in players if player.total_contribution >= level
         )
 
-        contribution_delta = (
-            level - previous_level
-        )
+        contribution_delta = level - previous_level
 
-        amount = (
-            contribution_delta
-            * len(contributors)
-        )
+        amount = contribution_delta * len(contributors)
 
-        eligible_players = tuple(
-            player
-            for player in contributors
-            if not player.folded
-        )
+        eligible_players = tuple(player for player in contributors if not player.folded)
 
         if amount > 0:
             pots.append(
@@ -89,7 +78,4 @@ def total_pot_amount(
 ) -> int:
     """Return the total amount represented by all pots."""
 
-    return sum(
-        pot.amount
-        for pot in pots
-    )
+    return sum(pot.amount for pot in pots)

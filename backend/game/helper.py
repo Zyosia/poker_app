@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import os
 
-from game.models import Player
+from .models import Player
 
 
 def clear_terminal() -> None:
     """Clear the terminal screen."""
 
     os.system(
-        "cls"
-        if os.name == "nt"
-        else "clear",
+        "cls" if os.name == "nt" else "clear",
     )
 
 
@@ -36,10 +34,7 @@ def get_circular_players(
 
     start_index %= len(players)
 
-    return (
-        players[start_index:]
-        + players[:start_index]
-    )
+    return players[start_index:] + players[:start_index]
 
 
 def get_next_player(
@@ -56,8 +51,6 @@ def get_next_player(
     except ValueError:
         return None
 
-    next_index = (
-        index + 1
-    ) % len(players)
+    next_index = (index + 1) % len(players)
 
     return players[next_index]

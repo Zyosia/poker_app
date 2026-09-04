@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from game.models import Player, Table
+from .models import Player, Table
 
 
 @dataclass(frozen=True)
@@ -19,30 +19,19 @@ class GameConfig:
 
     def __post_init__(self) -> None:
         if self.starting_stack <= 0:
-            raise ValueError(
-                "Starting stack must be positive."
-            )
+            raise ValueError("Starting stack must be positive.")
 
         if self.rebuy_stack <= 0:
-            raise ValueError(
-                "Rebuy stack must be positive."
-            )
+            raise ValueError("Rebuy stack must be positive.")
 
         if self.small_blind <= 0:
-            raise ValueError(
-                "Small blind must be positive."
-            )
+            raise ValueError("Small blind must be positive.")
 
         if self.big_blind <= self.small_blind:
-            raise ValueError(
-                "Big blind must be greater than "
-                "small blind."
-            )
+            raise ValueError("Big blind must be greater than small blind.")
 
         if self.max_players < 2:
-            raise ValueError(
-                "A table must allow at least 2 players."
-            )
+            raise ValueError("A table must allow at least 2 players.")
 
 
 class GameSession:
@@ -66,17 +55,14 @@ class GameSession:
 
         self.hand_number = 0
 
-    #TODO: Duplicated function (also in models.py)
+    # TODO: Duplicated function (also in models.py)
     def get_players_with_chips(self) -> list[Player]:
         """Return players who have not busted."""
 
         return [
             player
             for player in self.players
-            if (
-                not player.eliminated
-                and not player.is_busted
-            )
+            if (not player.is_eliminated and not player.is_busted)
         ]
 
     def can_continue(self) -> bool:
@@ -85,9 +71,7 @@ class GameSession:
         two players have chips.
         """
 
-        return len(
-            self.get_players_with_chips()
-        ) >= 2
+        return len(self.get_players_with_chips()) >= 2
 
     def get_busted_players(self) -> list[Player]:
         """Return players who have no chips remaining."""
@@ -95,9 +79,9 @@ class GameSession:
         return [
             player
             for player in self.players
-            if player.is_busted and not player.eliminated
+            if player.is_busted and not player.is_eliminated
         ]
-    
+
     def rebuy_player(
         self,
         player: Player,
@@ -105,9 +89,7 @@ class GameSession:
         """Give a busted player a new stack."""
 
         if not player.is_busted:
-            raise ValueError(
-                f"{player.name} is not busted."
-            )
+            raise ValueError(f"{player.name} is not busted.")
 
         player.stack = self.config.rebuy_stack
 
@@ -119,19 +101,13 @@ def create_session(
     """Create a new poker session."""
 
     if len(player_names) < 2:
-        raise ValueError(
-            "At least 2 players are required."
-        )
+        raise ValueError("At least 2 players are required.")
 
     if len(player_names) > config.max_players:
-        raise ValueError(
-            "Too many players."
-        )
+        raise ValueError("Too many players.")
 
     if len(set(player_names)) != len(player_names):
-        raise ValueError(
-            "Player names must be unique."
-        )
+        raise ValueError("Player names must be unique.")
 
     players = [
         Player(

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from game.actions import (
+from .actions import (
+    all_in,
     call,
     check,
     fold,
@@ -10,10 +11,10 @@ from game.actions import (
     get_minimum_raise_to,
     raise_bet,
 )
-from game.constants import ActionType
-from game.models import Hand, Player
-from game.session import GameSession
-from game.terminal_ui import (
+from .constants import ActionType
+from .models import Hand, Player
+from .session import GameSession
+from .terminal_ui import (
     ask_player_action,
     display_table,
 )
@@ -54,11 +55,7 @@ def betting_round(
         return True
 
     # Players who still need to respond to the current bet.
-    pending_players: set[int] = {
-        id(player)
-        for player in players
-        if player.can_act
-    }
+    pending_players: set[int] = {id(player) for player in players if player.can_act}
 
     # The index of the player from which we should search
     # for the next action.
@@ -84,9 +81,7 @@ def betting_round(
         if not player.can_act:
             pending_players.discard(player_id)
 
-            current_index = (
-                player_index + 1
-            ) % len(players)
+            current_index = (player_index + 1) % len(players)
 
             continue
 
@@ -117,9 +112,7 @@ def betting_round(
             pending_players.discard(player_id)
 
             # Continue clockwise from the player who folded.
-            current_index = (
-                player_index + 1
-            ) % len(players)
+            current_index = (player_index + 1) % len(players)
 
         elif action == "check":
             check(
@@ -129,9 +122,7 @@ def betting_round(
 
             pending_players.discard(player_id)
 
-            current_index = (
-                player_index + 1
-            ) % len(players)
+            current_index = (player_index + 1) % len(players)
 
         elif action == "call":
             call(
@@ -141,15 +132,11 @@ def betting_round(
 
             pending_players.discard(player_id)
 
-            current_index = (
-                player_index + 1
-            ) % len(players)
+            current_index = (player_index + 1) % len(players)
 
         elif action == "raise":
             if amount is None:
-                raise RuntimeError(
-                    "Raise amount cannot be None."
-                )
+                raise RuntimeError("Raise amount cannot be None.")
 
             raise_bet(
                 player=player,
@@ -157,69 +144,40 @@ def betting_round(
                 raise_to=amount,
             )
 
-            # A raise reopens the action.
-            #
-            # Every other player who can still act must
-            # respond to the new bet.
             pending_players = {
                 id(other_player)
                 for other_player in players
-                if (
-                    other_player is not player
-                    and other_player.can_act
-                )
+                if (other_player is not player and other_player.can_act)
             }
 
-            # CRITICAL:
-            #
-            # Do NOT restart from players[0].
-            #
-            # Action resumes with the player immediately
-            # after the raiser.
-            current_index = (
-                player_index + 1
-            ) % len(players)
+            current_index = (player_index + 1) % len(players)
 
         elif action == "all_in":
-            if amount is None:
-                raise RuntimeError(
-                    "Raise amount cannot be None."
-                )
+            previous_bet = hand.current_bet
+            new_bet = player.current_bet + player.stack
 
-            raise_bet(
+            all_in(
                 player=player,
                 hand=hand,
-                raise_to=amount,
             )
 
-            # A raise reopens the action.
-            #
-            # Every other player who can still act must
-            # respond to the new bet.
-            pending_players = {
-                id(other_player)
-                for other_player in players
-                if (
-                    other_player is not player
-                    and other_player.can_act
-                )
-            }
+            if is_full_raise(hand=hand, new_bet=new_bet):
+                hand.current_bet = player.current_bet
+                hand.last_raise_size = player.current_bet - previous_bet
+                hand.last_raiser = player
 
-            # CRITICAL:
-            #
-            # Do NOT restart from players[0].
-            #
-            # Action resumes with the player immediately
-            # after the raiser.
-            current_index = (
-                player_index + 1
-            ) % len(players)
+                pending_players = {
+                    id(other_player)
+                    for other_player in players
+                    if (other_player is not player and other_player.can_act)
+                }
+            else:
+                pending_players.discard(player_id)
 
+            current_index = (player_index + 1) % len(players)
 
         else:
-            raise RuntimeError(
-                f"Unsupported action: {action}"
-            )
+            raise RuntimeError(f"Unsupported action: {action}")
 
         if count_remaining_players(hand) <= 1:
             return finish_by_fold(hand)
@@ -248,15 +206,9 @@ def betting_round_can_continue(
     action because nobody can respond.
     """
 
-    active_players = (
-        hand.table.get_active_players()
-    )
+    active_players = hand.table.get_active_players()
 
-    players_who_can_act = [
-        player
-        for player in active_players
-        if player.can_act
-    ]
+    players_who_can_act = [player for player in active_players if player.can_act]
 
     if not players_who_can_act:
         return False
@@ -266,10 +218,7 @@ def betting_round_can_continue(
 
     player = players_who_can_act[0]
 
-    call_amount = (
-        hand.current_bet
-        - player.current_bet
-    )
+    call_amount = hand.current_bet - player.current_bet
 
     return call_amount > 0
 
@@ -291,9 +240,7 @@ def get_next_pending_player(
         return None
 
     for offset in range(player_count):
-        index = (
-            start_index + offset
-        ) % player_count
+        index = (start_index + offset) % player_count
 
         player = players[index]
 
@@ -332,14 +279,10 @@ def get_players_in_betting_order(
 
     if hand.street == "PREFLOP":
         if hand.first_to_act is None:
-            raise RuntimeError(
-                "first_to_act has not been assigned."
-            )
+            raise RuntimeError("first_to_act has not been assigned.")
 
         if hand.first_to_act not in ordered_players:
-            raise RuntimeError(
-                "first_to_act is not an active player."
-            )
+            raise RuntimeError("first_to_act is not an active player.")
 
         start_index = ordered_players.index(
             hand.first_to_act,
@@ -349,28 +292,17 @@ def get_players_in_betting_order(
         dealer = session.table.dealer
 
         if dealer not in ordered_players:
-            raise RuntimeError(
-                "Dealer is not an active player."
-            )
+            raise RuntimeError("Dealer is not an active player.")
 
         dealer_index = ordered_players.index(
             dealer,
         )
 
-        start_index = (
-            dealer_index + 1
-        ) % len(ordered_players)
+        start_index = (dealer_index + 1) % len(ordered_players)
 
-    ordered = (
-        ordered_players[start_index:]
-        + ordered_players[:start_index]
-    )
+    ordered = ordered_players[start_index:] + ordered_players[:start_index]
 
-    return [
-        player
-        for player in ordered
-        if player.can_act
-    ]
+    return [player for player in ordered if player.can_act]
 
 
 def get_table_order(
@@ -390,34 +322,23 @@ def get_table_order(
     part of the current table.
     """
 
-    players_with_chips = (
-        session.get_players_with_chips()
-    )
+    players_with_chips = session.get_players_with_chips()
 
     if not players_with_chips:
         return []
 
     dealer = session.table.dealer
 
-    if dealer.is_busted:
-        raise RuntimeError(
-            "Dealer is busted."
-        )
+    if dealer.is_eliminated:
+        raise RuntimeError("Dealer is busted.")
 
-    dealer_index = (
-        session.table.players.index(dealer)
-    )
+    dealer_index = session.table.players.index(dealer)
 
     table_order = (
-        session.table.players[dealer_index:]
-        + session.table.players[:dealer_index]
+        session.table.players[dealer_index:] + session.table.players[:dealer_index]
     )
 
-    return [
-        player
-        for player in table_order
-        if not player.is_busted
-    ]
+    return [player for player in table_order if not player.is_eliminated]
 
 
 def get_allowed_actions(
@@ -446,15 +367,9 @@ def get_allowed_actions(
         hand=hand,
     )
 
-    maximum_raise_to = (
-        player.current_bet
-        + player.stack
-    )
+    maximum_raise_to = player.current_bet + player.stack
 
-    if (
-        maximum_raise_to > hand.current_bet
-        and maximum_raise_to >= minimum_raise_to
-    ):
+    if maximum_raise_to > hand.current_bet and maximum_raise_to >= minimum_raise_to:
         actions.append("raise")
 
     if call_amount < player.stack:
@@ -468,9 +383,7 @@ def count_remaining_players(
 ) -> int:
     """Return the number of players still in the hand."""
 
-    return len(
-        hand.table.get_active_players()
-    )
+    return len(hand.table.get_active_players())
 
 
 def finish_by_fold(
@@ -480,9 +393,7 @@ def finish_by_fold(
     Finish the hand when all but one player have folded.
     """
 
-    active_players = (
-        hand.table.get_active_players()
-    )
+    active_players = hand.table.get_active_players()
 
     if len(active_players) != 1:
         return False
@@ -492,3 +403,23 @@ def finish_by_fold(
     hand.current_player = None
 
     return False
+
+
+def is_full_raise(
+    hand: Hand,
+    new_bet: int,
+) -> bool:
+    """
+    Return True if an all-in reaches the minimum full raise size.
+
+    A short all-in can increase the player's bet without
+    reopening the action.
+    """
+    if new_bet <= hand.current_bet:
+        return False
+
+    minimum_raise_to = get_minimum_raise_to(
+        hand=hand,
+    )
+
+    return new_bet >= minimum_raise_to
