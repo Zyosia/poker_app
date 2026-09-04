@@ -10,24 +10,42 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [Alpha - 1.0](#alpha---10)
   - [Features](#features)
+
 - [Hand Flow](#hand-flow)
+
 - [Action Order](#action-order)
+
 - [All-ins](#all-ins)
+
 - [Hand Evaluation](#hand-evaluation)
+
 - [Main Pots and Side Pots](#main-pots-and-side-pots)
 - [Split Pots](#split-pots)
+
 - [Chip Conservation](#chip-conservation)
+
 - [Architecture](#architecture)
+
 - [Session](#session)
+
 - [Current Interface](#current-interface)
+
 - [Alpha 1.1 — Robustness and Testing](#alpha-11--robustness-and-testing)
-- [Remaining Alpha 1.x Limitations](#remaining-alpha-1x-limitations)
+
 - [Alpha 1.2 — History and Observability](#alpha-12--history-and-observability)
+
 - [Alpha 1.3 — Player Abstraction](#alpha-13--player-abstraction)
+
+- [Remaining Alpha 1.x Limitations](#remaining-alpha-1x-limitations)
+
 - [Beta 1.0 — Simulation](#beta-10--simulation)
+
 - [V1.0 — Advanced Poker Features](#v10--advanced-poker-features)
+
 - [V2.x — AI and Strategies](#v2x--ai-and-strategies)
+
 - [Development Principles](#development-principles)
+
 - [Project Goal](#project-goal)
 
 ---
@@ -858,11 +876,101 @@ Multiple hands      → 100 runs
 Raise / re-raise    → 100 runs
 ```
 
-The full suite currently contains **883 passing tests**.
+The full suite currently passes, including the Alpha 1.2 history and persistence tests.
 
 Goal:
 
 > Ensure that a complete Texas Hold'em session can run without producing inconsistent game or financial state, including across repeated executions of critical scenarios.
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
+# Alpha 1.2 — History and Observability
+
+**Alpha 1.2 is complete.**
+
+The engine now maintains a structured history for every completed hand and persists the complete session history to a `.dat` file.
+
+Example:
+
+```text
+Hand #42
+
+PREFLOP
+
+Player1 → POST SB 5
+
+Player2 → POST BB 10
+
+Player3 → CALL 10
+
+Player1 → RAISE 30
+
+Player2 → CALL 20
+
+Player3 → FOLD
+
+FLOP
+
+...
+
+SHOWDOWN
+
+...
+
+PAYOUT
+
+...
+```
+
+Implemented features:
+
+- [x] `ActionEvent`
+- [x] Action history
+- [x] Street history
+- [x] Pot history
+- [x] Payout history
+- [x] Identification of the player who initiated each bet
+- [x] Session history containing completed hands
+- [x] Session persistence to `.dat`
+- [x] Persistence tests
+
+The saved session contains the information required to reconstruct the progression of a hand and provides the foundation for a future hand replayer.
+
+[↑ Back to table of contents](#table-of-contents)
+
+# Alpha 1.3 — Player Abstraction
+
+Fully decouple the poker engine from the terminal interface.
+
+Create an abstraction such as:
+
+```text
+PlayerController
+       │
+       ├── HumanController
+       │
+       ├── RandomBot
+       │
+       ├── StrategyBot
+       │
+       └── AIPlayer
+```
+
+The engine could then ask:
+
+```text
+"What action should Player3 take?"
+```
+
+without knowing whether the response comes from:
+
+- the terminal
+- a bot
+- an AI
+- a graphical interface
+- an API
 
 [↑ Back to table of contents](#table-of-contents)
 
@@ -913,21 +1021,21 @@ The architecture does not yet include an abstraction allowing user input to be e
 
 ## Complete Action History
 
-The engine maintains the state required to play the hand, but does not yet have a complete structured history of all actions.
+A structured history is now available for every completed hand.
 
-For example:
+The engine records:
 
-```text
-Player1 → CALL 10
+- every player action, including blinds
+- action order and street
+- player position
+- bet state before and after the action
+- pot state after the action
+- bet initiators
+- community cards for each street
+- pot results and payouts
+- showdown evaluations
 
-Player2 → RAISE 30
-
-Player3 → FOLD
-
-Player1 → CALL 20
-```
-
-is not yet stored as a usable history.
+Completed hands are stored in the session history and persisted to a session `.dat` file.
 
 ## Event Sourcing
 
@@ -944,92 +1052,6 @@ The current stress tests nevertheless execute several critical scenarios 100 tim
 ## AI
 
 No poker AI is integrated into Alpha 1.x.
-
-[↑ Back to table of contents](#table-of-contents)
-
----
-
-# Alpha 1.2 — History and Observability
-
-Add a proper hand history.
-
-Example:
-
-```text
-Hand #42
-
-PREFLOP
-
-Player1 → POST SB 5
-
-Player2 → POST BB 10
-
-Player3 → CALL 10
-
-Player1 → RAISE 30
-
-Player2 → CALL 20
-
-Player3 → FOLD
-
-FLOP
-
-...
-
-SHOWDOWN
-
-...
-
-PAYOUT
-
-...
-```
-
-Planned features:
-
-- [ ] `ActionEvent`
-- [ ] Action history
-- [ ] Street history
-- [ ] Pot history
-- [ ] Payout history
-- [ ] Identification of the player who initiated each bet
-- [ ] Structured logs
-
-[↑ Back to table of contents](#table-of-contents)
-
----
-
-# Alpha 1.3 — Player Abstraction
-
-Fully decouple the poker engine from the terminal interface.
-
-Create an abstraction such as:
-
-```text
-PlayerController
-       │
-       ├── HumanController
-       │
-       ├── RandomBot
-       │
-       ├── StrategyBot
-       │
-       └── AIPlayer
-```
-
-The engine could then ask:
-
-```text
-"What action should Player3 take?"
-```
-
-without knowing whether the response comes from:
-
-- the terminal
-- a bot
-- an AI
-- a graphical interface
-- an API
 
 [↑ Back to table of contents](#table-of-contents)
 

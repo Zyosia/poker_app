@@ -1,19 +1,46 @@
-# game/models.py
-
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from .constants import (
     Card,
     Position,
     Street,
 )
+from .deck import Deck
+from .hand_evaluator import HandEvaluation
 
-if TYPE_CHECKING:
-    from .deck import Deck
-    from .hand_evaluator import HandEvaluation
+
+@dataclass(frozen=True)
+class ActionEvent:
+    """Record of one action performed during a poker hand."""
+
+    sequence: int
+    street: Street
+    player: str
+    position: Position | None
+    action: str
+    amount: int
+    bet_before: int
+    bet_after: int
+    pot_after: int
+    current_bet_after: int
+    bet_initiator: bool = False
+
+
+@dataclass(frozen=True)
+class StreetEvent:
+    """Record of a street transition."""
+
+    street: Street
+    community_cards: tuple[Card, ...]
+
+
+@dataclass(frozen=True)
+class PotEvent:
+    """Snapshot of the pot during a hand."""
+
+    sequence: int
+    street: Street
+    amount: int
 
 
 @dataclass
@@ -27,13 +54,8 @@ class Player:
 
     position: Position | None = None
 
-    # Amount invested during the current street.
     current_bet: int = 0
 
-    # Total amount invested during the current hand.
-    #
-    # This value is intentionally never reset between
-    # streets. It is used to build main pots and side pots.
     total_contribution: int = 0
 
     folded: bool = False
@@ -44,8 +66,6 @@ class Player:
     eliminated: bool = False
 
     def reset_for_new_hand(self) -> None:
-        """Reset all state belonging to a single hand."""
-
         self.hand.clear()
 
         self.position = None
@@ -60,30 +80,18 @@ class Player:
 
     @property
     def is_busted(self) -> bool:
-        """Return True when the player has no chips left."""
-
         return self.stack <= 0
 
     @property
     def is_eliminated(self) -> bool:
-        """Return True when the player is eliminated."""
         return self.eliminated
 
     @property
     def is_active(self) -> bool:
-        """
-        Return True when the player is still involved
-        in the current hand.
-
-        An all-in player is still active.
-        """
-
         return not self.folded
 
     @property
     def can_act(self) -> bool:
-        """Return True when the player can perform an action."""
-
         return self.is_active and not self.all_in
 
     def __str__(self) -> str:
@@ -97,8 +105,6 @@ class Table:
     dealer_index: int = 0
 
     def get_players_with_chips(self) -> list[Player]:
-        """Return players who have chips remaining."""
-
         return [
             player
             for player in self.players
@@ -106,18 +112,9 @@ class Table:
         ]
 
     def get_active_players(self) -> list[Player]:
-        """
-        Return players still involved in the current hand.
-
-        Folded players are excluded.
-        All-in players remain included.
-        """
-
         return [player for player in self.players if player.is_active]
 
     def move_dealer(self) -> None:
-        """Move the dealer button to the next player with chips."""
-
         players_with_chips = self.get_players_with_chips()
 
         if len(players_with_chips) <= 1:
@@ -140,18 +137,10 @@ class Table:
 
 @dataclass(frozen=True)
 class PotResult:
-    """
-    Result of distributing one pot.
-    """
-
     amount: int
-
     eligible_players: tuple[str, ...]
-
     winners: tuple[str, ...]
-
     decisive_tiebreaker: str | None = None
-
     decisive_value: int | None = None
 
 
@@ -200,11 +189,21 @@ class Hand:
         default_factory=list,
     )
 
+    actions: list[ActionEvent] = field(
+        default_factory=list,
+    )
+
+    streets: list[StreetEvent] = field(
+        default_factory=list,
+    )
+
+    pot_history: list[PotEvent] = field(
+        default_factory=list,
+    )
+
     finished: bool = False
 
     def reset_street_betting(self) -> None:
-        """Reset betting state for a new street."""
-
         self.current_bet = 0
         self.last_raise_size = 0
         self.last_raiser = None
