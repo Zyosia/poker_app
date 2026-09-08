@@ -5,11 +5,11 @@ from backend.data_handler.handler import (
     serialize_hand,
     serialize_session,
 )
-from backend.game.history import (
+from backend.game.models.history import (
     record_action,
     record_street,
 )
-from backend.game.models import Hand
+from backend.game.models.models import Hand
 from tests.history.history_test_config import make_session_with_hand
 
 

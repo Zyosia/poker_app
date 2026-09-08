@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from backend.game.betting import betting_round
+from backend.game.engine.betting import betting_round
 from tests.game.conftest import make_hand, make_player, make_session
 
 
@@ -30,7 +30,7 @@ def test_raise_is_followed_by_player_immediately_to_left_of_raiser() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("raise", 20),
             ("call", None),
@@ -79,7 +79,7 @@ def test_re_raise_reopens_action_for_original_raiser() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             # Alice raises to 20.
             ("raise", 20),
@@ -142,7 +142,7 @@ def test_multiple_re_raises_follow_clockwise_action_order() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             # Alice: 10 -> 20
             ("raise", 20),
@@ -207,7 +207,7 @@ def test_re_raise_updates_last_raiser_and_last_raise_size() -> None:
     charlie.current_bet = 20
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             # Bob raises from 20 to 40.
             ("raise", 40),

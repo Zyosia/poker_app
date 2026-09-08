@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .models import Player
+from .models.models import Player
 
 
 def clear_terminal() -> None:

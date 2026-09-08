@@ -4,8 +4,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from backend.game.hand import start_hand
-from backend.game.session import GameConfig, create_session
+from backend.game.engine.hand import start_hand
+from backend.game.models.session import GameConfig, create_session
 from tests.game.conftest import mock_actions
 
 RUNS = 100
@@ -473,12 +473,12 @@ def test_raise_reraise_stress_100_runs(
         return next(action_iterator)
 
     monkeypatch.setattr(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         fake_ask_player_action,
     )
 
     monkeypatch.setattr(
-        "backend.game.betting.display_table",
+        "backend.game.engine.betting.display_table",
         lambda **_: None,
     )
 

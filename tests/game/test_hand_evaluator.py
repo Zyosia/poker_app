@@ -2,7 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from backend.game.hand_evaluator import (
+from backend.game.engine.hand_evaluator import (
     CATEGORY_FLUSH,
     CATEGORY_FOUR_OF_A_KIND,
     CATEGORY_FULL_HOUSE,

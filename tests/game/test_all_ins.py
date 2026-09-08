@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from backend.game.betting import (
+from backend.game.engine.betting import (
     betting_round,
     get_allowed_actions,
 )
@@ -91,7 +91,7 @@ def test_all_in_opening_bet_reopens_action() -> None:
     hand.last_raise_size = 25
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("all_in", None),
             ("call", None),
@@ -142,7 +142,7 @@ def test_short_all_in_below_current_bet_does_not_change_current_bet() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("call", None),
             ("all_in", None),
@@ -190,7 +190,7 @@ def test_full_all_in_raise_reopens_action() -> None:
     charlie.current_bet = 100
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("all_in", None),
             ("call", None),
@@ -246,7 +246,7 @@ def test_all_in_exactly_matches_current_bet_is_not_a_raise() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),
             ("all_in", None),
@@ -301,7 +301,7 @@ def test_short_all_in_above_current_bet_does_not_reopen_action() -> None:
     charlie.current_bet = 100
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("all_in", None),
             ("check", None),
@@ -359,7 +359,7 @@ def test_full_all_in_raise_uses_last_raise_size() -> None:
     alice.current_bet = 150
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("all_in", None),
             ("call", None),
@@ -415,7 +415,7 @@ def test_short_all_in_does_not_allow_check_for_player_below_current_bet() -> Non
     alice.current_bet = 100
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("all_in", None),
             ("call", None),
@@ -473,7 +473,7 @@ def test_short_all_in_followed_by_folds_ends_hand_when_one_player_remains() -> N
     alice.current_bet = 50
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("all_in", None),
             ("fold", None),
@@ -521,7 +521,7 @@ def test_full_all_in_raise_reopens_players_who_already_acted() -> None:
     alice.current_bet = 100
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),  # Bob
             ("check", None),  # Charlie

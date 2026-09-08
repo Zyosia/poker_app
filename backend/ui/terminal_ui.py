@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from .constants import ActionType
-from .helper import clear_terminal
-from .models import Hand, Player
+from ..game.constants import ActionType
+from ..game.helper import clear_terminal
+from ..game.models.models import Hand, Player
 
 
 def display_table(

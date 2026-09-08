@@ -1,6 +1,6 @@
 import pytest
 
-from backend.game.actions import (
+from backend.game.models.actions import (
     call,
     can_check,
     check,
@@ -12,7 +12,7 @@ from backend.game.actions import (
     put_chips_in_pot,
     raise_bet,
 )
-from backend.game.models import Hand, Player, Table
+from backend.game.models.models import Hand, Player, Table
 
 # ============================================================
 # Helpers

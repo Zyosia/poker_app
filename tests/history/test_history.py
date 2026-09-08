@@ -1,4 +1,4 @@
-from backend.game.history import (
+from backend.game.models.history import (
     record_action,
     record_street,
 )

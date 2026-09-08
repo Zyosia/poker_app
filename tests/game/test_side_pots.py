@@ -1,4 +1,4 @@
-from backend.game.pots import build_pots, total_pot_amount
+from backend.game.engine.pots import build_pots, total_pot_amount
 from tests.game.conftest import make_player
 
 

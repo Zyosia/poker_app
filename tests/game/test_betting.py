@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from backend.game.betting import (
+from backend.game.engine.betting import (
     betting_round,
     betting_round_can_continue,
     count_remaining_players,
@@ -264,7 +264,7 @@ def test_three_player_preflop_order_is_button_then_sb_then_bb() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("call", None),
             ("call", None),
@@ -303,7 +303,7 @@ def test_three_player_postflop_order_is_sb_then_bb_then_button() -> None:
     hand.street = "FLOP"
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),
             ("check", None),
@@ -779,7 +779,7 @@ def test_betting_round_all_players_check() -> None:
     charlie.current_bet = 0
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),
             ("check", None),
@@ -830,7 +830,7 @@ def test_betting_round_all_players_call() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("call", None),
             ("call", None),
@@ -876,7 +876,7 @@ def test_betting_round_ends_when_all_but_one_player_fold() -> None:
     hand.street = "FLOP"
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("fold", None),
             ("fold", None),
@@ -923,7 +923,7 @@ def test_betting_round_raise_reopens_action() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("raise", 20),
             ("call", None),
@@ -980,7 +980,7 @@ def test_raise_does_not_restart_action_from_first_player() -> None:
     charlie.current_bet = 10
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("raise", 20),
             ("call", None),
@@ -1031,7 +1031,7 @@ def test_betting_round_skips_all_in_players() -> None:
     charlie.current_bet = 20
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),
             ("check", None),
@@ -1103,7 +1103,7 @@ def test_betting_round_updates_last_player_to_act() -> None:
     hand.street = "FLOP"
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),
             ("check", None),
@@ -1130,7 +1130,7 @@ def test_betting_round_clears_current_player_when_finished() -> None:
     hand.street = "FLOP"
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("check", None),
             ("check", None),
@@ -1171,7 +1171,7 @@ def test_betting_round_stops_when_only_remaining_player_is_already_matched() -> 
     charlie.current_bet = 20
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
     ) as mock_action:
         result = betting_round(
             session=session,

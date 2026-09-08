@@ -1,12 +1,12 @@
 from dataclasses import dataclass, field
 
-from .constants import (
+from ..constants import (
     Card,
     Position,
     Street,
 )
-from .deck import Deck
-from .hand_evaluator import HandEvaluation
+from ..engine.deck import Deck
+from ..engine.hand_evaluator import HandEvaluation
 
 
 @dataclass(frozen=True)
