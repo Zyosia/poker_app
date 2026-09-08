@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import combinations
 
-from .constants import RANKS, Card
+from ..constants import RANKS, Card
 
 CATEGORY_HIGH_CARD = 0
 CATEGORY_PAIR = 1

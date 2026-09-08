@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import Player
+from ..models.models import Player
 
 
 @dataclass(frozen=True)

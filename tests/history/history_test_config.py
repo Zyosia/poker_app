@@ -1,5 +1,5 @@
-from backend.game.models import Hand
-from backend.game.session import GameConfig, create_session
+from backend.game.models.models import Hand
+from backend.game.models.session import GameConfig, create_session
 
 # ============================================================
 # Helpers

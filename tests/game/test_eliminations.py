@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
-from backend.game.engine import handle_rebuys
-from backend.game.session import GameConfig, GameSession
+from backend.game.engine.engine import handle_rebuys
+from backend.game.models.session import GameConfig, GameSession
 from tests.game.conftest import make_player, make_session
 
 

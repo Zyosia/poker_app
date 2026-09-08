@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from ..models.models import (
+    Hand,
+    Player,
+    PotResult,
+)
 from .hand_evaluator import (
     CATEGORY_FLUSH,
     CATEGORY_FOUR_OF_A_KIND,
@@ -14,11 +19,6 @@ from .hand_evaluator import (
     CATEGORY_TWO_PAIR,
     HandEvaluation,
     evaluate_hand,
-)
-from .models import (
-    Hand,
-    Player,
-    PotResult,
 )
 from .pots import (
     Pot,

@@ -1,13 +1,13 @@
 from unittest.mock import patch
 
-from backend.game.actions import (
+from backend.game.engine.betting import betting_round
+from backend.game.models.actions import (
     all_in,
     call,
     fold,
     put_chips_in_pot,
     raise_bet,
 )
-from backend.game.betting import betting_round
 from tests.game.conftest import make_hand, make_player, make_session
 
 
@@ -190,7 +190,7 @@ def test_betting_round_preserves_chip_integrity() -> None:
     )
 
     with patch(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         side_effect=[
             ("call", None),
             ("call", None),

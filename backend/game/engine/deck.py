@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from .constants import (
+from ..constants import (
     RANKS,
     SUITS,
     Card,

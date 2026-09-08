@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from backend.game.hand import start_hand
-from backend.game.session import GameConfig, create_session
+from backend.game.engine.hand import start_hand
+from backend.game.models.session import GameConfig, create_session
 from tests.game.conftest import mock_actions
 
 

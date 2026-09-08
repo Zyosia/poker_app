@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .actions import (
+from ...ui.terminal_ui import (
+    ask_player_action,
+    display_table,
+)
+from ..constants import ActionType
+from ..models.actions import (
     all_in,
     call,
     check,
@@ -11,14 +16,9 @@ from .actions import (
     get_minimum_raise_to,
     raise_bet,
 )
-from .constants import ActionType
-from .history import record_action
-from .models import Hand, Player
-from .session import GameSession
-from .terminal_ui import (
-    ask_player_action,
-    display_table,
-)
+from ..models.history import record_action
+from ..models.models import Hand, Player
+from ..models.session import GameSession
 
 
 def betting_round(

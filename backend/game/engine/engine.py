@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from backend.data_handler.handler import save_session
 
-from .hand import start_hand
-from .helper import wait
-from .session import (
-    GameConfig,
-    GameSession,
-    create_session,
-)
-from .terminal_ui import (
+from ...ui.terminal_ui import (
     ask_player_count,
     display_hand_result,
     display_table,
 )
+from ..helper import wait
+from ..models.session import (
+    GameConfig,
+    GameSession,
+    create_session,
+)
+from .hand import start_hand
 
 
 def handle_rebuys(

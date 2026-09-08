@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from backend.game.models import Player
-from backend.game.session import GameSession
+from backend.game.models.models import Player
+from backend.game.models.session import GameSession
 
 SESSION_DIR = Path("backend/data/sessions")
 

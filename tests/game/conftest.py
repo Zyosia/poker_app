@@ -2,8 +2,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from backend.game.models import Hand, Player
-from backend.game.session import GameConfig, GameSession
+from backend.game.models.models import Hand, Player
+from backend.game.models.session import GameConfig, GameSession
 
 # ============================================================
 # Helpers
@@ -67,11 +67,11 @@ def mock_actions(
         return next(action_iterator)
 
     monkeypatch.setattr(
-        "backend.game.betting.ask_player_action",
+        "backend.game.engine.betting.ask_player_action",
         fake_ask_player_action,
     )
 
     monkeypatch.setattr(
-        "backend.game.betting.display_table",
+        "backend.game.engine.betting.display_table",
         lambda **_: None,
     )

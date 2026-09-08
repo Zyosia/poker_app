@@ -1,6 +1,6 @@
-from backend.game.hand import Hand
-from backend.game.pots import Pot
-from backend.game.showdown import split_pot
+from backend.game.engine.hand import Hand
+from backend.game.engine.pots import Pot
+from backend.game.engine.showdown import split_pot
 from tests.game.conftest import make_player, make_session
 
 
