@@ -1,4 +1,4 @@
-# game/helper.py
+# backend/game/helper.py
 
 from __future__ import annotations
 

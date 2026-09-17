@@ -1,4 +1,4 @@
-# game/constants.py
+# backend/game/constants.py
 
 from typing import Final, Literal
 

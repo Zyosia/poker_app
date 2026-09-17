@@ -1,4 +1,4 @@
-# game/engine.py
+# backend/game/engine/engine.py
 
 from __future__ import annotations
 

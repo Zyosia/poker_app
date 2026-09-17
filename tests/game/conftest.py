@@ -2,6 +2,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from backend.game.controllers import HumanController
 from backend.game.models.models import Hand, Player
 from backend.game.models.session import GameConfig, GameSession
 
@@ -32,6 +33,7 @@ def make_player(
     return Player(
         name=name,
         stack=stack,
+        controller=HumanController(),
     )
 
 

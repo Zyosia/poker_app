@@ -1,4 +1,4 @@
-# game/actions.py
+# backend/game/models/actions.py
 
 from __future__ import annotations
 
@@ -71,7 +71,9 @@ def post_big_blind(
     return posted_amount
 
 
-def fold(player: Player) -> None:
+def fold(
+    player: Player,
+) -> None:
     """Fold the player's hand."""
 
     player.folded = True

@@ -1,3 +1,4 @@
+# backend/game/models/models.py
 from dataclasses import dataclass, field
 
 from ..constants import (
@@ -5,6 +6,7 @@ from ..constants import (
     Position,
     Street,
 )
+from ..controllers.base import PlayerController
 from ..engine.deck import Deck
 from ..engine.hand_evaluator import HandEvaluation
 
@@ -47,6 +49,7 @@ class PotEvent:
 class Player:
     name: str
     stack: int
+    controller: PlayerController
 
     hand: list[Card] = field(
         default_factory=list,
