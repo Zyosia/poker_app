@@ -1,4 +1,4 @@
-# game/betting.py
+# backend/game/engine/betting.py
 
 from __future__ import annotations
 

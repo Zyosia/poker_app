@@ -1,4 +1,4 @@
-# game/terminal_ui.py
+# backend/game/terminal_ui.py
 
 from __future__ import annotations
 

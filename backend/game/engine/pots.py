@@ -1,4 +1,4 @@
-# game/pots.py
+# backend/game/engine/pots.py
 
 from __future__ import annotations
 

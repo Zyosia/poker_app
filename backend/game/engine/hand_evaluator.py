@@ -1,4 +1,4 @@
-# game/hand_evaluator.py
+# backend/game/engine/hand_evaluator.py
 
 from __future__ import annotations
 

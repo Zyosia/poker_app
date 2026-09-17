@@ -1,10 +1,11 @@
-# game/session.py
+# backend/game/session.py
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..controllers import HumanController, PlayerController
 from .models import Hand, Player, Table
 
 
@@ -102,8 +103,17 @@ class GameSession:
 def create_session(
     player_names: list[str],
     config: GameConfig,
+    controllers: list[PlayerController] | None = None,
 ) -> GameSession:
     """Create a new poker session."""
+
+    if controllers is None:
+        controllers = [HumanController() for _ in player_names]
+
+    if len(player_names) != len(controllers):
+        raise ValueError(
+            "The number of players does not match the number of player controllers."
+        )
 
     if len(player_names) < 2:
         raise ValueError("At least 2 players are required.")
@@ -118,8 +128,9 @@ def create_session(
         Player(
             name=name,
             stack=config.starting_stack,
+            controller=controller,
         )
-        for name in player_names
+        for name, controller in zip(player_names, controllers)
     ]
 
     return GameSession(
