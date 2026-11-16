@@ -1,6 +1,6 @@
 """Recording of the events of a hand."""
 
-from .models import ActionEvent, Hand, Player, PotEvent, StreetEvent
+from .models import ActionEvent, Hand, Player, StreetEvent
 
 
 def record_action(
@@ -11,7 +11,10 @@ def record_action(
     bet_before: int,
     bet_initiator: bool = False,
 ) -> ActionEvent:
-    """Record one player action and the resulting pot size."""
+    """Record one player action and the resulting pot size.
+
+    The pot history (``hand.pot_history``) derives from these records.
+    """
     event = ActionEvent(
         sequence=len(hand.actions) + 1,
         street=hand.street,
@@ -27,9 +30,6 @@ def record_action(
     )
 
     hand.actions.append(event)
-    hand.pot_history.append(
-        PotEvent(sequence=event.sequence, street=hand.street, amount=hand.pot)
-    )
 
     return event
 

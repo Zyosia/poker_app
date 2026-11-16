@@ -26,6 +26,11 @@ class IllegalActionError(ValueError):
     """Raised when a requested action is not legal in the current state."""
 
 
+# Folding and checking never carry an amount: one shared immutable value each.
+LEGAL_FOLD = LegalAction(type=ActionType.FOLD)
+LEGAL_CHECK = LegalAction(type=ActionType.CHECK)
+
+
 def get_first_to_act(hand: Hand) -> Player:
     """Return the seat where the action of the current street starts.
 
@@ -56,7 +61,7 @@ def betting_round_can_continue(hand: Hand) -> bool:
     the only player with chips has already matched every opponent's bet.
     """
     active_players = hand.table.get_active_players()
-    players_who_can_act = [player for player in active_players if player.can_act]
+    players_who_can_act = [player for player in active_players if not player.all_in]
 
     if len(active_players) < 2 or not players_who_can_act:
         return False
@@ -107,10 +112,10 @@ def get_legal_actions(player: Player, hand: Hand) -> tuple[LegalAction, ...]:
     """Return the actions currently available to a player."""
     call_amount = get_call_amount(player=player, hand=hand)
 
-    actions = [LegalAction(type=ActionType.FOLD)]
+    actions = [LEGAL_FOLD]
 
     if call_amount == 0:
-        actions.append(LegalAction(type=ActionType.CHECK))
+        actions.append(LEGAL_CHECK)
     else:
         actions.append(
             LegalAction(type=ActionType.CALL, amount=min(call_amount, player.stack))
@@ -132,6 +137,40 @@ def get_legal_actions(player: Player, hand: Hand) -> tuple[LegalAction, ...]:
         actions.append(LegalAction(type=ActionType.ALL_IN, amount=player.stack))
 
     return tuple(actions)
+
+
+def get_current_legal_actions(hand: Hand) -> tuple[LegalAction, ...]:
+    """Return the legal actions of ``hand.current_player``.
+
+    The result is cached on the hand, so building a player's decision and
+    executing it compute the legal actions only once. The cache is keyed by
+    every value they depend on that can change during the street, plus the
+    number of actions played, which changes with any other player's state.
+    """
+    player = hand.current_player
+
+    if player is None:
+        raise IllegalActionError("No player is expected to act.")
+
+    state = (
+        hand.street,
+        len(hand.actions),
+        hand.current_bet,
+        hand.last_raise_size,
+        hand.min_bet,
+        player.stack,
+        player.current_bet,
+        player.acted_this_round,
+    )
+    cache = hand.legal_actions_cache
+
+    if cache is not None and cache[0] is player and cache[1] == state:
+        return cache[2]
+
+    actions = get_legal_actions(player=player, hand=hand)
+    hand.legal_actions_cache = (player, state, actions)
+
+    return actions
 
 
 def begin_betting_round(hand: Hand) -> None:
@@ -165,7 +204,7 @@ def apply_action(hand: Hand, action: Action) -> ActionEvent:
     legal_action = next(
         (
             legal_action
-            for legal_action in get_legal_actions(player=player, hand=hand)
+            for legal_action in get_current_legal_actions(hand)
             if legal_action.type == action.type
         ),
         None,

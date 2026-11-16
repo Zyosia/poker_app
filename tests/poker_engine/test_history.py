@@ -82,6 +82,25 @@ def test_record_action_also_records_pot_history():
     assert pot_event.amount == 25
 
 
+def test_pot_history_follows_every_recorded_action():
+    session, hand = make_session_with_hand()
+    alice, bob, _ = session.players
+
+    for pot, (player, street) in enumerate(
+        [(alice, Street.PREFLOP), (bob, Street.PREFLOP), (alice, Street.FLOP)],
+        start=1,
+    ):
+        hand.street = street
+        hand.pot = pot * 10
+        record_action(hand=hand, player=player, action="call", amount=10, bet_before=0)
+
+    assert [(e.sequence, e.street, e.amount) for e in hand.pot_history] == [
+        (1, Street.PREFLOP, 10),
+        (2, Street.PREFLOP, 20),
+        (3, Street.FLOP, 30),
+    ]
+
+
 def test_record_street_stores_community_cards_snapshot():
     _, hand = make_session_with_hand()
 

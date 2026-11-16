@@ -9,7 +9,7 @@ Examples::
     uv run python -m backend.simulation sweep --bot tag \\
         --param bluff_probability --values 0,0.1,0.2 --field station,maniac
     uv run python -m backend.simulation engine-lab --samples 200000
-    uv run python -m backend.simulation bench --hands 20000
+    uv run python -m backend.simulation bench --hands 20000 --repeat 3
 """
 
 import argparse
@@ -101,6 +101,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     bench = commands.add_parser("bench", help="Single-core speed of fixed tables.")
     bench.add_argument("--hands", type=int, default=20_000, help="Hands per table.")
+    bench.add_argument(
+        "--repeat", type=int, default=3, help="Runs per table; the fastest is kept."
+    )
 
     return parser
 
@@ -181,7 +184,7 @@ def _dispatch(args: argparse.Namespace, out: TextIO) -> int:
         return 0
 
     if args.command == "bench":
-        print_bench(run_bench(args.hands), out)
+        print_bench(run_bench(args.hands, args.repeat), out)
         return 0
 
     if args.command == "run":
@@ -345,7 +348,7 @@ def print_result(result: SimulationResult, out: TextIO) -> None:
 
 
 def print_bench(results: Sequence[BenchResult], out: TextIO) -> None:
-    print(f"\nOne core, seed {BENCH_SEED}, chip checks on", file=out)
+    print(f"\nOne core, seed {BENCH_SEED}, chip checks on, best run", file=out)
     print_table(
         ("Table", "Hands", "Seconds", "Hands/s"),
         [

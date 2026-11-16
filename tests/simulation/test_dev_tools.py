@@ -321,7 +321,7 @@ def test_cli_matchup_sweep_engine_lab_and_bots(tmp_path: Path) -> None:
 
 
 def test_cli_bench_prints_the_speed_of_every_table() -> None:
-    output = run_cli("bench", "--hands", "50")
+    output = run_cli("bench", "--hands", "50", "--repeat", "2")
 
     for table in BENCH_TABLES:
         assert table.name in output

@@ -1191,11 +1191,74 @@ the same results, checked against the previous algorithm (kept as
 
 # Beta 1.1 — Performance
 
-- [ ] Compute legal actions once per decision
-- [ ] Cheaper `DecisionContext` construction
-- [ ] History recording optional / outside the hot path of `apply_action`
-- [ ] Target: ~2,000 hands/s per core on a 6-max BasicBot table
-- [ ] Benchmark command tracked in the README
+**Beta 1.1** makes the simulator faster **without changing a single result**:
+the same seed still plays exactly the same cards, actions and payouts.
+
+## Safety net
+
+- **Golden tests** (`tests/simulation/test_golden.py`) pin six seeded
+  simulations (6 BasicBots, the 6-style table with hand histories, heads-up,
+  duplicate mode, auto rebuy, elimination). Each one is fingerprinted twice:
+  a hash of every hand (hole cards, board, actions, pots, payouts, stacks) and
+  a hash of the exported result. They were recorded before any optimization
+  and have not changed since.
+- **Benchmark**: fixed seeded tables played on one core, with the default
+  checks (chip invariants on, no history).
+
+```bash
+uv run python -m backend.simulation bench --hands 20000 --repeat 3
+```
+
+`--repeat` plays each table several times and keeps the fastest run, which
+filters out the noise of the rest of the machine.
+
+## Results
+
+Hands per second on one core, best of three runs of 20,000 hands, measured
+alternately on the same machine:
+
+| Table               | Beta 1.0 | Beta 1.1 | Speed-up |
+| ------------------- | -------: | -------: | -------: |
+| 6 BasicBots         |    1,070 |    1,500 |    ×1.40 |
+| 6-style table       |      775 |    1,190 |    ×1.54 |
+| Heads-up TAG vs LAG |    3,704 |    5,084 |    ×1.37 |
+
+## Optimizations
+
+- **Legal actions computed once per decision**: they are cached on the hand
+  (`betting.get_current_legal_actions`), keyed by every value they depend on,
+  and shared by the decision context and `apply_action`.
+- **Cheaper decision context**: `PlayerView` and `DecisionContext` are
+  immutable named tuples, several times cheaper to build than frozen
+  dataclasses (one view per seat for every decision).
+- **Cheaper history**: the pot history is derived from the actions, which
+  already record the pot after each one, instead of being stored twice.
+- **Faster hand reading for the bots**: `evaluate_rank` returns the category
+  and tiebreaker without picking the five cards, a card → rank table replaces
+  per-card parsing, and the bot's strength functions (pure functions of the
+  cards) are cached, since a hand is read once per decision and every player
+  reads the same board.
+- **Engine micro-costs**: shared constants for the fold and check actions,
+  and fewer passes over the seats when looking for the next player.
+
+## What is left
+
+The ~2,000 hands/s target on 6 BasicBots is **not reached** (about 1,500 on
+this machine). No single hot spot is left: the remaining time is spread over
+the pure-Python state model itself.
+
+- **Deck shuffling** (~6%) cannot change: the same random numbers must be
+  drawn to keep every result identical.
+- **Event records**: `ActionEvent` stays a frozen dataclass (~4%), because it
+  is the persisted history format.
+- **The rest** is the betting logic, the bots' heuristics and the statistics
+  collectors, each a few percent. Going further would need a different state
+  representation (for example arrays instead of player objects), which is a
+  redesign of the engine rather than an optimization.
+
+Parallel workers still scale with the number of cores.
+
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
