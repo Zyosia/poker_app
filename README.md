@@ -42,9 +42,17 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [Beta 1.0 — Simulation](#beta-10--simulation)
 
-- [V1.0 — Advanced Poker Features](#v10--advanced-poker-features)
+- [Beta 1.1 — Performance](#beta-11--performance)
+
+- [V1.0 — Tournaments](#v10--tournaments)
+
+- [V1.1 — Tools](#v11--tools)
+
+- [V1.2 — Cash Game Extras](#v12--cash-game-extras)
 
 - [V2.x — AI and Strategies](#v2x--ai-and-strategies)
+
+- [Later / Maybe](#later--maybe)
 
 - [Development Principles](#development-principles)
 
@@ -564,16 +572,23 @@ backend/
 │   ├── pots.py            Main pot and side pots
 │   ├── showdown.py        Winners and payouts
 │   ├── history.py         Hand history recording
-│   └── session.py         Session configuration and players
+│   ├── blinds.py          BlindLevel (blinds, ante), BlindStructure
+│   └── session.py         Session configuration, players, blind level
 ├── application/           Coordination between engine, controllers and UI
 │   ├── controllers.py     PlayerController, HumanController, DecisionContext
 │   ├── game.py            PokerGame: plays a session step by step
-│   ├── setup.py           Game creation from the user's settings
-│   └── persistence.py     Session saving (JSON)
+│   ├── setup.py           Game, tournament and Spin & Go creation
+│   ├── tournament.py      Tournament, rebuys, eliminations, Spin & Go
+│   ├── payouts.py         Payout structures, Spin & Go multipliers
+│   ├── structures.py      Default blind structures
+│   ├── hand_summary.py    A player's stats from the hand history
+│   └── persistence.py     Session saving and loading (JSON, format 2)
 ├── bots/                  Computer-controlled players
 │   ├── random_bot.py      Random legal actions
 │   ├── basic_bot.py       Hand strength and pot odds heuristics
 │   ├── profiles.py        BotProfile and the play-style presets
+│   ├── short_stack.py     Stack-aware tournament play
+│   ├── push_fold.py       Push/fold ranges by depth and position
 │   └── factory.py         Bot creation from a name (nit, tag, lag, …)
 └── simulation/            Headless bot simulations (Beta 1.0)
     ├── config.py          SimulationConfig, SeatSpec, StackPolicy, seeds
@@ -586,6 +601,9 @@ backend/
     ├── summary.py         Plain-language reading of a result
     ├── matchup.py         Heads-up matchup matrix and parameter sweep
     ├── engine_lab.py      7-card frequencies against the theory
+    ├── bench.py           Single-core benchmark (Beta 1.1)
+    ├── tournament_runner.py  Tournament and Spin & Go runs (V1.0)
+    ├── tournament_stats.py   Finishes, ITM and ROI statistics
     └── cli.py             python -m backend.simulation …
 
 frontend/
@@ -598,9 +616,11 @@ frontend/
 │   ├── main_window.py     Navigation stack (Back works everywhere)
 │   ├── main_menu_screen.py
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
+│   ├── tournament_setup_screen.py, tournament_screen.py,
+│   │   tournament_results_screen.py         Tournament and Spin & Go
 │   └── arena_setup_screen.py, arena_progress_screen.py,
 │       arena_results_screen.py, arena_watch_screen.py  Bot Arena
-└── components/            Card, seat, table, action panel and line chart
+└── components/            Card, seat, table, action panel, line and bar charts
 
 tests/                     Engine, application, bots, simulation and UI tests
 ```
@@ -671,9 +691,8 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 # Current Interface
 
 The application is a **PySide6 desktop application**. It opens on a **main
-menu** listing the modes: **Cash Game** and **Bot Arena** are available,
-**Tournament** and **Spin & Go** are shown as coming in V1.0, and a **Tools**
-slot is reserved. Every screen has a Back button.
+menu** listing the modes: **Cash Game**, **Tournament**, **Spin & Go** and
+**Bot Arena**; a **Tools** slot is reserved. Every screen has a Back button.
 
 ```bash
 uv sync                        # install the dependencies
@@ -689,7 +708,11 @@ uv run python -m frontend.main # start the desktop application
 - **Hand history**: every action, street and result of the session.
 - **Between hands**: next hand, or rebuy when the player is out of chips.
 
-**Bot Arena** — bots against bots, see [Beta 1.0](#beta-10--simulation).
+**Tournament** and **Spin & Go** — you against bots with rising blinds, see
+[V1.0](#v10--tournaments).
+
+**Bot Arena** — bots against bots (cash tables, tournaments and Spin & Go),
+see [Beta 1.0](#beta-10--simulation) and [V1.0](#v10--tournaments).
 
 A minimal terminal front-end using the same application layer is also
 available:
@@ -789,7 +812,7 @@ Chip integrity
 ```
 
 Test suite status at the end of Alpha 1.1 (the current count is given in
-[Beta 1.0](#beta-10--simulation)):
+[V1.0](#v10--tournaments)):
 
 ```text
 883 passed
@@ -981,7 +1004,7 @@ The goal is to stabilize the engine core before adding more advanced mechanics.
 
 ## Antes
 
-Antes are not yet supported.
+✅ Classic and big-blind antes since [V1.0](#v10--tournaments).
 
 ## Straddle
 
@@ -993,16 +1016,15 @@ The engine does not yet have a configurable limit on the number of raises per st
 
 ## Tournament Blinds
 
-Blinds remain fixed throughout the session.
-
-There is not yet a tournament structure with automatic blind increases.
+✅ Blind structures with levels by hands or by time since
+[V1.0](#v10--tournaments). Cash games keep fixed blinds.
 
 ## Rebuy
 
 Partially supported. In the cash game, a busted human player is offered a
 rebuy of the starting stack between hands; busted bots are eliminated. The Bot
-Arena has an automatic rebuy policy. There are no add-ons, rebuy limits or
-rebuy periods yet.
+Arena has an automatic rebuy policy. Tournaments have optional rebuys
+during the first levels and an add-on ([V1.0](#v10--tournaments)).
 
 ## Cash-game Rebuy
 
@@ -1264,23 +1286,259 @@ Parallel workers still scale with the number of cores.
 
 # V1.0 — Tournaments
 
+**V1.0** adds single-table **tournaments**, **Spin & Go**, **antes**,
+stack-aware bots, and tournament runs in the Bot Arena.
+
+## Features
+
+### ⏫ Blinds and antes (engine)
+
+- `BlindLevel` (small blind, big blind, ante, ante type) and `BlindStructure`
+  (ordered levels). Levels go up **by number of hands** (always in simulations
+  and tests, fully deterministic) or **by time** when you play: the time is
+  measured by the application, never by the engine, and a level only changes
+  between two hands. After the last level, play stays on the last level.
+- **Classic antes** (every player posts) and **big-blind antes** (the big
+  blind posts one ante for the whole table).
+- Antes are recorded in the hand history (`post_ante`), shown in the history
+  panel and in the pot.
+
+### 🏆 Tournaments
+
+- 2 to 6 players, starting stack, blind structure, buy-in (fictional
+  currency), payout structure, optional rebuys and add-on.
+- Played **until one player holds every chip**, with finishing places,
+  prizes, the hand each player was knocked out on, the number of hands and
+  the level reached.
+- **Payout presets**: winner takes all, 65 / 35, 50 / 30 / 20. Default:
+  winner takes all with 2–3 players, 65 / 35 with 4–6. Prizes are whole
+  units; rounding remainders go to the higher places.
+- **Rebuys** during the first 3 levels at or below the starting stack, then
+  one **add-on**; both add a buy-in to the prize pool and to what the player
+  invested. Bots always rebuy when allowed and take the add-on at or below
+  the starting stack.
+
+### 🎰 Spin & Go
+
+- 3 players, hyper-turbo structure, 500 chips (25 big
+  blinds at the first level).
+- A **prize multiplier** is drawn from a configurable table *before* the
+  first hand, with the seeded random generator; the prize pool is that many
+  buy-ins. Winner takes all, 80 / 10 / 10 from ×100.
+
+### 🧠 Short-stack bots
+
+In a tournament, bots measure their **effective stack in big blinds** (the
+smaller of their stack and the biggest opponent stack still in the hand):
+
+- **Push/fold** at 12 big blinds or less (13 for the LAG, 15 for the
+  Maniac): open-shove or fold, call shoves, using **ranges by stack depth and
+  position** (`backend/bots/push_fold.py`). Never a small raise.
+- **Short stack** up to 25 big blinds: 2.2 big-blind opens, all-in
+  re-raises, flat calls of a raise only with a strong hand.
+- A raise committing 40% of the stack becomes an all-in.
+- Each profile keeps its style by widening or narrowing the base ranges. At
+  8 big blinds on the button: Nit 23%, Calling Station 31%, TAG 35%, Basic
+  39%, LAG 48%, Maniac 65% of hands shoved.
+- Cash games are unchanged: the Beta 1.0 golden results still hold.
+
+The 169 starting hands are ordered by all-in equity against a random hand,
+computed with the project's evaluator (Monte Carlo); the percentages are
+simplified approximations of Nash push/fold charts for 6-max tables.
+
+### 🏟️ Bot Arena: tournaments
+
+- Run types **Tournament** and **Spin & Go** next to cash runs. The budget is
+  a number of tournaments; batches hold complete tournaments, each seeded from
+  `(seed, tournament index)`, with a hand cap per tournament (capped
+  tournaments are ranked by stack and counted in the results).
+- **Seat fairness**: in tournament *t*, the bot listed at index *i* sits in
+  seat *(i + t) mod n*.
+- **Stats**: win %, ITM %, average place, finishing-place distribution,
+  **ROI** = (prizes − invested) / invested with its 95% confidence interval,
+  average length (hands, level). For Spin & Go: the multipliers drawn, the
+  ROI including them, and the **ROI without the multiplier draw** (every game
+  paying its expected prize pool), which compares bots on their play only.
+- Results screen: finishing-place bar chart, ROI ranking, and a summary in
+  finishes and ROI. Identical results on 1 and N workers.
+
+### 🖥️ In the app
+
+- **Tournament setup**: your name, 1 to 5 opponents (one style for all or one
+  per seat), starting stack, structure (Turbo / Regular / Deep), level speed
+  (by hands or by time), buy-in, payout, rebuys and add-on.
+- **Spin & Go setup**: your name, 2 opponents, buy-in, level speed and
+  multiplier table; a short **multiplier reveal** shows the prize pool before
+  the first hand.
+- **At the table**: current level and the next one with the hands or time
+  left, players left, your place, average stack in big blinds, prize pool;
+  short elimination notices with place and prize; rebuy and add-on prompts;
+  **Pause** freezes the level clock and the table.
+- **When you bust**: your place and prize, then **Watch** (the table keeps
+  playing at an adjustable speed), **Skip to results** (the rest is played
+  instantly, with the same hands as watching) or **Back to menu**.
+- **Results**: final standings with prizes and the hand each player went
+  out on, your stats (hands, VPIP / PFR, showdowns, all-ins, biggest pot),
+  **Play again** and **Back to menu**. The session file is saved with the
+  tournament results.
+
+> 📸 *Screenshot placeholder: tournament table and Spin & Go reveal.*
+
+## Rules choices
+
+- **Antes are dead money**: they go into the pot, but never count toward the
+  amount to call or toward the size of a raise.
+- **Posting order with a short stack**:
+  - classic ante: **ante first, then the blind**. A player who cannot cover
+    the ante posts what they have and is all-in; they are still dealt in and
+    can win what every other player matched of their ante;
+  - big-blind ante: **blind first, then the ante** (TDA rule). The ante goes
+    into the **main pot**, which every player dealt in can win, even when the
+    big blind is all-in for less or folds.
+- **Dead money above every remaining player**: chips that only folded
+  players put in, above the contribution of every player still in, join the
+  highest pot that can still be won.
+- **Simultaneous eliminations**: the player who started the hand with more
+  chips finishes higher. Exactly equal stacks share the best place of their
+  group and split the prizes of the places they cover; an indivisible unit
+  goes to the first of them clockwise from the left of the button.
+- **Moving button, no dead button**: before each hand the button moves to
+  the next player with chips. When the table goes from 3 to 2 players, the
+  heads-up rules apply: the button posts the small blind, acts first
+  pre-flop and last after the flop.
+- **Levels by time**: the clock keeps running while a player thinks or is
+  idle; only the explicit Pause freezes it.
+
+## Blind structures
+
+Tournaments start with 1500 chips. Turbo, Regular and
+Deep share their levels and differ by their pace: **Turbo** 6 hands / 3 min, **Regular** 10 hands / 6 min, **Deep** 15 hands / 10 min. A big-blind ante
+equal to the big blind starts at level 4 (classic antes of a tenth of the big
+blind are available with `with_classic_antes`). All structures live in
+`backend/application/structures.py`.
+
+| Level | Blinds | Ante |
+| ----: | -----: | ---: |
+| 1 | 10 / 20 | — |
+| 2 | 15 / 30 | — |
+| 3 | 25 / 50 | — |
+| 4 | 50 / 100 | 100 (big blind) |
+| 5 | 75 / 150 | 150 (big blind) |
+| 6 | 100 / 200 | 200 (big blind) |
+| 7 | 150 / 300 | 300 (big blind) |
+| 8 | 200 / 400 | 400 (big blind) |
+| 9 | 300 / 600 | 600 (big blind) |
+| 10 | 400 / 800 | 800 (big blind) |
+| 11 | 500 / 1000 | 1000 (big blind) |
+| 12 | 750 / 1500 | 1500 (big blind) |
+| 13 | 1000 / 2000 | 2000 (big blind) |
+
+**Spin & Go hyper-turbo** (5 hands or
+2 minutes per level, 500 chips):
+
+| Level | Blinds | Ante |
+| ----: | -----: | ---: |
+| 1 | 10 / 20 | — |
+| 2 | 15 / 30 | — |
+| 3 | 20 / 40 | — |
+| 4 | 25 / 50 | 50 (big blind) |
+| 5 | 30 / 60 | 60 (big blind) |
+| 6 | 40 / 80 | 80 (big blind) |
+| 7 | 50 / 100 | 100 (big blind) |
+| 8 | 60 / 120 | 120 (big blind) |
+| 9 | 80 / 160 | 160 (big blind) |
+| 10 | 100 / 200 | 200 (big blind) |
+| 11 | 150 / 300 | 300 (big blind) |
+| 12 | 200 / 400 | 400 (big blind) |
+
+## Spin & Go multipliers
+
+The default table is **fair**: the expected prize pool is exactly the three
+buy-ins paid. Probabilities are exact (integer weights out of 10,000).
+
+| Multiplier | Prize pool | Probability | Payout |
+| ---: | ---: | ---: | --- |
+| ×2 | 2 buy-ins | 53.00% | Winner takes all |
+| ×3 | 3 buy-ins | 39.00% | Winner takes all |
+| ×5 | 5 buy-ins | 6.00% | Winner takes all |
+| ×10 | 10 buy-ins | 1.80% | Winner takes all |
+| ×100 | 100 buy-ins | 0.19% | 80 / 10 / 10 |
+| ×1000 | 1000 buy-ins | 0.01% | 80 / 10 / 10 |
+| **Expected** | **3 buy-ins** | | |
+
+The **Realistic (~7% rake)** preset is close to real sites:
+
+| Multiplier | Prize pool | Probability | Payout |
+| ---: | ---: | ---: | --- |
+| ×2 | 2 buy-ins | 75.00% | Winner takes all |
+| ×3 | 3 buy-ins | 17.00% | Winner takes all |
+| ×5 | 5 buy-ins | 6.00% | Winner takes all |
+| ×10 | 10 buy-ins | 1.80% | Winner takes all |
+| ×100 | 100 buy-ins | 0.19% | 80 / 10 / 10 |
+| ×1000 | 1000 buy-ins | 0.01% | 80 / 10 / 10 |
+| **Expected** | **2.78 buy-ins** | | |
+
+## Command line
+
+```bash
+# 1,000 tournaments between six styles, with rebuys and a 50/30/20 payout
+uv run python -m backend.simulation tournament --seats nit,tag,lag,station,maniac,basic \
+    --tournaments 1000 --structure turbo --payout 50-30-20 --rebuys
+
+# 1,000 Spin & Go games, with the realistic multiplier table
+uv run python -m backend.simulation spin --seats tag,lag,maniac --tournaments 1000 \
+    --multipliers realistic
+```
+
+Options: `--seats`, `--tournaments`, `--structure turbo|regular|deep`,
+`--payout wta|65-35|50-30-20`, `--rebuys`, `--multipliers fair|realistic`,
+`--stack`, `--buy-in`, `--seed`, `--workers`, `--batch-size` (tournaments per
+batch), `--max-hands-per-tournament`, `--no-invariants`, `--output` and
+`--no-export`. A chip check runs after every hand; a failure names the
+tournament and the hand to replay with `replay_tournament()`.
+
+## Session files
+
+Session files are now **format version 2**: the blind level of the session
+and of every hand, the big-blind ante of every hand (`dead_money`), and the
+tournament results. `load_session_file()` reads versions 1 and 2 (a version 1
+file is upgraded in memory) and rejects unknown versions with a clear message.
+
+## Engine changes
+
+- Antes (`post_ante`, `Hand.dead_money`) and the blind level of a session.
+- The pot builder merges chips only folded players put in, above every
+  remaining player, into the highest pot still contested (with a folded
+  big-blind ante, this used to raise "A pot has no eligible players").
+- No other rule changed; the cash-game golden results are unchanged.
+
+## Objectives
+
 Engine & application:
 
-- [ ] Blind levels (by hands or by time) with configurable structures
-- [ ] Antes (including big-blind ante)
-- [ ] Elimination tracking and finishing positions
-- [ ] Payout structures (prize pool, places paid)
-- [ ] Add-on and tournament rebuy (optional per structure)
+- [x] Blind levels (by hands or by time) with configurable structures
+- [x] Antes (including big-blind ante)
+- [x] Elimination tracking and finishing positions
+- [x] Payout structures (prize pool, places paid)
+- [x] Add-on and tournament rebuy (optional per structure)
 
 Modes:
 
-- [ ] Tournament mode (single table, 2–6 players)
-- [ ] Spin & Go: 3 players, hyper-turbo structure, random prize multiplier
+- [x] Tournament mode (single table, 2–6 players)
+- [x] Spin & Go: 3 players, hyper-turbo structure, random prize multiplier
 
 Bots & simulation:
 
-- [ ] Short-stack play (push/fold based on stack in big blinds)
-- [ ] Bot Arena support for tournament structures (finish %, ROI, average place)
+- [x] Short-stack play (push/fold based on stack in big blinds)
+- [x] Bot Arena support for tournament structures (finish %, ROI, average place)
+
+## Tests
+
+```text
+1309 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
@@ -1311,6 +1569,8 @@ Already available: random bot, basic bot (hand strength + pot odds), play-style 
 - [ ] Expected value–based decisions
 - [ ] Adaptive / exploitative bot (uses opponents' live stats: VPIP, AF…)
 - [ ] Poker AI (e.g. CFR or self-play), evaluated in Bot Arena
+- [ ] M ratio (stack / cost of an orbit) in short-stack decisions: moved from
+      V1.0, the push/fold ranges by effective big blinds did not need it
 
 ---
 
@@ -1318,6 +1578,8 @@ Already available: random bot, basic bot (hand strength + pot odds), play-style 
 
 - [ ] Multi-table tournaments (table balancing, late registration)
 - [ ] Configurable betting cap / Limit Hold'em
+- [ ] Watch mode for Bot Arena tournament runs: moved from V1.0, a tournament
+      can be watched by playing it from the main menu and busting out
 
 ---
 
@@ -1399,7 +1661,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1102 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1309 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 
