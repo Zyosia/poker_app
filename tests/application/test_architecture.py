@@ -7,6 +7,7 @@ BACKEND_MODULES = (
     "backend.poker_engine.hand",
     "backend.application.game",
     "backend.application.setup",
+    "backend.application.tournament",
     "backend.bots.basic_bot",
     "backend.bots.random_bot",
     "backend.bots.factory",

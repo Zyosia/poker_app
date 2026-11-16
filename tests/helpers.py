@@ -9,6 +9,7 @@ from backend.poker_engine.betting import (
     get_legal_actions,
 )
 from backend.poker_engine.constants import ActionType, Street
+from backend.poker_engine.deck import Deck
 from backend.poker_engine.hand import ActionChooser
 from backend.poker_engine.models import Hand, Player
 from backend.poker_engine.session import GameConfig, GameSession, create_session
@@ -89,3 +90,25 @@ def play_betting_round(
 def allowed_action_types(player: Player, hand: Hand) -> list[str]:
     """Return the types of the actions currently legal for a player."""
     return [action.type.value for action in get_legal_actions(player=player, hand=hand)]
+
+
+def stacked_deck(
+    hole_cards: dict[str, tuple[str, str]],
+    board: tuple[str, ...],
+    order: tuple[str, ...],
+) -> Deck:
+    """A deck dealing ``hole_cards`` one card at a time in ``order``.
+
+    ``order`` is the dealing order: clockwise from the left of the Button.
+    A burn card precedes the flop, the turn and the river.
+    """
+    cards = [hole_cards[name][0] for name in order]
+    cards += [hole_cards[name][1] for name in order]
+    used = set(cards) | set(board)
+    burns = [card for card in Deck().cards if card not in used][:3]
+    cards += [burns[0], *board[:3], burns[1], board[3], burns[2], board[4]]
+
+    deck = Deck()
+    deck.cards = list(reversed(cards))
+
+    return deck
