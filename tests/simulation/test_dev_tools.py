@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from backend.poker_engine.models import Hand
+from backend.simulation.bench import BENCH_SEED, BENCH_TABLES, bench_config
 from backend.simulation.cli import main
 from backend.simulation.config import SeatSpec, SimulationConfig
 from backend.simulation.events import HandObserver
@@ -317,6 +318,23 @@ def test_cli_matchup_sweep_engine_lab_and_bots(tmp_path: Path) -> None:
     assert "bluff_probability" in sweep
     assert "STRAIGHT_FLUSH" in lab and "Split pots" in lab
     assert "maniac" in bots and "Calling Station" in bots
+
+
+def test_cli_bench_prints_the_speed_of_every_table() -> None:
+    output = run_cli("bench", "--hands", "50")
+
+    for table in BENCH_TABLES:
+        assert table.name in output
+
+    assert "Hands/s" in output and f"seed {BENCH_SEED}" in output
+
+
+def test_bench_tables_are_seeded_and_single_core() -> None:
+    config = bench_config(BENCH_TABLES[0], hands=100)
+
+    assert config.seed == BENCH_SEED
+    assert config.workers == 1
+    assert config.check_invariants and not config.record_history
 
 
 def test_cli_rejects_duplicate_mode_with_eliminations(
