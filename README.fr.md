@@ -37,6 +37,7 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 * [Alpha 1.2 — Historique et observabilité](#alpha-12--historique-et-observabilité)
 
 * [Alpha 1.3 — Abstraction des joueurs](#alpha-13--abstraction-des-joueurs)
+* [Alpha 2.0 — Application de bureau](#alpha-20--application-de-bureau)
 
 * [Limites restantes de la Alpha - 1.x](#limites-restantes-de-la-alpha---1x)
 
@@ -63,17 +64,11 @@ Elle couvre le déroulement d'une session Texas Hold'em avec **2 à 6 joueurs**,
 ### 👥 Gestion des joueurs & de la table
 
 | Fonctionnalité          | Alpha - 1.0 |
-
 | ----------------------- | :---------: |
-
 | 2–6 joueurs             |      ✅      |
-
 | Positions à la table    |      ✅      |
-
 | Rotation du dealer      |      ✅      |
-
 | Élimination des joueurs |      ✅      |
-
 | Sessions multi-hands    |      ✅      |
 
 ### 🃏 Gestion des mains
@@ -644,130 +639,71 @@ Cette propriété est couverte par des tests dédiés de conservation des jetons
 
 # Architecture
 
-Le moteur sépare les principales responsabilités afin de limiter le couplage entre les différentes parties du système.
+Le projet est découpé en trois couches avec un seul sens de dépendance :
+l'interface parle à la couche application, la couche application parle au
+moteur de poker, et le moteur ne dépend de rien d'autre.
 
 ```text
+backend/
+├── poker_engine/          Règles du Texas Hold'em (sans UI ni bots)
+│   ├── constants.py       Types Card, Street, ActionType et Position
+│   ├── deck.py            Paquet de 52 cartes
+│   ├── models.py          Player, Table, Hand et événements d'historique
+│   ├── actions.py         Actions et mouvements de jetons
+│   ├── betting.py         Ordre de parole, actions légales, exécution
+│   ├── hand.py            Cycle de vie d'une main (début, streets, showdown)
+│   ├── hand_evaluator.py  Évaluation et comparaison des mains
+│   ├── pots.py            Main pot et side pots
+│   ├── showdown.py        Gagnants et distribution des gains
+│   ├── history.py         Enregistrement de l'historique
+│   └── session.py         Configuration de la session et joueurs
+├── application/           Coordination entre moteur, contrôleurs et UI
+│   ├── controllers.py     PlayerController, HumanController, DecisionContext
+│   ├── game.py            PokerGame : joue une session étape par étape
+│   ├── setup.py           Création d'une partie depuis les réglages
+│   └── persistence.py     Sauvegarde des sessions (JSON)
+└── bots/                  Joueurs contrôlés par l'ordinateur
+    ├── random_bot.py      Actions légales aléatoires
+    └── basic_bot.py       Heuristiques : force de main et cotes du pot
 
-game/
+frontend/
+├── main.py                Point d'entrée de l'application PySide6
+├── terminal_ui.py         Interface terminal
+├── theme.py               Couleurs et feuille de style
+├── formatting.py          Textes des cartes, actions et résultats
+├── ui/                    Fenêtre principale, menu et écran de jeu
+└── components/            Widgets carte, siège, table et panneau d'actions
 
-│
-
-├── actions.py
-
-│   └── Actions des joueurs et gestion des mises
-
-│
-
-├── betting.py
-
-│   └── Ordre de parole et betting rounds
-
-│
-
-├── constants.py
-
-│   └── Types, positions, streets et constantes
-
-│
-
-├── deck.py
-
-│   └── Deck de 52 cartes
-
-│
-
-├── engine.py
-
-│   └── Boucle principale de la session
-
-│
-
-├── hand.py
-
-│   └── Déroulement complet d'une main
-
-│
-
-├── hand_evaluator.py
-
-│   └── Évaluation et comparaison des mains
-
-│
-
-├── helper.py
-
-│   └── Fonctions utilitaires
-
-│
-
-├── history.py
-
-│   └── Historique des actions, streets et pots
-
-│
-
-├── models.py
-
-│   └── Player, Table, Hand et modèles d'historique
-
-│
-
-├── pots.py
-
-│   └── Construction du main pot et des side pots
-
-│
-
-├── session.py
-
-│   └── Configuration et gestion de la session
-
-│
-
-├── showdown.py
-
-│   └── Détermination des gagnants et redistribution
-
-│
-
-└── terminal_ui.py
-
-    └── Interface terminal
-
+tests/                     Tests moteur, application, bots et interface
 ```
 
-Le principe architectural est notamment de séparer :
+Le moteur est piloté **une étape à la fois**, ce qui laisse la main à
+l'interface entre deux étapes (une interface graphique ne bloque jamais) :
+
+```python
+hand = start_hand(session)  # blinds, cartes privées, tour préflop
+
+while not hand.finished:
+    if hand.current_player is None:
+        advance_hand(hand)  # street suivante, ou showdown
+    else:
+        apply_action(hand, action)  # validée par get_legal_actions()
+```
+
+`PokerGame` (couche application) encapsule cette boucle : chaque `game.step()`
+demande sa décision au contrôleur du joueur qui doit parler — un bot ou
+l'humain — et l'exécute, ou distribue la street suivante.
+
+Dans le moteur, les responsabilités restent séparées :
 
 ```text
-
-BETTING
-
-"Qui doit parler ?"
-
-        │
-
-        ▼
-
-HAND EVALUATOR
-
-"Quelle est la valeur de sa main ?"
-
-        │
-
-        ▼
-
-SHOWDOWN
-
-"Qui gagne chaque pot ?"
-
-        │
-
-        ▼
-
-POTS
-
-"Combien doit recevoir chaque joueur ?"
-
+BETTING          « Qui parle ensuite, et que peut-il faire ? »
+   ▼
+HAND EVALUATOR   « Quelle est la valeur de sa main ? »
+   ▼
+SHOWDOWN         « Qui gagne chaque pot ? »
+   ▼
+POTS             « Combien reçoit chaque joueur ? »
 ```
 
 [↑ Retour au sommaire](#sommaire)
@@ -806,54 +742,27 @@ La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les jo
 
 # Interface actuelle
 
-La Alpha - 1.0 utilise une interface **terminal**.
+L'application est une **application de bureau PySide6** : un joueur humain
+contre 1 à 5 bots.
 
-Au lancement d'une session, le moteur demande le nombre de joueurs :
-
-```text
-
-==================================================
-
- TEXAS HOLD'EM — NEW SESSION
-
-==================================================
-
-Choose the number of players (2-6).
-
-Number of players >
-
+```bash
+uv sync                        # installe les dépendances
+uv run python -m frontend.main # lance l'application de bureau
 ```
 
-Les joueurs sont ensuite générés automatiquement :
+- **Menu** : nom du joueur, nombre d'adversaires, niveau des bots, tapis de départ et blinds.
+- **Table** : sièges, cartes privées, cartes communes, mises, pot et bouton dealer.
+- **Panneau d'actions** : seules les actions que le moteur déclare légales sont
+  actives, avec un curseur et des raccourcis (Min, 1/2 Pot, Pot, Max) pour
+  choisir le montant d'une mise ou d'une relance.
+- **Historique** : chaque action, street et résultat de la session.
+- **Entre deux mains** : main suivante, ou recave quand le joueur n'a plus de jetons.
 
-```text
+Une interface terminal minimale, basée sur la même couche application, reste
+disponible :
 
-2 joueurs
-
-→ Player1
-
-→ Player2
-
-```
-
-ou :
-
-```text
-
-6 joueurs
-
-→ Player1
-
-→ Player2
-
-→ Player3
-
-→ Player4
-
-→ Player5
-
-→ Player6
-
+```bash
+uv run python -m frontend.terminal_ui
 ```
 
 [↑ Retour au sommaire](#sommaire)
@@ -1114,6 +1023,52 @@ sans savoir si la réponse provient :
 * d'une interface graphique ;
 
 * d'une API.
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# Alpha 2.0 — Application de bureau
+
+La **Alpha 2.0** transforme le moteur en application de bureau jouable.
+
+## Ce qui a changé
+
+- **Moteur piloté pas à pas** : le moteur n'interroge plus le terminal. Il
+  expose `start_hand`, `get_legal_actions`, `apply_action` et `advance_hand`,
+  et peut jouer une main complète sans aucune interface.
+- **Couche application** : `PokerGame` coordonne le moteur et les contrôleurs
+  des joueurs, sauvegarde la session après chaque main et élimine les bots
+  qui n'ont plus de jetons.
+- **Bots** : `RandomBot` (actions légales aléatoires) et `BasicBot` (force de
+  main, cotes du pot, bluffs occasionnels). Les bots ne reçoivent qu'un
+  `DecisionContext`, qui ne contient jamais les cartes des adversaires.
+- **Interface PySide6** : menu, table, panneau d'actions et historique.
+- **Structure du projet** : `backend/poker_engine`, `backend/application`,
+  `backend/bots` et `frontend`.
+
+## Corrections de règles
+
+- Un **all-in court** au-dessus de la mise en cours devient le montant à
+  payer. Les joueurs ayant déjà parlé peuvent seulement payer ou se coucher ;
+  ceux qui n'ont pas encore parlé, ou qui font face au total à au moins une
+  relance complète, peuvent encore relancer.
+- La **mise d'ouverture minimale** est la big blind.
+- Une **big blind incomplète** impose toujours de payer une big blind entière.
+- Un joueur **à tapis sur sa blind** reçoit bien ses cartes.
+- Les **all-ins sont enregistrés** dans l'historique de la main.
+- La relance n'est pas proposée quand **aucun adversaire ne peut répondre**.
+- Les joueurs sans jetons ne **reçoivent pas de cartes** et ne peuvent plus
+  influencer une main.
+
+## Outils
+
+```bash
+uv run pytest            # tests
+uv run ruff check .      # lint
+uv run ruff format .     # formatage
+uv run pyright           # analyse statique
+```
 
 [↑ Retour au sommaire](#sommaire)
 
