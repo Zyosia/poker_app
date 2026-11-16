@@ -74,51 +74,30 @@ Elle couvre le déroulement d'une session Texas Hold'em avec **2 à 6 joueurs**,
 ### 🃏 Gestion des mains
 
 | Fonctionnalité                     | Alpha - 1.0 |
-
 | ---------------------------------- | :---------: |
-
 | Small Blind / Big Blind            |      ✅      |
-
 | Distribution des cartes privatives |      ✅      |
-
 | Flop / Turn / River                |      ✅      |
-
 | Gestion du board communautaire     |      ✅      |
-
 | All-in                             |      ✅      |
-
 | Short all-in                       |      ✅      |
-
 | Auto-runout                        |      ✅      |
 
 ### 💰 Système de mise
 
 | Fonctionnalité                              | Alpha - 1.0 |
-
 | ------------------------------------------- | :---------: |
-
 | Fold                                        |      ✅      |
-
 | Check                                       |      ✅      |
-
 | Call                                        |      ✅      |
-
 | Raise                                       |      ✅      |
-
 | Re-raise                                    |      ✅      |
-
 | All-in directement                          |      ✅      |
-
 | Short all-in                                |      ✅      |
-
 | Minimum raise                               |      ✅      |
-
 | Ordre de parole circulaire                  |      ✅      |
-
 | Reprise correcte de l'action après un raise |      ✅      |
-
 | Reopening après un re-raise                 |      ✅      |
-
 | Gestion du dernier joueur ayant agi         |      ✅      |
 
 Le moteur respecte l'ordre de parole du Texas Hold'em et ne redémarre pas arbitrairement l'action au début de la liste des joueurs après un raise.
@@ -128,21 +107,13 @@ Les règles de reopening sont également prises en compte lorsqu'un joueur effec
 ### 🏆 Évaluation des mains
 
 | Fonctionnalité                                     | Alpha - 1.0 |
-
 | -------------------------------------------------- | :---------: |
-
 | Évaluation des meilleures combinaisons de 5 cartes |      ✅      |
-
 | 9 catégories de mains                              |      ✅      |
-
 | Comparaison des kickers                            |      ✅      |
-
 | Comparaison des mains                              |      ✅      |
-
 | Détection des égalités                             |      ✅      |
-
 | Ace-low straight                                   |      ✅      |
-
 | Ace-low straight flush                             |      ✅      |
 
 Les rankings de mains implémentés en Alpha - 1.0 sont :
@@ -168,27 +139,16 @@ Les rankings de mains implémentés en Alpha - 1.0 sont :
 ### 🏦 Gestion des pots
 
 | Fonctionnalité                                           | Alpha - 1.0 |
-
 | -------------------------------------------------------- | :---------: |
-
 | Main pot                                                 |      ✅      |
-
 | Side pots                                                |      ✅      |
-
 | Side pots multiples                                      |      ✅      |
-
 | Prise en compte des contributions des joueurs ayant fold |      ✅      |
-
 | Éligibilité des joueurs aux différents pots              |      ✅      |
-
 | All-in players au showdown                               |      ✅      |
-
 | Split pot                                                |      ✅      |
-
 | Gestion des jetons indivisibles                          |      ✅      |
-
 | Distribution automatique des gains                       |      ✅      |
-
 | Vérification de la cohérence du pot                      |      ✅      |
 
 Les contributions de chaque joueur sont conservées pendant toute la main afin de permettre la reconstruction des différents pots.
@@ -196,21 +156,13 @@ Les contributions de chaque joueur sont conservées pendant toute la main afin d
 ### 🔄 Déroulement d'une session
 
 | Fonctionnalité                                      | Alpha - 1.0 |
-
 | --------------------------------------------------- | :---------: |
-
 | Enchaînement des hands                              |      ✅      |
-
 | Gestion de la fin d'une hand                        |      ✅      |
-
 | Showdown automatique                                |      ✅      |
-
 | Attribution des pots                                |      ✅      |
-
 | Rotation du dealer                                  |      ✅      |
-
 | Élimination automatique des joueurs sans jetons     |      ✅      |
-
 | Arrêt de la session lorsqu'il ne reste qu'un joueur |      ✅      |
 
 [↑ Retour au sommaire](#sommaire)
