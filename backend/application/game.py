@@ -7,7 +7,7 @@ street), so a user interface stays in control of the pacing and never blocks.
 from collections.abc import Mapping
 from pathlib import Path
 
-from backend.poker_engine.betting import apply_action, get_legal_actions
+from backend.poker_engine.betting import apply_action
 from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.models import ActionEvent, Hand, Player
 from backend.poker_engine.session import GameSession
@@ -16,7 +16,7 @@ from .controllers import (
     DecisionContext,
     HumanController,
     PlayerController,
-    PlayerView,
+    build_decision_context,
 )
 from .persistence import save_session
 
@@ -126,35 +126,11 @@ class PokerGame:
 
     def build_context(self, player: Player) -> DecisionContext:
         """Build the information a player is allowed to see to decide."""
-        hand = self.hand
-
-        if hand is None:
+        if self.hand is None:
             raise RuntimeError("No hand has been started.")
 
-        views = {
-            seat.name: PlayerView(
-                name=seat.name,
-                stack=seat.stack,
-                current_bet=seat.current_bet,
-                total_contribution=seat.total_contribution,
-                position=seat.position,
-                folded=seat.folded,
-                all_in=seat.all_in,
-                is_current_player=seat is hand.current_player,
-            )
-            for seat in hand.table.players
-        }
-
-        return DecisionContext(
-            player=views[player.name],
-            hole_cards=tuple(player.hand),
-            community_cards=tuple(hand.community_cards),
-            pot=hand.pot,
-            current_bet=hand.current_bet,
-            big_blind=self.session.config.big_blind,
-            legal_actions=get_legal_actions(player=player, hand=hand),
-            players=tuple(views.values()),
-            street=hand.street,
+        return build_decision_context(
+            hand=self.hand, player=player, big_blind=self.session.config.big_blind
         )
 
     def _on_hand_finished(self) -> None:

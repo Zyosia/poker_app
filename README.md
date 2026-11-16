@@ -570,19 +570,39 @@ backend/
 │   ├── game.py            PokerGame: plays a session step by step
 │   ├── setup.py           Game creation from the user's settings
 │   └── persistence.py     Session saving (JSON)
-└── bots/                  Computer-controlled players
-    ├── random_bot.py      Random legal actions
-    └── basic_bot.py       Hand strength and pot odds heuristics
+├── bots/                  Computer-controlled players
+│   ├── random_bot.py      Random legal actions
+│   ├── basic_bot.py       Hand strength and pot odds heuristics
+│   ├── profiles.py        BotProfile and the play-style presets
+│   └── factory.py         Bot creation from a name (nit, tag, lag, …)
+└── simulation/            Headless bot simulations (Beta 1.0)
+    ├── config.py          SimulationConfig, SeatSpec, StackPolicy, seeds
+    ├── table.py           ArenaTable: bots playing hands step by step
+    ├── runner.py          Batches, stack policies, workers, replay
+    ├── events.py          Observer notified of every step of a hand
+    ├── stats.py           Mergeable player and Engine Lab statistics
+    ├── invariants.py      Chip checks run after every hand
+    ├── result.py          SimulationResult, JSON and CSV export
+    ├── summary.py         Plain-language reading of a result
+    ├── matchup.py         Heads-up matchup matrix and parameter sweep
+    ├── engine_lab.py      7-card frequencies against the theory
+    └── cli.py             python -m backend.simulation …
 
 frontend/
 ├── main.py                PySide6 application entry point
 ├── terminal_ui.py         Terminal front-end
 ├── theme.py               Colors and stylesheet
 ├── formatting.py          Texts for cards, actions and results
-├── ui/                    Main window, menu and game screens
-└── components/            Card, seat, table and action panel widgets
+├── modes.py               Modes listed by the main menu
+├── ui/
+│   ├── main_window.py     Navigation stack (Back works everywhere)
+│   ├── main_menu_screen.py
+│   ├── cash_setup_screen.py, game_screen.py            Cash game
+│   └── arena_setup_screen.py, arena_progress_screen.py,
+│       arena_results_screen.py, arena_watch_screen.py  Bot Arena
+└── components/            Card, seat, table, action panel and line chart
 
-tests/                     Engine, application, bots and interface tests
+tests/                     Engine, application, bots, simulation and UI tests
 ```
 
 The engine is driven **one step at a time**, which lets any front-end keep
@@ -650,20 +670,26 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 
 # Current Interface
 
-The application is a **PySide6 desktop application**: one human player
-against 1 to 5 bots.
+The application is a **PySide6 desktop application**. It opens on a **main
+menu** listing the modes: **Cash Game** and **Bot Arena** are available,
+**Tournament** and **Spin & Go** are shown as coming in V1.0, and a **Tools**
+slot is reserved. Every screen has a Back button.
 
 ```bash
 uv sync                        # install the dependencies
 uv run python -m frontend.main # start the desktop application
 ```
 
-- **Menu**: player name, number of opponents, bot level, starting stack and blinds.
+**Cash Game** — one human player against 1 to 5 bots:
+
+- **Setup**: player name, number of opponents, bot level, starting stack and blinds.
 - **Table**: seats, hole cards, community cards, bets, pot and dealer button.
 - **Action panel**: only the actions the engine reports as legal are enabled,
   with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise.
 - **Hand history**: every action, street and result of the session.
 - **Between hands**: next hand, or rebuy when the player is out of chips.
+
+**Bot Arena** — bots against bots, see [Beta 1.0](#beta-10--simulation).
 
 A minimal terminal front-end using the same application layer is also
 available:
@@ -762,7 +788,8 @@ Chip integrity
     └── Chip conservation
 ```
 
-Current test suite status:
+Test suite status at the end of Alpha 1.1 (the current count is given in
+[Beta 1.0](#beta-10--simulation)):
 
 ```text
 883 passed
@@ -875,35 +902,29 @@ The saved session contains the information required to reconstruct the progressi
 
 # Alpha 1.3 — Player Abstraction
 
-Fully decouple the poker engine from the terminal interface.
-
-Create an abstraction such as:
+✅ **Complete.** The poker engine is fully decoupled from any interface.
 
 ```text
-PlayerController
+PlayerController            choose_action(DecisionContext) -> Action
        │
-       ├── HumanController
+       ├── HumanController  the interface submits the user's decision
        │
-       ├── RandomBot
+       ├── RandomBot        random legal actions
        │
-       ├── StrategyBot
-       │
-       └── AIPlayer
+       └── BasicBot         heuristics, parameterized by a BotProfile
+                            (Nit, TAG, LAG, Calling Station, Maniac, …)
 ```
 
-The engine could then ask:
+The application asks *"What action should Player3 take?"* without knowing
+whether the answer comes from the desktop interface, the terminal or a bot.
+A controller only receives a `DecisionContext`: its own hole cards and the
+public state of the hand (stacks, bets, board, public action history), never
+the opponents' hole cards.
 
-```text
-"What action should Player3 take?"
-```
-
-without knowing whether the response comes from:
-
-- the terminal
-- a bot
-- an AI
-- a graphical interface
-- an API
+- [x] `PlayerController`
+- [x] `HumanController`
+- [x] Bot controllers (`RandomBot`, `BasicBot` and its profiles)
+- [x] `DecisionContext` without hidden information
 
 [↑ Back to table of contents](#table-of-contents)
 
@@ -978,22 +999,21 @@ There is not yet a tournament structure with automatic blind increases.
 
 ## Rebuy
 
-The rebuy system is not yet integrated into the complete session flow.
+Partially supported. In the cash game, a busted human player is offered a
+rebuy of the starting stack between hands; busted bots are eliminated. The Bot
+Arena has an automatic rebuy policy. There are no add-ons, rebuy limits or
+rebuy periods yet.
 
 ## Cash-game Rebuy
 
-There is not yet a mechanism allowing an eliminated player to add chips to their stack in a cash game.
+Partially supported: a busted player can rebuy, but a player who still has
+chips cannot top up their stack.
 
 ## Action Abstraction for Bots
 
-The engine currently operates through a terminal user interface.
-
-The architecture does not yet include an abstraction allowing user input to be easily replaced by:
-
-- an AI
-- a bot
-- an automated strategy
-- an external API
+✅ Resolved in Alpha 1.3 / 2.0: the engine is driven step by step and the
+application asks a `PlayerController` (desktop interface, bot, or any future
+AI or API) for each decision. See [Alpha 1.3](#alpha-13--player-abstraction).
 
 ## Complete Action History
 
@@ -1021,9 +1041,7 @@ State changes are currently applied directly to the `Player`, `Hand`, and `Table
 
 ## Simulation
 
-There is not yet a system for automatically simulating thousands or millions of hands autonomously.
-
-The current stress tests nevertheless execute several critical scenarios 100 times to verify engine stability.
+✅ Available since [Beta 1.0](#beta-10--simulation).
 
 ## AI
 
@@ -1035,78 +1053,208 @@ No poker AI is integrated into Alpha 1.x.
 
 # Beta 1.0 — Simulation
 
-Once player abstraction is in place, add a simulation engine.
+**Beta 1.0** adds a headless simulation engine, the **Bot Arena** and the
+**main menu**.
 
-Objectives:
+## Features
 
-- [ ] Automatically play thousands of hands
-- [ ] Measure statistics
-- [ ] Calculate action frequencies
-- [ ] Test hand distribution
-- [ ] Statistically test equity
-- [ ] Test split frequency
-- [ ] Test side pots
-- [ ] Benchmark the engine
+### 🤖 Simulation engine (`backend/simulation`)
 
-Example:
+- Plays thousands to millions of hands between bots, without any interface,
+  by driving the engine directly (`start_hand` / `get_legal_actions` /
+  `apply_action` / `advance_hand`). Nothing is saved to disk unless asked.
+- **Reproducible**: the deck and every bot draw from seeded random generators.
+  The budget is split into fixed-size batches whose seed derives from
+  `(seed, batch index)`, so the same configuration and seed give
+  **bit-identical results whatever the number of workers**. A run without a
+  seed draws one and reports it.
+- **Parallel**: a `multiprocessing` pool runs the batches, with progress
+  reporting and cancellation.
+- **Stack policies**:
+  - `reset`: everyone starts every hand with the starting stack (the default,
+    and the cleanest way to compare bots);
+  - `rebuy`: busted players are topped back up and rebuys are counted. Stacks
+    carry over inside a batch only: every batch starts from fresh stacks, and
+    the starting button rotates from one batch to the next;
+  - `elimination`: the budget is a number of complete sessions, each played
+    until one player has every chip. A session reaching
+    `max_hands_per_session` (default 5000) ranks the survivors by stack and
+    is reported as capped.
+- **Invariants**: chip conservation is checked after every hand. A failure
+  stops the run with the seed and the hand index, and `replay_hand()` replays
+  that exact hand.
+- **Duplicate mode** (reset policy only): every deal is played once per cyclic
+  rotation of the seats, so every bot plays every deal from every seat.
+
+### 📊 Statistics
+
+Every statistic is mergeable, so the results of parallel workers combine
+exactly.
+
+- **Per player**: hands, net chips, **bb/100** with its standard deviation and
+  **95% confidence interval**, **VPIP**, **PFR**, **3-bet %**, **aggression
+  factor** and frequency, **WTSD**, **W$SD**, c-bet and fold to c-bet, action
+  frequencies per street, results by position, rebuys and finishing positions
+  (win %, average finish).
+- **Chip graph**: cumulative net chips, down-sampled to at most 300 points.
+- **Engine Lab**: showdown hand categories, split pots, side pots per hand,
+  all-in and auto run-out frequencies, hands per second, plus a check of the
+  evaluator against the theoretical 7-card category frequencies.
+- **Export**: JSON (everything, including the configuration and the seed) and
+  CSV (one row per player).
+
+### 🎭 Play styles
+
+`BasicBot` is parameterized by a `BotProfile` (hand-strength thresholds, pot
+odds, bet and bluff probabilities, c-bets, sizing). The default profile is
+exactly the Alpha 2.0 `BasicBot`, and the cash game "Bot level" keeps its
+behaviour.
+
+| Bot             | Style                        |
+| --------------- | ---------------------------- |
+| Nit             | Very tight and passive       |
+| TAG             | Tight-aggressive             |
+| LAG             | Loose-aggressive             |
+| Calling Station | Loose-passive, rarely folds  |
+| Maniac          | Very loose, very aggressive  |
+| Basic           | The Alpha 2.0 heuristic bot  |
+| Random          | Random legal actions         |
+
+### 🏟️ Bot Arena
+
+- **Setup**: 2 to 6 seats (play style and optional name), presets such as
+  *TAG vs 3 Maniacs* or *Full styles table (6-max)*, hands, blinds, starting
+  stack, stack policy, seed, workers and duplicate mode.
+- **Fast mode**: simulates in the background with a progress bar, speed,
+  time remaining and Cancel, then shows the **results**: a sortable ranking,
+  the chip graph, a plain-language summary based on the confidence intervals,
+  an *Advanced* tab (action frequencies, results by position, Engine Lab,
+  seed and configuration), JSON / CSV export and *Run again (same seed)*.
+- **Watch mode**: the same hands as a fast run of the configuration, played
+  on the table at an adjustable speed (slow / normal / fast, pause, step),
+  with the hand history and an optional view of every player's cards.
+
+> 📸 *Screenshot placeholder: Bot Arena results.*
+
+## Command line
+
+```bash
+# A table of bots: prints a summary table and exports JSON + CSV
+uv run python -m backend.simulation run --seats tag,maniac,maniac,maniac --hands 100000 --seed 42
+
+# Elimination sessions, or duplicate mode
+uv run python -m backend.simulation run --seats nit,tag,lag --policy elimination --sessions 500
+uv run python -m backend.simulation run --seats tag,lag --hands 100000 --duplicate
+
+# Heads-up matchup matrix, and a parameter sweep
+uv run python -m backend.simulation matchup --bots nit,tag,lag,station,maniac --hands 20000
+uv run python -m backend.simulation sweep --bot tag --param bluff_probability --values 0,0.1,0.2,0.3 --field station,maniac
+
+# Engine validation, and the list of bots
+uv run python -m backend.simulation engine-lab --samples 500000
+uv run python -m backend.simulation bots
+```
+
+Common options: `--hands`, `--sessions`, `--blinds 5/10`, `--stack`,
+`--policy reset|rebuy|elimination`, `--seed`, `--workers`, `--batch-size`,
+`--max-hands-per-session`, `--duplicate`, `--history`, `--no-invariants`,
+`--output DIR` and `--no-export`. Exports go to `backend/data/simulations/`
+by default (ignored by git).
+
+## Engine change
+
+The hand evaluator now computes the best hand of 7 cards directly instead of
+comparing the 21 five-card combinations: about **12× faster**, with exactly
+the same results, checked against the previous algorithm (kept as
+`evaluate_best_of_combinations`). No poker rule changed.
+
+## Objectives
+
+- [x] Automatically play thousands of hands
+- [x] Measure statistics
+- [x] Calculate action frequencies
+- [x] Test hand distribution
+- [x] Statistically test equity (7-card category frequencies)
+- [x] Test split frequency
+- [x] Test side pots
+- [x] Benchmark the engine
+
+## Tests
 
 ```text
-Simulation
-──────────────
-
-Hands played : 1,000,000
-
-Player1 wins : 24.8%
-
-Player2 wins : 25.1%
-
-Player3 wins : 25.0%
-
-Player4 wins : 25.1%
-
-Split pots : 4.7%
+1102 passed
 ```
 
 [↑ Back to table of contents](#table-of-contents)
 
 ---
 
-# V1.0 — Advanced Poker Features
+# Beta 1.1 — Performance
 
-After stabilizing the V1.x engine:
+- [ ] Compute legal actions once per decision
+- [ ] Cheaper `DecisionContext` construction
+- [ ] History recording optional / outside the hot path of `apply_action`
+- [ ] Target: ~2,000 hands/s per core on a 6-max BasicBot table
+- [ ] Benchmark command tracked in the README
 
-- [ ] Antes
+---
+
+# V1.0 — Tournaments
+
+Engine & application:
+
+- [ ] Blind levels (by hands or by time) with configurable structures
+- [ ] Antes (including big-blind ante)
+- [ ] Elimination tracking and finishing positions
+- [ ] Payout structures (prize pool, places paid)
+- [ ] Add-on and tournament rebuy (optional per structure)
+
+Modes:
+
+- [ ] Tournament mode (single table, 2–6 players)
+- [ ] Spin & Go: 3 players, hyper-turbo structure, random prize multiplier
+
+Bots & simulation:
+
+- [ ] Short-stack play (push/fold based on stack in big blinds)
+- [ ] Bot Arena support for tournament structures (finish %, ROI, average place)
+
+---
+
+# V1.1 — Tools
+
+- [ ] Hand replayer (built on the Alpha 1.2 history)
+- [ ] Equity calculator (Monte Carlo, hands vs hands / vs random, any board)
+- [ ] "My stats": the human player's stats across sessions (reuses the Beta 1.0 stats collectors)
+- [ ] Session browser (saved sessions, results, chip graph)
+
+---
+
+# V1.2 — Cash Game Extras
+
+- [ ] Full rebuy / top-up rules (human and bots, min/max buy-in)
 - [ ] Straddle
-- [ ] Blind levels
-- [ ] Tournament mode
-- [ ] Cash-game mode
-- [ ] Rebuy
-- [ ] Add-on
-- [ ] Time bank
-- [ ] Configurable betting cap
-- [ ] Table balancing
-- [ ] Late registration
-- [ ] Elimination tracking
-
-[↑ Back to table of contents](#table-of-contents)
+- [ ] Time bank for the human player
 
 ---
 
 # V2.x — AI and Strategies
 
-Once player abstraction and simulation are available:
+Already available: random bot, basic bot (hand strength + pot odds), play-style profiles (Beta 1.0).
 
-- [ ] Basic bots
-- [ ] Random bot
-- [ ] Range-based bot
-- [ ] Monte Carlo equity
-- [ ] Pot odds
-- [ ] Expected Value
-- [ ] Hand range modelling
-- [ ] Adaptive strategies
-- [ ] Poker AI
+- [ ] Monte Carlo equity inside bot decisions (reuses the V1.1 equity calculator)
+- [ ] Range-based bot (preflop ranges by position)
+- [ ] Hand range modelling (narrowing opponents' ranges from their actions)
+- [ ] Expected value–based decisions
+- [ ] Adaptive / exploitative bot (uses opponents' live stats: VPIP, AF…)
+- [ ] Poker AI (e.g. CFR or self-play), evaluated in Bot Arena
 
-[↑ Back to table of contents](#table-of-contents)
+---
+
+# Later / Maybe
+
+- [ ] Multi-table tournaments (table balancing, late registration)
+- [ ] Configurable betting cap / Limit Hold'em
 
 ---
 
@@ -1188,7 +1336,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **883 passing tests**, covering betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1102 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

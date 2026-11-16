@@ -6,6 +6,8 @@ from itertools import combinations
 
 from .constants import RANKS, Card
 
+RANK_VALUES: dict[str, int] = {rank: index + 2 for index, rank in enumerate(RANKS)}
+
 
 class HandCategory(IntEnum):
     HIGH_CARD = 0
@@ -75,20 +77,170 @@ def evaluate_hand(
             "A Texas Hold'em hand cannot contain more than seven available cards."
         )
 
-    evaluations = [
-        evaluate_five_cards(
-            list(five_cards),
-        )
-        for five_cards in combinations(
-            all_cards,
-            5,
-        )
-    ]
+    ranks = [card_rank(card) for card in all_cards]
+    suits = [card[1] for card in all_cards]
 
+    category, tiebreaker, flush_suit = _best_category(ranks, suits)
+    cards = _select_cards(all_cards, ranks, suits, category, tiebreaker, flush_suit)
+
+    return make_evaluation(rank=category, cards=cards, tiebreaker=tiebreaker)
+
+
+def evaluate_best_of_combinations(cards: list[Card]) -> HandEvaluation:
+    """Evaluate every five-card combination and keep the best one.
+
+    This is the definition of the best hand. ``evaluate_hand`` computes the
+    same result directly; this slower version is kept as its reference.
+    """
     return max(
-        evaluations,
+        (
+            evaluate_five_cards(list(five_cards))
+            for five_cards in combinations(cards, 5)
+        ),
         key=HandEvaluation.comparison_key,
     )
+
+
+def _best_category(
+    ranks: list[int],
+    suits: list[str],
+) -> tuple[HandCategory, tuple[int, ...], str | None]:
+    """Return the category and tiebreaker of the best five cards.
+
+    The third value is the suit of the flush, when the best hand is one.
+    """
+    flush_suit = next((suit for suit in set(suits) if suits.count(suit) >= 5), None)
+    flush_ranks: list[int] = []
+
+    if flush_suit is not None:
+        flush_ranks = sorted(
+            (
+                rank
+                for rank, suit in zip(ranks, suits, strict=True)
+                if suit == flush_suit
+            ),
+            reverse=True,
+        )
+        straight_flush_high = _straight_high(flush_ranks)
+
+        if straight_flush_high is not None:
+            return HandCategory.STRAIGHT_FLUSH, (straight_flush_high,), flush_suit
+
+    counts: dict[int, int] = {}
+
+    for rank in ranks:
+        counts[rank] = counts.get(rank, 0) + 1
+
+    distinct_ranks = sorted(counts, reverse=True)
+    # The largest groups first, the highest rank first among equal groups.
+    groups = sorted(counts, key=lambda rank: (counts[rank], rank), reverse=True)
+    top_rank = groups[0]
+    top_count = counts[top_rank]
+    second_rank = groups[1]
+    second_count = counts[second_rank]
+
+    def kickers(*excluded: int) -> list[int]:
+        return [rank for rank in distinct_ranks if rank not in excluded]
+
+    if top_count == 4:
+        return HandCategory.FOUR_OF_A_KIND, (top_rank, kickers(top_rank)[0]), None
+
+    if top_count == 3 and second_count >= 2:
+        return HandCategory.FULL_HOUSE, (top_rank, second_rank), None
+
+    if flush_suit is not None:
+        return HandCategory.FLUSH, tuple(flush_ranks[:5]), flush_suit
+
+    straight_high = _straight_high(distinct_ranks)
+
+    if straight_high is not None:
+        return HandCategory.STRAIGHT, (straight_high,), None
+
+    if top_count == 3:
+        return (
+            HandCategory.THREE_OF_A_KIND,
+            (top_rank, *kickers(top_rank)[:2]),
+            None,
+        )
+
+    if top_count == 2 and second_count == 2:
+        return (
+            HandCategory.TWO_PAIR,
+            (top_rank, second_rank, kickers(top_rank, second_rank)[0]),
+            None,
+        )
+
+    if top_count == 2:
+        return HandCategory.PAIR, (top_rank, *kickers(top_rank)[:3]), None
+
+    return HandCategory.HIGH_CARD, tuple(distinct_ranks[:5]), None
+
+
+def _straight_high(ranks: list[int]) -> int | None:
+    """Return the high card of the best straight among ``ranks``, if any."""
+    mask = 0
+
+    for rank in ranks:
+        mask |= 1 << rank
+
+    if mask & (1 << 14):
+        mask |= 1 << 1  # The ace also plays low, in A-2-3-4-5.
+
+    for high in range(14, 4, -1):
+        window = 0b11111 << (high - 4)
+
+        if mask & window == window:
+            return high
+
+    return None
+
+
+def _select_cards(
+    cards: list[Card],
+    ranks: list[int],
+    suits: list[str],
+    category: HandCategory,
+    tiebreaker: tuple[int, ...],
+    flush_suit: str | None,
+) -> list[Card]:
+    """Pick the five cards making the best hand.
+
+    When several sets of cards make the same hand, the earliest cards are
+    kept, in their original order, like the first best combination would be.
+    """
+    needed: dict[int, int] = {}
+
+    for rank, count in _ranks_of_best_hand(category, tiebreaker):
+        needed[rank] = needed.get(rank, 0) + count
+
+    selected: list[Card] = []
+
+    for card, rank, suit in zip(cards, ranks, suits, strict=True):
+        if needed.get(rank, 0) > 0 and (flush_suit is None or suit == flush_suit):
+            selected.append(card)
+            needed[rank] -= 1
+
+    return selected
+
+
+def _ranks_of_best_hand(
+    category: HandCategory, tiebreaker: tuple[int, ...]
+) -> list[tuple[int, int]]:
+    """Return the (rank, count) pairs making up a hand."""
+    if category in (HandCategory.STRAIGHT, HandCategory.STRAIGHT_FLUSH):
+        high = tiebreaker[0]
+        return [(14 if rank == 1 else rank, 1) for rank in range(high, high - 5, -1)]
+
+    group_sizes: dict[HandCategory, tuple[int, ...]] = {
+        HandCategory.FOUR_OF_A_KIND: (4, 1),
+        HandCategory.FULL_HOUSE: (3, 2),
+        HandCategory.THREE_OF_A_KIND: (3, 1, 1),
+        HandCategory.TWO_PAIR: (2, 2, 1),
+        HandCategory.PAIR: (2, 1, 1, 1),
+    }
+    sizes = group_sizes.get(category, (1, 1, 1, 1, 1))
+
+    return list(zip(tiebreaker, sizes, strict=True))
 
 
 def evaluate_five_cards(
@@ -278,12 +430,12 @@ def card_rank(
     if len(card) != 2:
         raise ValueError(f"Invalid card: {card}")
 
-    rank = card[0]
+    rank = RANK_VALUES.get(card[0])
 
-    try:
-        return RANKS.index(rank) + 2
-    except ValueError as exc:
-        raise ValueError(f"Invalid card rank: {card}") from exc
+    if rank is None:
+        raise ValueError(f"Invalid card rank: {card}")
+
+    return rank
 
 
 def card_suit(

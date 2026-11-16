@@ -8,7 +8,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from backend.poker_engine.actions import Action, LegalAction
+from backend.poker_engine.betting import get_legal_actions
 from backend.poker_engine.constants import Card, Position, Street
+from backend.poker_engine.models import ActionEvent, Hand, Player
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,52 @@ class DecisionContext:
     legal_actions: tuple[LegalAction, ...]
     players: tuple[PlayerView, ...]
     street: Street
+    actions: tuple[ActionEvent, ...] = ()
+    """Public actions of the current hand so far, blinds included."""
+
+
+def build_decision_context(
+    hand: Hand, player: Player, big_blind: int
+) -> DecisionContext:
+    """Build the information ``player`` is allowed to see to decide.
+
+    Only the player's own hole cards are included, never the opponents'.
+    """
+    current_player = hand.current_player
+    player_view: PlayerView | None = None
+    views: list[PlayerView] = []
+
+    for seat in hand.table.players:
+        view = PlayerView(
+            name=seat.name,
+            stack=seat.stack,
+            current_bet=seat.current_bet,
+            total_contribution=seat.total_contribution,
+            position=seat.position,
+            folded=seat.folded,
+            all_in=seat.all_in,
+            is_current_player=seat is current_player,
+        )
+        views.append(view)
+
+        if seat is player:
+            player_view = view
+
+    if player_view is None:
+        raise ValueError(f"{player.name} is not seated at this table.")
+
+    return DecisionContext(
+        player=player_view,
+        hole_cards=tuple(player.hand),
+        community_cards=tuple(hand.community_cards),
+        pot=hand.pot,
+        current_bet=hand.current_bet,
+        big_blind=big_blind,
+        legal_actions=get_legal_actions(player=player, hand=hand),
+        players=tuple(views),
+        street=hand.street,
+        actions=tuple(hand.actions),
+    )
 
 
 class PlayerController(ABC):

@@ -14,9 +14,9 @@ from backend.poker_engine.actions import Action
 from backend.poker_engine.constants import ActionType
 from backend.poker_engine.session import GameConfig, create_session
 from frontend.components.seat_widget import SeatHighlight
+from frontend.ui.cash_setup_screen import CashSetupScreen
 from frontend.ui.game_screen import GameScreen, build_table_state
 from frontend.ui.main_window import MainWindow
-from frontend.ui.menu_screen import MenuScreen
 
 ProcessUntil = Callable[[Callable[[], bool]], None]
 
@@ -314,7 +314,7 @@ def test_menu_button_stops_the_game(screen: GameScreen) -> None:
 
 
 def test_menu_emits_the_chosen_settings(qapp: QApplication) -> None:
-    menu = MenuScreen()
+    menu = CashSetupScreen()
     received: list[GameSettings] = []
     menu.start_requested.connect(received.append)
 
@@ -338,7 +338,7 @@ def test_menu_emits_the_chosen_settings(qapp: QApplication) -> None:
 
 
 def test_menu_rejects_an_empty_name(qapp: QApplication) -> None:
-    menu = MenuScreen()
+    menu = CashSetupScreen()
     received: list[GameSettings] = []
     menu.start_requested.connect(received.append)
 
@@ -353,10 +353,13 @@ def test_main_window_starts_a_game_and_returns_to_the_menu(qapp: QApplication) -
     window = MainWindow(save_sessions=False)
     window.game_screen.step_delay_ms = 0
 
-    assert window.screens.currentWidget() is window.menu_screen
+    assert window.screens.currentWidget() is window.main_menu
 
-    window.menu_screen.opponents_spin.setValue(4)
-    window.menu_screen.play_button.click()
+    window.main_menu.card("cash").click()
+    assert window.screens.currentWidget() is window.cash_setup_screen
+
+    window.cash_setup_screen.opponents_spin.setValue(4)
+    window.cash_setup_screen.play_button.click()
 
     game = window.game_screen.game
 
@@ -368,5 +371,9 @@ def test_main_window_starts_a_game_and_returns_to_the_menu(qapp: QApplication) -
 
     window.game_screen.menu_button.click()
 
-    assert window.screens.currentWidget() is window.menu_screen
+    assert window.screens.currentWidget() is window.cash_setup_screen
     assert window.game_screen.game is None
+
+    window.cash_setup_screen.back_button.click()
+
+    assert window.screens.currentWidget() is window.main_menu
