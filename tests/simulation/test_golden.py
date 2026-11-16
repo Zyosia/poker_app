@@ -4,6 +4,10 @@ They pin the exact results of the simulator before any optimization. A
 change to the engine, the bots or the statistics that alters a single action,
 card, payout or statistic changes a fingerprint. Never update the expected
 values to make an optimization pass: an optimization must not change results.
+
+Fields added to the exports after Beta 1.1 (``ADDED_HISTORY_FIELDS``) are
+left out of the result fingerprint: they add information without changing
+any result, and the fingerprint keeps pinning the same hands.
 """
 
 import hashlib
@@ -20,6 +24,9 @@ from backend.simulation.runner import run_simulation
 from tests.simulation.helpers import AttachObserver
 
 TIMING_FIELDS = ("duration_seconds", "hands_per_second")
+
+ADDED_HISTORY_FIELDS = ("blind_level", "dead_money")
+"""Hand history fields added in V1.0 (session file format version 2)."""
 
 
 class HandFingerprint(HandObserver):
@@ -58,6 +65,10 @@ def result_fingerprint(result: SimulationResult) -> str:
 
     for name in TIMING_FIELDS:
         data.pop(name)
+
+    for history in data["histories"]:
+        for name in ADDED_HISTORY_FIELDS:
+            history.pop(name)
 
     encoded = json.dumps(data, sort_keys=True, default=str).encode()
 

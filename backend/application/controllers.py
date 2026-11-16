@@ -47,7 +47,9 @@ class DecisionContext(NamedTuple):
     players: tuple[PlayerView, ...]
     street: Street
     actions: tuple[ActionEvent, ...] = ()
-    """Public actions of the current hand so far, blinds included."""
+    """Public actions of the current hand so far, blinds and antes included."""
+    ante: int = 0
+    """Ante of the hand (per player, or for the table with a big-blind ante)."""
 
 
 def build_decision_context(
@@ -96,6 +98,7 @@ def build_decision_context(
         players=tuple(views),
         street=hand.street,
         actions=tuple(hand.actions),
+        ante=hand.blind_level.ante if hand.blind_level is not None else 0,
     )
 
 

@@ -67,7 +67,7 @@ def evaluate_showdown(hand: Hand, players: list[Player]) -> None:
 
 def distribute_pots(hand: Hand) -> None:
     """Build and distribute the main pot and every side pot independently."""
-    pots = build_pots(players=hand.table.players)
+    pots = build_pots(players=hand.table.players, dead_money=hand.dead_money)
     calculated_pot = total_pot_amount(pots)
 
     if calculated_pot != hand.pot:
