@@ -46,14 +46,17 @@ def player_status(player: Player, hand: Hand) -> str:
     return player.position or ""
 
 
-def build_table_state(hand: Hand, human_name: str) -> TableState:
+def build_table_state(
+    hand: Hand, human_name: str | None, show_all_cards: bool = False
+) -> TableState:
     """Translate the engine state into what the table displays.
 
-    Seats are rotated so the human sits at the bottom. Opponents' cards stay
-    face down unless they reached the showdown.
+    Seats are rotated so the human sits at the bottom; a spectator (no human)
+    sees the first seat at the bottom. Other players' cards stay face down
+    unless they reached the showdown, or ``show_all_cards`` is set.
     """
     players = hand.table.players
-    human_index = next(i for i, p in enumerate(players) if p.name == human_name)
+    human_index = next((i for i, p in enumerate(players) if p.name == human_name), 0)
     ordered = players[human_index:] + players[:human_index]
 
     seats = []
@@ -66,8 +69,10 @@ def build_table_state(hand: Hand, human_name: str) -> TableState:
         else:
             highlight = SeatHighlight.NONE
 
-        shows_cards = player.name == human_name or (
-            player.name in hand.showdown_evaluations
+        shows_cards = (
+            show_all_cards
+            or player.name == human_name
+            or player.name in hand.showdown_evaluations
         )
 
         seats.append(

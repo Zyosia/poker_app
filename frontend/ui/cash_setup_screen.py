@@ -1,4 +1,4 @@
-"""Main menu and game configuration."""
+"""Configuration of a cash game against bots."""
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -24,16 +24,16 @@ BOT_LEVEL_LABELS = {
 DEFAULT_SETTINGS = GameSettings()
 
 
-class MenuScreen(QWidget):
-    """Lets the user configure and start a game."""
+class CashSetupScreen(QWidget):
+    """Lets the user configure and start a cash game."""
 
     start_requested = Signal(GameSettings)
-    quit_requested = Signal()
+    back_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        title = QLabel("♠ ♥  POKER  ♦ ♣")
+        title = QLabel("♠  CASH GAME")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle = QLabel("No Limit Texas Hold'em")
@@ -70,8 +70,8 @@ class MenuScreen(QWidget):
         self.play_button.setObjectName("primary")
         self.play_button.setMinimumHeight(46)
         self.play_button.clicked.connect(self._on_play_clicked)
-        self.quit_button = QPushButton("Quit")
-        self.quit_button.clicked.connect(self.quit_requested)
+        self.back_button = QPushButton("Back")
+        self.back_button.clicked.connect(self.back_requested)
 
         form = QFormLayout()
         form.setVerticalSpacing(12)
@@ -91,7 +91,7 @@ class MenuScreen(QWidget):
         panel_layout.addLayout(form)
         panel_layout.addWidget(self.error_label)
         panel_layout.addWidget(self.play_button)
-        panel_layout.addWidget(self.quit_button)
+        panel_layout.addWidget(self.back_button)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)

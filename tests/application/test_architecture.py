@@ -9,6 +9,8 @@ BACKEND_MODULES = (
     "backend.application.setup",
     "backend.bots.basic_bot",
     "backend.bots.random_bot",
+    "backend.bots.factory",
+    "backend.simulation.runner",
 )
 
 
@@ -37,7 +39,8 @@ def test_engine_does_not_depend_on_the_application_or_bots() -> None:
         "importlib.import_module('backend.poker_engine.hand')\n"
         "importlib.import_module('backend.poker_engine.showdown')\n"
         "loaded = [m for m in sys.modules\n"
-        "          if m.startswith(('backend.application.', 'backend.bots.'))]\n"
+        "          if m.startswith(('backend.application.', 'backend.bots.',\n"
+        "                           'backend.simulation.'))]\n"
         "assert not loaded, loaded\n"
     )
 

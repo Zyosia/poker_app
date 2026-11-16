@@ -3,6 +3,7 @@
 Run with ``python -m frontend.main``.
 """
 
+import multiprocessing
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -23,4 +24,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # The Bot Arena runs simulations in worker processes; this makes them
+    # start correctly from a frozen (PyInstaller) build too.
+    multiprocessing.freeze_support()
     sys.exit(main())

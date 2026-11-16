@@ -16,6 +16,19 @@ CARD_BACK_PATTERN = QColor("#3f6fb8")
 CARD_RED = QColor("#c8102e")
 CARD_BLACK = QColor("#16181d")
 CHIP = QColor("#d9534f")
+GRID = QColor("#2c3442")
+POSITIVE = QColor("#3ddc84")
+NEGATIVE = QColor("#ff7b7b")
+
+SERIES_COLORS = (
+    QColor("#f2c14e"),
+    QColor("#4ea8f2"),
+    QColor("#3ddc84"),
+    QColor("#e0607e"),
+    QColor("#b48cf2"),
+    QColor("#f29a4e"),
+)
+"""One colour per player line in the charts."""
 
 STYLESHEET = """
 QMainWindow { background-color: #14181f; }
@@ -104,4 +117,63 @@ QSlider::handle:horizontal {
     border-radius: 8px;
 }
 QSlider::handle:horizontal:disabled { background: #5d6675; }
+
+QPushButton#modeCard {
+    background-color: #1c222c;
+    border: 1px solid #2c3442;
+    border-radius: 14px;
+    padding: 0;
+    text-align: left;
+}
+QPushButton#modeCard:hover { background-color: #222a36; border-color: #b9861d; }
+QPushButton#modeCard:disabled { background-color: #171b22; border-color: #222833; }
+QLabel#modeSymbol { font-size: 30px; color: #f2c14e; }
+QLabel#modeSymbol:disabled { color: #5d6675; }
+QLabel#modeName { font-size: 17px; font-weight: 700; }
+QLabel#modeName:disabled { color: #6c7584; }
+QLabel#modeDescription { font-size: 12px; color: #9aa4b2; }
+QLabel#modeNote { font-size: 11px; font-weight: 600; color: #b9861d; }
+QLabel#errorText { color: #ff7b7b; }
+QLabel#summaryText { font-size: 15px; }
+
+QCheckBox { spacing: 8px; }
+QCheckBox:disabled { color: #5d6675; }
+
+QTableWidget {
+    background-color: #1c222c;
+    alternate-background-color: #202733;
+    border: 1px solid #2c3442;
+    border-radius: 8px;
+    gridline-color: #2c3442;
+}
+QHeaderView::section {
+    background-color: #232a36;
+    color: #9aa4b2;
+    border: none;
+    border-bottom: 1px solid #3a4456;
+    padding: 6px 8px;
+    font-weight: 600;
+}
+
+QTabWidget::pane { border: 1px solid #2c3442; border-radius: 8px; top: -1px; }
+QTabBar::tab {
+    background: #1c222c;
+    border: 1px solid #2c3442;
+    padding: 8px 18px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    color: #9aa4b2;
+}
+QTabBar::tab:selected { background: #232a36; color: #f2c14e; }
+
+QProgressBar {
+    background-color: #232a36;
+    border: 1px solid #3a4456;
+    border-radius: 8px;
+    height: 22px;
+    text-align: center;
+}
+QProgressBar::chunk { background-color: #2f8f5b; border-radius: 7px; }
+
+QScrollArea { border: none; background: transparent; }
 """

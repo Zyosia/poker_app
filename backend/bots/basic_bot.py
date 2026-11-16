@@ -1,11 +1,15 @@
-"""A bot using simple heuristics: hand strength, pot odds and a bit of bluff."""
+"""A bot using simple heuristics: hand strength, pot odds and a bit of bluff.
+
+Its parameters come from a ``BotProfile``; the default profile is the
+original behaviour, the presets of ``profiles`` give other play styles.
+"""
 
 import random
 from collections import Counter
 
 from backend.application.controllers import DecisionContext, PlayerController
 from backend.poker_engine.actions import Action, LegalAction
-from backend.poker_engine.constants import ActionType, Card
+from backend.poker_engine.constants import ActionType, Card, Street
 from backend.poker_engine.hand_evaluator import (
     HandCategory,
     card_rank,
@@ -14,10 +18,10 @@ from backend.poker_engine.hand_evaluator import (
     get_straight_high,
 )
 
-PREMIUM_HAND = 0.9
-STRONG_HAND = 0.75
-GOOD_HAND = 0.5
-MARGINAL_HAND = 0.3
+from .profiles import BASIC_PROFILE, BotProfile
+
+# Below this strength, a hand is worth improving with its draws.
+DRAW_WORTH_THRESHOLD = 0.5
 
 # Chen score from which starting hands are rated as strong as possible.
 CHEN_SCORE_FOR_FULL_STRENGTH = 12
@@ -82,7 +86,7 @@ def postflop_strength(
     else:
         strength = 0.15
 
-    if len(community_cards) < 5 and strength < GOOD_HAND:
+    if len(community_cards) < 5 and strength < DRAW_WORTH_THRESHOLD:
         strength += _draw_bonus(hole_cards + community_cards)
 
     return strength
@@ -130,10 +134,16 @@ def _draw_bonus(cards: tuple[Card, ...]) -> float:
 class BasicBot(PlayerController):
     """Plays its hand strength against the pot odds, with occasional bluffs."""
 
-    def __init__(self, rng: random.Random | None = None) -> None:
+    def __init__(
+        self,
+        rng: random.Random | None = None,
+        profile: BotProfile = BASIC_PROFILE,
+    ) -> None:
         self._rng = rng or random.Random()
+        self.profile = profile
 
     def choose_action(self, context: DecisionContext) -> Action:
+        profile = self.profile
         legal = {action.type: action for action in context.legal_actions}
         strength = self._estimate_strength(context)
         call_action = legal.get(ActionType.CALL)
@@ -144,27 +154,66 @@ class BasicBot(PlayerController):
         assert call_action.amount is not None
         pot_odds = call_action.amount / (context.pot + call_action.amount)
 
-        is_cheap_to_call = call_action.amount <= 3 * context.big_blind
+        is_cheap_to_call = (
+            call_action.amount <= profile.cheap_call_big_blinds * context.big_blind
+        )
 
-        if strength >= PREMIUM_HAND or (strength >= STRONG_HAND and is_cheap_to_call):
+        if strength >= profile.raise_threshold or (
+            strength >= profile.cheap_raise_threshold and is_cheap_to_call
+        ):
             return self._raise_or(
-                context, legal, fraction=0.75, fallback=ActionType.CALL
+                context,
+                legal,
+                fraction=profile.raise_pot_fraction,
+                fallback=ActionType.CALL,
             )
 
-        if strength >= STRONG_HAND:
-            return Action(type=ActionType.CALL)
+        if (
+            strength >= profile.call_threshold
+            or (
+                strength >= profile.good_threshold
+                and pot_odds <= profile.good_max_pot_odds
+            )
+            or (
+                strength >= profile.marginal_threshold
+                and pot_odds <= profile.marginal_max_pot_odds
+            )
+        ):
+            return self._call_or_raise(context, legal)
 
-        if strength >= GOOD_HAND and pot_odds <= 0.4:
-            return Action(type=ActionType.CALL)
-
-        if strength >= MARGINAL_HAND and pot_odds <= 0.25:
-            return Action(type=ActionType.CALL)
+        if self._chance(profile.bluff_raise_probability):
+            return self._raise_or(
+                context,
+                legal,
+                fraction=profile.raise_pot_fraction,
+                fallback=ActionType.FOLD,
+            )
 
         return Action(type=ActionType.FOLD)
 
+    def _chance(self, probability: float) -> bool:
+        """Draw a random event; a zero probability draws no random number."""
+        return probability > 0 and self._rng.random() < probability
+
+    def _call_or_raise(
+        self, context: DecisionContext, legal: dict[ActionType, LegalAction]
+    ) -> Action:
+        if self._chance(self.profile.raise_instead_of_call_probability):
+            return self._raise_or(
+                context,
+                legal,
+                fraction=self.profile.raise_pot_fraction,
+                fallback=ActionType.CALL,
+            )
+
+        return Action(type=ActionType.CALL)
+
     def _estimate_strength(self, context: DecisionContext) -> float:
         if not context.community_cards:
-            strength = preflop_strength(context.hole_cards)
+            strength = (
+                preflop_strength(context.hole_cards)
+                + self.profile.preflop_strength_bonus
+            )
         else:
             strength = postflop_strength(context.hole_cards, context.community_cards)
 
@@ -175,7 +224,7 @@ class BasicBot(PlayerController):
         )
 
         # A hand loses value against several opponents.
-        return strength - 0.02 * max(0, opponents - 1)
+        return strength - self.profile.multiway_penalty * max(0, opponents - 1)
 
     def _act_when_checked_to(
         self,
@@ -183,19 +232,45 @@ class BasicBot(PlayerController):
         legal: dict[ActionType, LegalAction],
         strength: float,
     ) -> Action:
-        if strength >= STRONG_HAND:
-            bet_probability = 0.85
-        elif strength >= GOOD_HAND:
-            bet_probability = 0.5
-        else:
-            bet_probability = 0.08  # Occasional bluff.
+        profile = self.profile
 
-        if self._rng.random() < bet_probability:
+        if strength >= profile.strong_bet_threshold:
+            bet_probability = profile.value_bet_probability
+        elif strength >= profile.medium_bet_threshold:
+            bet_probability = profile.medium_bet_probability
+        else:
+            bet_probability = profile.bluff_probability  # Occasional bluff.
+
+        wants_to_bet = self._rng.random() < bet_probability
+
+        if not wants_to_bet and self._is_cbet_spot(context):
+            wants_to_bet = self._chance(profile.cbet_probability)
+
+        if wants_to_bet:
             return self._raise_or(
-                context, legal, fraction=0.6, fallback=ActionType.CHECK
+                context,
+                legal,
+                fraction=profile.bet_pot_fraction,
+                fallback=ActionType.CHECK,
             )
 
         return Action(type=ActionType.CHECK)
+
+    def _is_cbet_spot(self, context: DecisionContext) -> bool:
+        """True on the flop when this bot made the last pre-flop raise."""
+        if context.street != Street.FLOP:
+            return False
+
+        aggressor = None
+
+        for event in context.actions:
+            if event.street == Street.PREFLOP and event.action in (
+                ActionType.RAISE,
+                ActionType.ALL_IN,
+            ):
+                aggressor = event.player
+
+        return aggressor == context.player.name
 
     def _raise_or(
         self,
