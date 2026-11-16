@@ -26,6 +26,13 @@ from backend.simulation.config import (
     SimulationConfig,
     StackPolicy,
 )
+from backend.simulation.tournament_runner import (
+    MULTIPLIER_TABLES,
+    PAYOUTS,
+    STRUCTURES,
+    RunType,
+    TournamentRunConfig,
+)
 
 from .cash_setup_screen import BLIND_LEVELS
 
@@ -37,7 +44,27 @@ ARENA_PRESETS: dict[str, tuple[str, ...]] = {
     "Full styles table (6-max)": ("nit", "tag", "lag", "station", "maniac", "basic"),
     "Heads-up: TAG vs Calling Station": ("tag", "station"),
     "Tight vs loose (4-max)": ("nit", "tag", "lag", "maniac"),
+    "Spin & Go: TAG vs LAG vs Maniac": ("tag", "lag", "maniac"),
 }
+
+CASH = "cash"
+RUN_TYPES = {
+    CASH: "Cash game",
+    RunType.TOURNAMENT: "Tournament",
+    RunType.SPIN: "Spin & Go",
+}
+TOURNAMENT_PRESETS = (100, 1_000, 10_000)
+PAYOUT_LABELS = {
+    None: "Default (by players)",
+    "wta": "Winner takes all",
+    "65-35": "65 / 35",
+    "50-30-20": "50 / 30 / 20",
+}
+WATCH_DISABLED_TOOLTIP = (
+    "Watch mode plays cash tables. Play a tournament yourself from the main menu."
+)
+
+ArenaConfig = SimulationConfig | TournamentRunConfig
 
 POLICY_LABELS = {
     StackPolicy.RESET_EACH_HAND: "Reset each hand",
@@ -116,7 +143,8 @@ class SeatRow(QWidget):
 class ArenaSetupScreen(QWidget):
     """Configures a Bot Arena run, played fast or watched on the table."""
 
-    run_requested = Signal(SimulationConfig)
+    run_requested = Signal(object)
+    """Emitted with a ``SimulationConfig`` or a ``TournamentRunConfig``."""
     watch_requested = Signal(SimulationConfig)
     back_requested = Signal()
 
@@ -165,8 +193,39 @@ class ArenaSetupScreen(QWidget):
 
         self._build_layout(title, subtitle)
         self.set_seats(ARENA_PRESETS["TAG vs 3 Maniacs"])
+        self._update_visibility()
 
     def _build_settings(self) -> None:
+        self.run_type_combo = QComboBox()
+
+        for key, label in RUN_TYPES.items():
+            self.run_type_combo.addItem(label, key)
+
+        self.run_type_combo.currentIndexChanged.connect(self._update_visibility)
+
+        self.tournaments_spin = QSpinBox()
+        self.tournaments_spin.setRange(1, 1_000_000)
+        self.tournaments_spin.setSingleStep(100)
+        self.tournaments_spin.setValue(TOURNAMENT_PRESETS[1])
+        self.structure_combo = QComboBox()
+
+        for key in ("turbo", "regular", "deep"):
+            structure = STRUCTURES[key]
+            self.structure_combo.addItem(
+                f"{structure.name} ({structure.hands_per_level} hands per level)", key
+            )
+
+        self.payout_combo = QComboBox()
+
+        for key in (None, *PAYOUTS):
+            self.payout_combo.addItem(PAYOUT_LABELS[key], key)
+
+        self.rebuys_check = QCheckBox("Rebuys (3 levels) and add-on")
+        self.multipliers_combo = QComboBox()
+
+        for key, table in MULTIPLIER_TABLES.items():
+            self.multipliers_combo.addItem(table.name, key)
+
         self.hands_combo = QComboBox()
 
         for hands in HAND_PRESETS:
@@ -219,17 +278,27 @@ class ArenaSetupScreen(QWidget):
         hands_row.addWidget(self.hands_combo)
         hands_row.addWidget(self.hands_spin)
 
+        self.hands_row = QWidget()
+        self.hands_row.setLayout(hands_row)
+        hands_row.setContentsMargins(0, 0, 0, 0)
+
         self.form = QFormLayout()
         self.form.setVerticalSpacing(10)
         self.form.setHorizontalSpacing(18)
-        self.form.addRow("Hands", hands_row)
+        self.form.addRow("Run type", self.run_type_combo)
+        self.form.addRow("Hands", self.hands_row)
         self.form.addRow("Sessions", self.sessions_spin)
+        self.form.addRow("Tournaments", self.tournaments_spin)
+        self.form.addRow("Structure", self.structure_combo)
+        self.form.addRow("Payout", self.payout_combo)
+        self.form.addRow("Multipliers", self.multipliers_combo)
         self.form.addRow("Blinds", self.blinds_combo)
         self.form.addRow("Starting stack", self.stack_spin)
         self.form.addRow("Stack policy", self.policy_combo)
         self.form.addRow("Seed", self.seed_edit)
         self.form.addRow("Workers", self.workers_spin)
         self.form.addRow("", self.duplicate_check)
+        self.form.addRow("", self.rebuys_check)
 
         self._update_visibility()
 
@@ -342,11 +411,43 @@ class ArenaSetupScreen(QWidget):
         # Qt hands the enum back as a plain string.
         return StackPolicy(self.policy_combo.currentData())
 
+    @property
+    def run_type(self) -> RunType | None:
+        """The tournament run type, or None for a cash run."""
+        key = self.run_type_combo.currentData()
+
+        return None if key == CASH else RunType(key)
+
     def _update_visibility(self) -> None:
+        run_type = self.run_type
+        is_cash = run_type is None
         is_elimination = self.stack_policy == StackPolicy.ELIMINATION
-        self.form.setRowVisible(0, not is_elimination)
-        self.form.setRowVisible(1, is_elimination)
+        visible = {
+            self.hands_row: is_cash and not is_elimination,
+            self.sessions_spin: is_cash and is_elimination,
+            self.blinds_combo: is_cash,
+            self.stack_spin: is_cash,
+            self.policy_combo: is_cash,
+            self.duplicate_check: is_cash,
+            self.tournaments_spin: not is_cash,
+            self.structure_combo: run_type == RunType.TOURNAMENT,
+            self.payout_combo: run_type == RunType.TOURNAMENT,
+            self.rebuys_check: run_type == RunType.TOURNAMENT,
+            self.multipliers_combo: run_type == RunType.SPIN,
+        }
+
+        for widget, shown in visible.items():
+            self.form.setRowVisible(widget, shown)
+
         self.hands_spin.setVisible(self.hands_combo.currentData() == CUSTOM)
+
+        if hasattr(self, "watch_button"):
+            self.watch_button.setEnabled(is_cash)
+            self.watch_button.setToolTip(
+                "Play the hands on the table, at your pace."
+                if is_cash
+                else WATCH_DISABLED_TOOLTIP
+            )
 
         allows_duplicate = self.stack_policy == StackPolicy.RESET_EACH_HAND
         self.duplicate_check.setEnabled(allows_duplicate)
@@ -371,10 +472,33 @@ class ArenaSetupScreen(QWidget):
 
         self.hands_combo.setCurrentIndex(index)
 
-    def current_config(self) -> SimulationConfig:
+    def set_run_type(self, run_type: RunType | None) -> None:
+        self.run_type_combo.setCurrentIndex(
+            self.run_type_combo.findData(CASH if run_type is None else run_type)
+        )
+
+    def current_config(self) -> ArenaConfig:
         """Build the configuration entered in the form; raises ValueError."""
-        small_blind, big_blind = self.blinds_combo.currentData()
         seed_text = self.seed_edit.text().strip()
+        seed = int(seed_text) if seed_text else None
+        run_type = self.run_type
+
+        if run_type is not None:
+            is_tournament = run_type == RunType.TOURNAMENT
+
+            return TournamentRunConfig(
+                seats=tuple(row.seat_spec() for row in self.seat_rows),
+                run_type=run_type,
+                tournaments=self.tournaments_spin.value(),
+                structure=self.structure_combo.currentData() if is_tournament else None,
+                payout=self.payout_combo.currentData() if is_tournament else None,
+                multipliers=self.multipliers_combo.currentData(),
+                rebuys=is_tournament and self.rebuys_check.isChecked(),
+                seed=seed,
+                workers=self.workers_spin.value(),
+            )
+
+        small_blind, big_blind = self.blinds_combo.currentData()
 
         return SimulationConfig(
             seats=tuple(row.seat_spec() for row in self.seat_rows),
@@ -384,7 +508,7 @@ class ArenaSetupScreen(QWidget):
             big_blind=big_blind,
             starting_stack=self.stack_spin.value(),
             stack_policy=self.stack_policy,
-            seed=int(seed_text) if seed_text else None,
+            seed=seed,
             workers=self.workers_spin.value(),
             duplicate=self.duplicate_check.isChecked(),
         )
@@ -393,7 +517,7 @@ class ArenaSetupScreen(QWidget):
         """Remind the seed of the last run when the seed was left random."""
         self.seed_edit.setPlaceholderText(f"Random (last run: {seed})")
 
-    def _config_or_error(self) -> SimulationConfig | None:
+    def _config_or_error(self) -> ArenaConfig | None:
         try:
             config = self.current_config()
         except ValueError as error:
@@ -409,5 +533,7 @@ class ArenaSetupScreen(QWidget):
             self.run_requested.emit(config)
 
     def _on_watch_clicked(self) -> None:
-        if (config := self._config_or_error()) is not None:
+        config = self._config_or_error()
+
+        if isinstance(config, SimulationConfig):
             self.watch_requested.emit(config)

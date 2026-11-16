@@ -90,56 +90,21 @@ def run_simulation(
     """
     config = config.with_seed()
     batches = plan_batches(config)
-    total_units = sum(progress_units(config, batch) for batch in batches)
-    units_done = 0
-    results: dict[int, SimulationTotals] = {}
     started = time.perf_counter()
 
-    def collect(batch: Batch, totals: SimulationTotals) -> None:
-        nonlocal units_done
-        results[batch.index] = totals
-        units_done += progress_units(config, batch)
-
-        if progress is not None:
-            progress(units_done, total_units)
-
-    def is_cancelled() -> bool:
-        return cancel is not None and cancel.is_set()
-
-    worker_count = min(config.workers, len(batches))
-
-    if worker_count == 1:
-        for batch in batches:
-            if is_cancelled():
-                raise SimulationCancelled
-
-            collect(batch, run_batch(config, batch))
-    else:
-        # "spawn" behaves the same on every platform and is safe with Qt.
-        context = multiprocessing.get_context("spawn")
-        pool = context.Pool(processes=worker_count)
-
-        try:
-            pending = pool.imap_unordered(partial(_run_indexed_batch, config), batches)
-
-            while len(results) < len(batches):
-                if is_cancelled():
-                    raise SimulationCancelled
-
-                try:
-                    batch, totals = pending.next(timeout=CANCEL_POLL_SECONDS)
-                except multiprocessing.TimeoutError:
-                    continue
-
-                collect(batch, totals)
-        finally:
-            pool.terminate()
-            pool.join()
+    results = execute_batches(
+        task=partial(run_batch, config),
+        batches=batches,
+        units=partial(progress_units, config),
+        workers=config.workers,
+        progress=progress,
+        cancel=cancel,
+    )
 
     merged = SimulationTotals.empty(config)
 
-    for index in sorted(results):
-        merged.merge(results[index])
+    for totals in results:
+        merged.merge(totals)
 
     return SimulationResult(
         config=config,
@@ -147,6 +112,72 @@ def run_simulation(
         batch_count=len(batches),
         duration_seconds=time.perf_counter() - started,
     )
+
+
+def execute_batches[T](
+    task: Callable[[Batch], T],
+    batches: list[Batch],
+    units: Callable[[Batch], int],
+    workers: int,
+    progress: ProgressCallback | None = None,
+    cancel: threading.Event | None = None,
+) -> list[T]:
+    """Run ``task`` on every batch, in worker processes when ``workers`` > 1.
+
+    The results come back in batch order whatever the order they finished
+    in, so merging them gives the same totals for any number of workers.
+    ``task`` must be picklable (a module-level function or a ``partial``).
+    """
+    total_units = sum(units(batch) for batch in batches)
+    units_done = 0
+    results: dict[int, T] = {}
+
+    def collect(batch: Batch, result: T) -> None:
+        nonlocal units_done
+        results[batch.index] = result
+        units_done += units(batch)
+
+        if progress is not None:
+            progress(units_done, total_units)
+
+    def is_cancelled() -> bool:
+        return cancel is not None and cancel.is_set()
+
+    worker_count = min(workers, len(batches))
+
+    if worker_count <= 1:
+        for batch in batches:
+            if is_cancelled():
+                raise SimulationCancelled
+
+            collect(batch, task(batch))
+    else:
+        # "spawn" behaves the same on every platform and is safe with Qt.
+        context = multiprocessing.get_context("spawn")
+        pool = context.Pool(processes=worker_count)
+
+        try:
+            pending = pool.imap_unordered(partial(_run_indexed, task), batches)
+
+            while len(results) < len(batches):
+                if is_cancelled():
+                    raise SimulationCancelled
+
+                try:
+                    batch, result = pending.next(timeout=CANCEL_POLL_SECONDS)
+                except multiprocessing.TimeoutError:
+                    continue
+
+                collect(batch, result)
+        finally:
+            pool.terminate()
+            pool.join()
+
+    return [results[index] for index in sorted(results)]
+
+
+def _run_indexed[T](task: Callable[[Batch], T], batch: Batch) -> tuple[Batch, T]:
+    return batch, task(batch)
 
 
 def run_batch(config: SimulationConfig, batch: Batch) -> SimulationTotals:
@@ -203,12 +234,6 @@ def replay_hand(
         schedule.finish_hand()
 
     raise ValueError("The hand was never played.")
-
-
-def _run_indexed_batch(
-    config: SimulationConfig, batch: Batch
-) -> tuple[Batch, SimulationTotals]:
-    return batch, run_batch(config, batch)
 
 
 class BatchSchedule:

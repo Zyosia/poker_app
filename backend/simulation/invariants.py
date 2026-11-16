@@ -18,14 +18,16 @@ class InvariantError(RuntimeError):
         seed: int,
         hand_index: int,
         session_index: int | None = None,
+        replay_function: str = "replay_hand",
     ) -> None:
         # Every argument goes to ``args`` so the error survives pickling
         # between worker processes.
-        super().__init__(message, seed, hand_index, session_index)
+        super().__init__(message, seed, hand_index, session_index, replay_function)
         self.message = message
         self.seed = seed
         self.hand_index = hand_index
         self.session_index = session_index
+        self.replay_function = replay_function
 
     def __str__(self) -> str:
         location = f"hand_index={self.hand_index}"
@@ -35,7 +37,7 @@ class InvariantError(RuntimeError):
 
         return (
             f"{self.message} (seed={self.seed}, {location}). "
-            f"Replay it with replay_hand(config, {location})."
+            f"Replay it with {self.replay_function}(config, {location})."
         )
 
 

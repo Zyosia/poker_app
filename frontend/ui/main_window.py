@@ -12,6 +12,10 @@ from backend.application.persistence import new_session_file_path
 from backend.application.setup import GameSettings, create_game
 from backend.simulation.config import SimulationConfig
 from backend.simulation.result import SimulationResult
+from backend.simulation.tournament_runner import (
+    TournamentRunConfig,
+    TournamentRunResult,
+)
 from frontend.modes import MODES, Mode, ScreenKey
 
 from .arena_progress_screen import ArenaProgressScreen
@@ -130,15 +134,15 @@ class MainWindow(QMainWindow):
 
     # --- Bot Arena -----------------------------------------------------------
 
-    def run_arena(self, config: SimulationConfig) -> None:
+    def run_arena(self, config: SimulationConfig | TournamentRunConfig) -> None:
         self.push(self.arena_progress_screen)
         self.arena_progress_screen.start(config)
 
-    def rerun_arena(self, config: SimulationConfig) -> None:
+    def rerun_arena(self, config: SimulationConfig | TournamentRunConfig) -> None:
         self.replace(self.arena_progress_screen)
         self.arena_progress_screen.start(config)
 
-    def show_arena_result(self, result: SimulationResult) -> None:
+    def show_arena_result(self, result: SimulationResult | TournamentRunResult) -> None:
         assert result.config.seed is not None
         self.arena_setup_screen.show_last_seed(result.config.seed)
         self.arena_results_screen.show_result(result)

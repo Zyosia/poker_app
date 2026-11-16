@@ -10,6 +10,9 @@ Examples::
         --param bluff_probability --values 0,0.1,0.2 --field station,maniac
     uv run python -m backend.simulation engine-lab --samples 200000
     uv run python -m backend.simulation bench --hands 20000 --repeat 3
+    uv run python -m backend.simulation tournament --seats nit,tag,lag,maniac \\
+        --tournaments 1000 --structure turbo --payout 65-35
+    uv run python -m backend.simulation spin --seats tag,lag,maniac
 """
 
 import argparse
@@ -30,6 +33,16 @@ from .matchup import MatchupResult, run_matchups, run_sweep
 from .result import SimulationResult
 from .runner import run_simulation
 from .summary import summarize
+from .tournament_runner import (
+    MULTIPLIER_TABLES,
+    PAYOUTS,
+    STRUCTURES,
+    RunType,
+    TournamentRunConfig,
+    TournamentRunResult,
+    run_tournaments,
+    summarize_tournaments,
+)
 
 EXPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "simulations"
 
@@ -99,6 +112,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser("bots", help="List the available bots.")
 
+    tournament = commands.add_parser(
+        "tournament", help="Play complete tournaments between bots."
+    )
+    tournament.add_argument("--seats", type=parse_seats, required=True)
+    tournament.add_argument(
+        "--structure", choices=list(STRUCTURES), default=None, help="Default: turbo."
+    )
+    tournament.add_argument(
+        "--payout",
+        choices=list(PAYOUTS),
+        default=None,
+        help="Default: wta for 2-3 players, 65-35 for 4-6.",
+    )
+    tournament.add_argument(
+        "--rebuys", action="store_true", help="Rebuys for 3 levels, then an add-on."
+    )
+    _add_tournament_options(tournament)
+
+    spin = commands.add_parser("spin", help="Play Spin & Go games between 3 bots.")
+    spin.add_argument("--seats", type=parse_seats, required=True)
+    spin.add_argument("--multipliers", choices=list(MULTIPLIER_TABLES), default="fair")
+    _add_tournament_options(spin)
+
     bench = commands.add_parser("bench", help="Single-core speed of fixed tables.")
     bench.add_argument("--hands", type=int, default=20_000, help="Hands per table.")
     bench.add_argument(
@@ -139,6 +175,48 @@ def _add_table_options(
         help="Export directory (default: backend/data/simulations/<time>).",
     )
     parser.add_argument("--no-export", action="store_true")
+
+
+def _add_tournament_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--tournaments", type=int, default=1000)
+    parser.add_argument("--stack", type=int, default=None, help="Starting stack.")
+    parser.add_argument("--buy-in", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1)
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=20, help="Tournaments per batch."
+    )
+    parser.add_argument("--max-hands-per-tournament", type=int, default=2000)
+    parser.add_argument(
+        "--no-invariants", action="store_true", help="Skip the chip checks."
+    )
+    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--no-export", action="store_true")
+
+
+def tournament_config_from_args(
+    args: argparse.Namespace, run_type: RunType
+) -> TournamentRunConfig:
+    is_spin = run_type == RunType.SPIN
+
+    return TournamentRunConfig(
+        seats=args.seats,
+        run_type=run_type,
+        tournaments=args.tournaments,
+        tournaments_per_batch=args.batch_size,
+        structure=None if is_spin else args.structure,
+        starting_stack=args.stack,
+        buy_in=args.buy_in,
+        payout=None if is_spin else args.payout,
+        multipliers=args.multipliers if is_spin else "fair",
+        rebuys=False if is_spin else args.rebuys,
+        max_hands_per_tournament=args.max_hands_per_tournament,
+        seed=args.seed,
+        workers=args.workers,
+        check_invariants=not args.no_invariants,
+    )
 
 
 def config_from_args(
@@ -185,6 +263,15 @@ def _dispatch(args: argparse.Namespace, out: TextIO) -> int:
 
     if args.command == "bench":
         print_bench(run_bench(args.hands, args.repeat), out)
+        return 0
+
+    if args.command in ("tournament", "spin"):
+        config = tournament_config_from_args(args, RunType(args.command))
+        tournaments = run_tournaments(
+            config, progress=ProgressPrinter(out, "tournaments")
+        )
+        print_tournaments(tournaments, out)
+        _export(args, args.command, out, tournaments=tournaments)
         return 0
 
     if args.command == "run":
@@ -347,6 +434,73 @@ def print_result(result: SimulationResult, out: TextIO) -> None:
         print(f"Capped sessions: {result.totals.capped_sessions}", file=out)
 
 
+def print_tournaments(result: TournamentRunResult, out: TextIO) -> None:
+    config = result.config
+    totals = result.totals
+    print(
+        f"\n{totals.tournaments:,} {config.run_type.value} games in "
+        f"{result.duration_seconds:.1f}s ({result.tournaments_per_second:,.1f}/s) "
+        f"— seed {config.seed}, structure {config.blind_structure.name}, "
+        f"buy-in {config.entry_fee}",
+        file=out,
+    )
+    places = len(config.seats)
+    headers: tuple[str, ...] = (
+        "Player",
+        "Win %",
+        "ITM %",
+        "Avg place",
+        "ROI",
+        *(f"#{place}" for place in range(1, places + 1)),
+    )
+    expected = result.expected_multiplier
+
+    if expected is not None:
+        headers = (*headers, "ROI no mult.")
+
+    rows = []
+
+    for stats in result.ranking():
+        row = [
+            stats.name,
+            _format_percent(stats.win_rate),
+            _format_percent(stats.itm_rate),
+            _format_number(stats.average_place),
+            _format_roi(stats.roi, stats.roi_ci95),
+            *(f"{share:.0%}" for share in stats.place_distribution()),
+        ]
+
+        if expected is not None:
+            row.append(_format_roi(stats.roi_without_multiplier(expected), None))
+
+        rows.append(row)
+
+    print_table(headers, rows, out)
+
+    if expected is not None:
+        drawn = ", ".join(
+            f"{multiplier}x {share:.1%}"
+            for multiplier, share in result.multiplier_distribution().items()
+        )
+        print(f"Multipliers drawn: {drawn}", file=out)
+
+    if totals.capped:
+        print(f"Capped tournaments: {totals.capped}", file=out)
+
+    for sentence in summarize_tournaments(result):
+        print(sentence, file=out)
+
+
+def _format_roi(roi: float | None, interval: tuple[float, float] | None) -> str:
+    if roi is None:
+        return "—"
+
+    if interval is None:
+        return f"{roi:+.0%}"
+
+    return f"{roi:+.0%} ±{(interval[1] - interval[0]) / 2:.0%}"
+
+
 def print_bench(results: Sequence[BenchResult], out: TextIO) -> None:
     print(f"\nOne core, seed {BENCH_SEED}, chip checks on, best run", file=out)
     print_table(
@@ -440,6 +594,7 @@ def _export(
     out: TextIO,
     result: SimulationResult | None = None,
     data: dict[str, object] | None = None,
+    tournaments: TournamentRunResult | None = None,
 ) -> None:
     if args.no_export:
         return
@@ -447,6 +602,12 @@ def _export(
     directory = args.output or EXPORT_DIR / (
         datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{command}"
     )
+
+    if tournaments is not None:
+        json_path = tournaments.save_json(directory / "result.json")
+        csv_path = tournaments.save_csv(directory / "players.csv")
+        print(f"\nExported {json_path}\n         {csv_path}", file=out)
+        return
 
     if result is not None:
         json_path = result.save_json(directory / "result.json")

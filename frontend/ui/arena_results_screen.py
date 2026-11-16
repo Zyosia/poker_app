@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -24,7 +25,17 @@ from backend.simulation.config import StackPolicy
 from backend.simulation.result import SimulationResult
 from backend.simulation.stats import ACTION_CATEGORIES, STREETS, PlayerStats
 from backend.simulation.summary import summarize
+from backend.simulation.tournament_runner import (
+    TournamentRunResult,
+    summarize_tournaments,
+)
+from backend.simulation.tournament_stats import TournamentPlayerStats
+from frontend.components.bar_chart import BarChart
 from frontend.components.line_chart import LineChart
+
+ArenaResult = SimulationResult | TournamentRunResult
+
+PLACE_LABELS = ("1st", "2nd", "3rd", "4th", "5th", "6th")
 
 
 def format_percent(value: float | None) -> str:
@@ -105,8 +116,54 @@ def ranking_columns(result: SimulationResult) -> list[Column]:
     return columns
 
 
+TournamentColumn = tuple[
+    str, Callable[[TournamentPlayerStats], tuple[str, float | None]]
+]
+
+
+def tournament_columns(result: TournamentRunResult) -> list[TournamentColumn]:
+    """The ranking columns of a tournament run: finishes and ROI."""
+
+    def roi(stats: TournamentPlayerStats) -> tuple[str, float | None]:
+        interval = stats.roi_ci95
+
+        if stats.roi is None:
+            return "—", None
+
+        if interval is None:
+            return f"{stats.roi:+.0%}", stats.roi
+
+        return f"{stats.roi:+.0%} ±{(interval[1] - interval[0]) / 2:.0%}", stats.roi
+
+    columns: list[TournamentColumn] = [
+        ("Player", lambda s: (s.name, None)),
+        ("Style", lambda s: (BOT_TYPES[s.bot].label, None)),
+        ("Games", lambda s: (f"{s.tournaments:,}".replace(",", " "), s.tournaments)),
+        ("Win %", lambda s: (format_percent(s.win_rate), s.win_rate)),
+        ("ITM %", lambda s: (format_percent(s.itm_rate), s.itm_rate)),
+        (
+            "Avg place",
+            lambda s: (format_decimal(s.average_place), s.average_place),
+        ),
+        ("ROI (95% CI)", roi),
+    ]
+    expected = result.expected_multiplier
+
+    if expected is not None:
+
+        def steady(stats: TournamentPlayerStats) -> tuple[str, float | None]:
+            value = stats.roi_without_multiplier(expected)
+            return ("—" if value is None else f"{value:+.0%}"), value
+
+        columns.append(("ROI without multiplier", steady))
+    elif any(stats.rebuys for stats in result.players.values()):
+        columns.append(("Rebuys", lambda s: (str(s.rebuys), s.rebuys)))
+
+    return columns
+
+
 class ArenaResultsScreen(QWidget):
-    """Displays a ``SimulationResult``."""
+    """Displays a ``SimulationResult`` or a ``TournamentRunResult``."""
 
     back_requested = Signal()
     rerun_requested = Signal(object)
@@ -114,7 +171,7 @@ class ArenaResultsScreen(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.result: SimulationResult | None = None
+        self.result: ArenaResult | None = None
 
         self.title_label = QLabel("RESULTS")
         self.title_label.setObjectName("sectionTitle")
@@ -125,6 +182,10 @@ class ArenaResultsScreen(QWidget):
         self.ranking_table = self._make_table()
         self.ranking_table.setSortingEnabled(True)
         self.chart = LineChart()
+        self.place_chart = BarChart()
+        self.chart_stack = QStackedWidget()
+        self.chart_stack.addWidget(self.chart)
+        self.chart_stack.addWidget(self.place_chart)
 
         self.actions_table = self._make_table()
         self.positions_table = self._make_table()
@@ -181,7 +242,7 @@ class ArenaResultsScreen(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         self.ranking_table.setMaximumHeight(230)
         layout.addWidget(self.ranking_table)
-        layout.addWidget(self.chart, stretch=1)
+        layout.addWidget(self.chart_stack, stretch=1)
 
         return page
 
@@ -208,8 +269,14 @@ class ArenaResultsScreen(QWidget):
 
     # --- Display -------------------------------------------------------------
 
-    def show_result(self, result: SimulationResult) -> None:
+    def show_result(self, result: ArenaResult) -> None:
+        if isinstance(result, TournamentRunResult):
+            self.show_tournament_result(result)
+            return
+
         self.result = result
+        self.chart_stack.setCurrentWidget(self.chart)
+        self.tabs.setTabText(1, "Advanced")
         config = result.config
         policy = config.stack_policy.value
         self.title_label.setText(
@@ -225,6 +292,89 @@ class ArenaResultsScreen(QWidget):
         self._fill_positions(result)
         self.details_view.setPlainText(self._details_text(result))
         self.tabs.setCurrentIndex(0)
+
+    def show_tournament_result(self, result: TournamentRunResult) -> None:
+        self.result = result
+        config = result.config
+        kind = "SPIN & GO" if result.is_spin else "TOURNAMENTS"
+        self.title_label.setText(
+            f"RESULTS   ·   {result.totals.tournaments:,} {kind}   ·   "
+            f"SEED {config.seed}   ·   {config.blind_structure.name.upper()}"
+        )
+        self.summary_label.setText(" ".join(summarize_tournaments(result)))
+        self._fill_table(
+            self.ranking_table, tournament_columns(result), result.ranking()
+        )
+
+        names = list(result.players)
+        places = PLACE_LABELS[: len(names)]
+        self.place_chart.set_data(
+            places,
+            names,
+            [stats.place_distribution() for stats in result.players.values()],
+        )
+        self.chart_stack.setCurrentWidget(self.place_chart)
+
+        for table in (self.actions_table, self.positions_table):
+            table.clear()
+            table.setRowCount(0)
+            table.setColumnCount(0)
+
+        self.details_view.setPlainText(self._tournament_details(result))
+        self.tabs.setCurrentIndex(0)
+
+    @staticmethod
+    def _fill_table(
+        table: QTableWidget,
+        columns: list[TournamentColumn],
+        rows: list[TournamentPlayerStats],
+    ) -> None:
+        table.setSortingEnabled(False)
+        table.clear()
+        table.setColumnCount(len(columns))
+        table.setRowCount(len(rows))
+        table.setHorizontalHeaderLabels([name for name, _ in columns])
+
+        for row, stats in enumerate(rows):
+            for column, (_, value) in enumerate(columns):
+                text, sort_value = value(stats)
+                table.setItem(row, column, SortableItem(text, sort_value))
+
+        table.setSortingEnabled(True)
+
+    @staticmethod
+    def _tournament_details(result: TournamentRunResult) -> str:
+        config = result.config
+        totals = result.totals
+        lines = [
+            f"Seed: {config.seed}",
+            f"Run type: {config.run_type.value}",
+            f"Games: {totals.tournaments:,} "
+            f"(capped by the hand limit: {totals.capped})",
+            f"Structure: {config.blind_structure.name}, stack {config.stack:,}, "
+            f"buy-in {config.entry_fee}",
+            f"Average length: {totals.average_hands or 0:.0f} hands, "
+            f"level {totals.average_level or 0:.1f}",
+            f"Batches: {result.batch_count} of {config.tournaments_per_batch}",
+            f"Workers: {config.workers}",
+            f"Duration: {result.duration_seconds:.1f} s "
+            f"({result.tournaments_per_second:,.1f} games/s)",
+        ]
+
+        if result.is_spin:
+            lines += ["", "MULTIPLIERS DRAWN"]
+            lines += [
+                f"{multiplier:>5}x   {share:.2%}"
+                for multiplier, share in result.multiplier_distribution().items()
+            ]
+
+        lines += ["", "FINISHING PLACES"]
+
+        for stats in result.players.values():
+            shares = "  ".join(f"{share:5.1%}" for share in stats.place_distribution())
+            lines.append(f"{stats.name:<16}{shares}")
+
+        return "\n".join(lines)
 
     def _fill_ranking(self, result: SimulationResult) -> None:
         columns = ranking_columns(result)

@@ -57,6 +57,8 @@ from .structures import SPIN_HYPER_TURBO, SPIN_PLAYERS, SPIN_STARTING_STACK
 MIN_PLAYERS = 2
 MAX_PLAYERS = 6
 
+HandEndCallback = Callable[[Hand, Mapping[str, int]], None]
+
 
 @dataclass(frozen=True)
 class RebuyRules:
@@ -247,6 +249,7 @@ class Tournament:
         clock: LevelClock | None = None,
         multiplier: Multiplier | None = None,
         keep_hands: bool = False,
+        on_hand_end: HandEndCallback | None = None,
     ) -> None:
         """Seat the players; the first hand is dealt by ``start_hand``.
 
@@ -254,6 +257,8 @@ class Tournament:
         ``multiplier`` makes the prize pool that many buy-ins (Spin & Go).
         Finished hands stay in ``session.hands`` only with ``keep_hands``
         (a human game saved with its history); simulations drop them.
+        ``on_hand_end`` is called with every finished hand and the stacks at
+        its start, before any rebuy or elimination (chip checks).
         """
         if not MIN_PLAYERS <= len(seat_names) <= MAX_PLAYERS:
             raise ValueError(
@@ -293,6 +298,7 @@ class Tournament:
         self.clock = clock
         self.multiplier = multiplier
         self.keep_hands = keep_hands
+        self.on_hand_end = on_hand_end
         self.hand: Hand | None = None
         self.hands_played = 0
         self.level_index = 0
@@ -570,6 +576,9 @@ class Tournament:
     def _on_hand_finished(self) -> None:
         self.hands_played += 1
 
+        if self.on_hand_end is not None and self.hand is not None:
+            self.on_hand_end(self.hand, self.stacks_before)
+
         if not self.keep_hands:
             self.session.hands.clear()  # Millions of hands would fill the memory.
 
@@ -801,6 +810,8 @@ def create_spin(
     controllers: Mapping[str, PlayerController],
     rng: random.Random,
     clock: LevelClock | None = None,
+    keep_hands: bool = False,
+    on_hand_end: HandEndCallback | None = None,
 ) -> Tournament:
     """Draw the prize multiplier, then seat the three players.
 
@@ -820,4 +831,6 @@ def create_spin(
         deck_rng=random.Random(rng.getrandbits(64)),
         clock=clock,
         multiplier=multiplier,
+        keep_hands=keep_hands,
+        on_hand_end=on_hand_end,
     )
