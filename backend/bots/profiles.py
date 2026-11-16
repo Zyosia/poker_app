@@ -16,6 +16,16 @@ PROBABILITY_FIELDS = (
     "cbet_probability",
 )
 
+POSITIVE_FIELDS = (
+    "raise_pot_fraction",
+    "bet_pot_fraction",
+    "cheap_call_big_blinds",
+    "push_fold_big_blinds",
+    "short_stack_big_blinds",
+    "shove_range_scale",
+    "call_range_scale",
+)
+
 
 @dataclass(frozen=True)
 class BotProfile:
@@ -61,14 +71,27 @@ class BotProfile:
     cbet_probability: float = 0.0
     """Chance of betting the flop as pre-flop aggressor when checked to."""
 
+    # Short stacks, in tournaments only (see ``push_fold``).
+    push_fold_big_blinds: float = 12
+    """At or below this effective stack, pre-flop play is shove or fold."""
+    short_stack_big_blinds: float = 25
+    """Up to this effective stack: smaller opens, re-shoves, fewer calls."""
+    shove_range_scale: float = 1.0
+    """Widens (above 1) or narrows the base open-shove ranges."""
+    call_range_scale: float = 1.0
+    """Widens (above 1) or narrows the base ranges calling an all-in."""
+
     def __post_init__(self) -> None:
         for name in PROBABILITY_FIELDS:
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} must be between 0 and 1.")
 
-        for name in ("raise_pot_fraction", "bet_pot_fraction", "cheap_call_big_blinds"):
+        for name in POSITIVE_FIELDS:
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive.")
+
+        if self.short_stack_big_blinds < self.push_fold_big_blinds:
+            raise ValueError("The short-stack zone starts above push/fold.")
 
     @classmethod
     def parameter_names(cls) -> tuple[str, ...]:
@@ -88,6 +111,8 @@ NIT_PROFILE = BotProfile(
     value_bet_probability=0.6,
     medium_bet_probability=0.2,
     bluff_probability=0.01,
+    shove_range_scale=0.6,
+    call_range_scale=0.55,
 )
 
 TAG_PROFILE = BotProfile(
@@ -104,6 +129,8 @@ TAG_PROFILE = BotProfile(
     preflop_strength_bonus=0.06,
     raise_instead_of_call_probability=0.2,
     cbet_probability=0.65,
+    shove_range_scale=0.9,
+    call_range_scale=0.8,
 )
 
 LAG_PROFILE = BotProfile(
@@ -121,6 +148,9 @@ LAG_PROFILE = BotProfile(
     raise_instead_of_call_probability=0.35,
     bluff_raise_probability=0.06,
     cbet_probability=0.75,
+    push_fold_big_blinds=13,
+    shove_range_scale=1.25,
+    call_range_scale=1.1,
 )
 
 CALLING_STATION_PROFILE = BotProfile(
@@ -136,6 +166,8 @@ CALLING_STATION_PROFILE = BotProfile(
     medium_bet_probability=0.05,
     bluff_probability=0.0,
     preflop_strength_bonus=0.02,
+    shove_range_scale=0.8,
+    call_range_scale=1.7,
 )
 
 MANIAC_PROFILE = BotProfile(
@@ -157,4 +189,7 @@ MANIAC_PROFILE = BotProfile(
     raise_instead_of_call_probability=0.55,
     bluff_raise_probability=0.2,
     cbet_probability=0.9,
+    push_fold_big_blinds=15,
+    shove_range_scale=1.7,
+    call_range_scale=1.5,
 )

@@ -1,13 +1,18 @@
 """A bot using simple heuristics: hand strength, pot odds and a bit of bluff.
 
 Its parameters come from a ``BotProfile``; the default profile is the
-original behaviour, the presets of ``profiles`` give other play styles.
+original behaviour, the presets of ``profiles`` give other play styles. In
+tournaments, ``short_stack`` adapts its pre-flop play to its stack.
 """
 
 import random
 from functools import lru_cache
 
-from backend.application.controllers import DecisionContext, PlayerController
+from backend.application.controllers import (
+    DecisionContext,
+    GameFormat,
+    PlayerController,
+)
 from backend.poker_engine.actions import Action, LegalAction
 from backend.poker_engine.constants import ActionType, Card, Street
 from backend.poker_engine.hand_evaluator import (
@@ -19,6 +24,7 @@ from backend.poker_engine.hand_evaluator import (
 )
 
 from .profiles import BASIC_PROFILE, BotProfile
+from .short_stack import tournament_action
 
 # Below this strength, a hand is worth improving with its draws.
 DRAW_WORTH_THRESHOLD = 0.5
@@ -152,6 +158,21 @@ class BasicBot(PlayerController):
         self.profile = profile
 
     def choose_action(self, context: DecisionContext) -> Action:
+        if context.game_format == GameFormat.TOURNAMENT:
+            return tournament_action(
+                context,
+                self.profile,
+                preflop_strength=(
+                    preflop_strength(context.hole_cards)
+                    + self.profile.preflop_strength_bonus
+                ),
+                heuristic=lambda: self._heuristic_action(context),
+            )
+
+        return self._heuristic_action(context)
+
+    def _heuristic_action(self, context: DecisionContext) -> Action:
+        """The decision at deep stacks, and always in cash games."""
         profile = self.profile
         legal = {action.type: action for action in context.legal_actions}
         strength = self._estimate_strength(context)
