@@ -43,9 +43,17 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [Beta 1.0 — Simulation](#beta-10--simulation)
 
-* [V1.0 — Fonctionnalités de poker avancées](#v10--fonctionnalités-de-poker-avancées)
+* [Beta 1.1 — Performance](#beta-11--performance)
+
+* [V1.0 — Tournois](#v10--tournois)
+
+* [V1.1 — Outils](#v11--outils)
+
+* [V1.2 — Extras cash game](#v12--extras-cash-game)
 
 * [V2.x — IA et stratégies](#v2x--ia-et-stratégies)
+
+* [Plus tard / peut-être](#plus-tard--peut-être)
 
 * [Principes de développement](#principes-de-développement)
 
@@ -608,25 +616,57 @@ backend/
 │   ├── pots.py            Main pot et side pots
 │   ├── showdown.py        Gagnants et distribution des gains
 │   ├── history.py         Enregistrement de l'historique
-│   └── session.py         Configuration de la session et joueurs
+│   ├── blinds.py          BlindLevel (blinds, ante), BlindStructure
+│   └── session.py         Configuration de la session, joueurs, niveau
 ├── application/           Coordination entre moteur, contrôleurs et UI
 │   ├── controllers.py     PlayerController, HumanController, DecisionContext
 │   ├── game.py            PokerGame : joue une session étape par étape
-│   ├── setup.py           Création d'une partie depuis les réglages
-│   └── persistence.py     Sauvegarde des sessions (JSON)
-└── bots/                  Joueurs contrôlés par l'ordinateur
-    ├── random_bot.py      Actions légales aléatoires
-    └── basic_bot.py       Heuristiques : force de main et cotes du pot
+│   ├── setup.py           Création d'une partie, d'un tournoi, d'un Spin & Go
+│   ├── tournament.py      Tournoi, recaves, éliminations, Spin & Go
+│   ├── payouts.py         Répartitions des prix, multiplicateurs du Spin & Go
+│   ├── structures.py      Structures de blinds par défaut
+│   ├── hand_summary.py    Statistiques d'un joueur depuis l'historique
+│   └── persistence.py     Sauvegarde et chargement des sessions (JSON, format 2)
+├── bots/                  Joueurs contrôlés par l'ordinateur
+│   ├── random_bot.py      Actions légales aléatoires
+│   ├── basic_bot.py       Heuristiques : force de main et cotes du pot
+│   ├── profiles.py        BotProfile et les styles de jeu
+│   ├── short_stack.py     Jeu en tournoi selon le tapis
+│   ├── push_fold.py       Ranges push/fold par profondeur et position
+│   └── factory.py         Création d'un bot depuis son nom (nit, tag, lag…)
+└── simulation/            Simulations de bots sans interface (Beta 1.0)
+    ├── config.py          SimulationConfig, SeatSpec, StackPolicy, seeds
+    ├── table.py           ArenaTable : des bots jouent étape par étape
+    ├── runner.py          Batches, politiques de tapis, workers, replay
+    ├── events.py          Observateur notifié à chaque étape d'une main
+    ├── stats.py           Statistiques fusionnables (joueurs, Engine Lab)
+    ├── invariants.py      Contrôles des jetons après chaque main
+    ├── result.py          SimulationResult, export JSON et CSV
+    ├── summary.py         Lecture en langage clair d'un résultat
+    ├── matchup.py         Matrice de matchups heads-up et balayage de paramètre
+    ├── engine_lab.py      Fréquences à 7 cartes comparées à la théorie
+    ├── bench.py           Benchmark mono-cœur (Beta 1.1)
+    ├── tournament_runner.py  Séries de tournois et de Spin & Go (V1.0)
+    ├── tournament_stats.py   Places, ITM et ROI
+    └── cli.py             python -m backend.simulation …
 
 frontend/
 ├── main.py                Point d'entrée de l'application PySide6
 ├── terminal_ui.py         Interface terminal
 ├── theme.py               Couleurs et feuille de style
 ├── formatting.py          Textes des cartes, actions et résultats
-├── ui/                    Fenêtre principale, menu et écran de jeu
-└── components/            Widgets carte, siège, table et panneau d'actions
+├── modes.py               Modes affichés par le menu principal
+├── ui/
+│   ├── main_window.py     Pile de navigation (Retour fonctionne partout)
+│   ├── main_menu_screen.py
+│   ├── cash_setup_screen.py, game_screen.py            Cash game
+│   ├── tournament_setup_screen.py, tournament_screen.py,
+│   │   tournament_results_screen.py         Tournoi et Spin & Go
+│   └── arena_setup_screen.py, arena_progress_screen.py,
+│       arena_results_screen.py, arena_watch_screen.py  Bot Arena
+└── components/            Carte, siège, table, panneau d'actions, graphiques
 
-tests/                     Tests moteur, application, bots et interface
+tests/                     Tests moteur, application, bots, simulation et UI
 ```
 
 Le moteur est piloté **une étape à la fois**, ce qui laisse la main à
@@ -694,21 +734,31 @@ La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les jo
 
 # Interface actuelle
 
-L'application est une **application de bureau PySide6** : un joueur humain
-contre 1 à 5 bots.
+L'application est une **application de bureau PySide6**. Elle s'ouvre sur un
+**menu principal** qui liste les modes : **Cash Game**, **Tournoi**,
+**Spin & Go** et **Bot Arena** ; un emplacement **Outils** est réservé.
+Chaque écran a un bouton Retour.
 
 ```bash
 uv sync                        # installe les dépendances
 uv run python -m frontend.main # lance l'application de bureau
 ```
 
-- **Menu** : nom du joueur, nombre d'adversaires, niveau des bots, tapis de départ et blinds.
+**Cash Game** — un joueur humain contre 1 à 5 bots :
+
+- **Réglages** : nom du joueur, nombre d'adversaires, niveau des bots, tapis de départ et blinds.
 - **Table** : sièges, cartes privées, cartes communes, mises, pot et bouton dealer.
 - **Panneau d'actions** : seules les actions que le moteur déclare légales sont
   actives, avec un curseur et des raccourcis (Min, 1/2 Pot, Pot, Max) pour
   choisir le montant d'une mise ou d'une relance.
 - **Historique** : chaque action, street et résultat de la session.
 - **Entre deux mains** : main suivante, ou recave quand le joueur n'a plus de jetons.
+
+**Tournoi** et **Spin & Go** — vous contre des bots, avec des blinds qui
+montent, voir [V1.0](#v10--tournois).
+
+**Bot Arena** — des bots contre des bots (tables cash, tournois et Spin & Go),
+voir [Beta 1.0](#beta-10--simulation) et [V1.0](#v10--tournois).
 
 Une interface terminal minimale, basée sur la même couche application, reste
 disponible :
@@ -803,12 +853,11 @@ Chip integrity
 
 ```
 
-État actuel de la suite :
+État actuel de la suite (la suite complète, voir aussi
+[V1.0](#v10--tournois)) :
 
 ```text
-
-All tests passing
-
+1309 passed
 ```
 
 ### État actuel
@@ -839,27 +888,35 @@ All tests passing
 
 * [x] Rotation du dealer
 
-### Prochaine étape
+### Tests d'intégration
 
-Ajouter des tests d'intégration couvrant des mains et des sessions complètes :
+Des tests d'intégration couvrent désormais des mains et des sessions complètes :
 
-* [ ] Hand complète jusqu'au showdown
+* [x] Main complète jusqu'au showdown
+* [x] Main terminée par un fold
+* [x] Main avec all-in et run-out automatique
+* [x] Main avec side pot
+* [x] Plusieurs mains consécutives
+* [x] Rotation du dealer entre plusieurs mains
+* [x] Conservation des jetons sur une session complète
 
-* [ ] Hand terminée par fold
+### Tests de stress
 
-* [ ] Hand avec all-in et auto-runout
+Les principaux scénarios d'intégration sont aussi exécutés de nombreuses fois
+pour détecter des états incohérents ou un comportement non déterministe :
 
-* [ ] Hand avec side pot
-
-* [ ] Plusieurs hands consécutives
-
-* [ ] Rotation du dealer entre plusieurs hands
-
-* [ ] Vérification de la conservation des jetons sur une session complète
+```text
+Main complète         → 100 exécutions
+Main terminée par fold → 100 exécutions
+All-in et run-out     → 100 exécutions
+Side pot              → 100 exécutions
+Plusieurs mains       → 100 exécutions
+Raise / re-raise      → 100 exécutions
+```
 
 Objectif :
 
-> Garantir qu'une session complète de Texas Hold'em puisse être exécutée sans produire d'état de jeu ou financier incohérent.
+> Garantir qu'une session complète de Texas Hold'em puisse être exécutée sans produire d'état de jeu ou financier incohérent, y compris lors d'exécutions répétées des scénarios critiques.
 
 [↑ Retour au sommaire](#sommaire)
 
@@ -930,51 +987,29 @@ Les données sauvegardées contiennent les informations nécessaires pour recons
 
 # Alpha 1.3 — Abstraction des joueurs
 
-Découpler complètement le moteur de poker de l'interface terminal.
-
-Créer une abstraction du type :
+✅ **Terminée.** Le moteur de poker est entièrement découplé de toute interface.
 
 ```text
-
-PlayerController
-
-       │
-
-       ├── HumanController
-
-       │
-
-       ├── RandomBot
-
-       │
-
-       ├── StrategyBot
-
-       │
-
-       └── AIPlayer
-
+PlayerController            choose_action(DecisionContext) -> Action
+       │
+       ├── HumanController  l'interface transmet la décision de l'utilisateur
+       │
+       ├── RandomBot        actions légales aléatoires
+       │
+       └── BasicBot         heuristiques, paramétrées par un BotProfile
+                            (Nit, TAG, LAG, Calling Station, Maniac…)
 ```
 
-Le moteur pourrait alors demander :
+L'application demande *« Quelle action doit effectuer Player3 ? »* sans savoir
+si la réponse vient de l'interface de bureau, du terminal ou d'un bot. Un
+contrôleur ne reçoit qu'un `DecisionContext` : ses propres cartes et l'état
+public de la main (tapis, mises, board, historique public des actions), jamais
+les cartes des adversaires.
 
-```text
-
-"Quelle action doit effectuer Player3 ?"
-
-```
-
-sans savoir si la réponse provient :
-
-* du terminal ;
-
-* d'un bot ;
-
-* d'une IA ;
-
-* d'une interface graphique ;
-
-* d'une API.
+* [x] `PlayerController`
+* [x] `HumanController`
+* [x] Contrôleurs de bots (`RandomBot`, `BasicBot` et ses profils)
+* [x] `DecisionContext` sans information cachée
 
 [↑ Retour au sommaire](#sommaire)
 
@@ -1034,7 +1069,7 @@ L'objectif est de stabiliser le cœur du moteur avant d'ajouter des mécaniques 
 
 ## Antes
 
-Les antes ne sont pas encore supportées.
+✅ Antes classiques et big-blind antes depuis la [V1.0](#v10--tournois).
 
 ## Straddle
 
@@ -1046,31 +1081,27 @@ Le moteur ne possède pas encore de limite configurable sur le nombre de raises 
 
 ## Tournament Blinds
 
-Les blinds restent fixes pendant toute la session.
-
-Il n'existe pas encore de structure de tournoi avec augmentation automatique des blinds.
+✅ Structures de blinds avec niveaux par nombre de mains ou par temps depuis
+la [V1.0](#v10--tournois). Les cash games gardent des blinds fixes.
 
 ## Rebuy
 
-Le système de rebuy n'est pas encore intégré au fonctionnement complet d'une session.
+Partiellement supporté. En cash game, un joueur humain sans jetons peut
+recaver le tapis de départ entre deux mains ; les bots sans jetons sont
+éliminés. La Bot Arena a une politique de recave automatique. Les tournois
+ont des recaves optionnelles pendant les premiers niveaux et un add-on
+([V1.0](#v10--tournois)).
 
 ## Cash-game Rebuy
 
-Il n'existe pas encore de mécanisme permettant à un joueur éliminé d'ajouter des jetons à son stack dans le cadre d'une partie cash game.
+Partiellement supporté : un joueur sans jetons peut recaver, mais un joueur
+qui a encore des jetons ne peut pas compléter son tapis.
 
 ## Action abstraite pour les bots
 
-Le moteur fonctionne actuellement avec une interface utilisateur terminal.
-
-L'architecture n'intègre pas encore une abstraction permettant de remplacer facilement l'entrée utilisateur par :
-
-* une IA ;
-
-* un bot ;
-
-* une stratégie automatique ;
-
-* une API externe.
+✅ Résolu en Alpha 1.3 / 2.0 : le moteur est piloté pas à pas et l'application
+demande chaque décision à un `PlayerController` (interface de bureau, bot, ou
+toute future IA ou API). Voir [Alpha 1.3](#alpha-13--abstraction-des-joueurs).
 
 ## Historique complet des actions
 
@@ -1106,11 +1137,7 @@ Les changements d'état sont effectués directement sur les objets `Player`, `Ha
 
 ## Simulation
 
-Il n'existe pas encore de système permettant de simuler automatiquement des
-milliers ou millions de mains de manière autonome.
-
-Les tests de stress actuels exécutent cependant plusieurs scénarios critiques
-100 fois afin de vérifier la stabilité du moteur.
+✅ Disponible depuis la [Beta 1.0](#beta-10--simulation).
 
 ## IA
 
@@ -1122,105 +1149,541 @@ Aucune intelligence artificielle de poker n'est intégrée à la Alpha - 1.x.
 
 # Beta 1.0 — Simulation
 
-Une fois l'architecture des joueurs abstraite, ajouter un moteur de simulation.
+La **Beta 1.0** ajoute un moteur de simulation sans interface, la **Bot
+Arena** et le **menu principal**.
 
-Objectifs :
+## Fonctionnalités
 
-* [ ] Jouer automatiquement des milliers de mains
+### 🤖 Moteur de simulation (`backend/simulation`)
 
-* [ ] Mesurer les statistiques
+- Joue des milliers à des millions de mains entre bots, sans interface, en
+  pilotant directement le moteur (`start_hand` / `get_legal_actions` /
+  `apply_action` / `advance_hand`). Rien n'est écrit sur le disque sauf
+  demande.
+- **Reproductible** : le paquet et chaque bot tirent leurs nombres de
+  générateurs initialisés par une seed. Le budget est découpé en batches de
+  taille fixe dont la seed dérive de `(seed, index du batch)` : la même
+  configuration et la même seed donnent des **résultats identiques au bit
+  près, quel que soit le nombre de workers**. Une simulation sans seed en
+  tire une et l'indique.
+- **Parallèle** : un pool `multiprocessing` exécute les batches, avec
+  progression et annulation.
+- **Politiques de tapis** :
+  - `reset` : chacun commence chaque main avec le tapis de départ (par
+    défaut, et la façon la plus propre de comparer des bots) ;
+  - `rebuy` : les joueurs sans jetons sont recavés et les recaves comptées.
+    Les tapis ne se conservent qu'à l'intérieur d'un batch : chaque batch
+    repart de tapis neufs, et le bouton de départ tourne d'un batch au
+    suivant ;
+  - `elimination` : le budget est un nombre de sessions complètes, jouées
+    jusqu'à ce qu'un joueur ait tous les jetons. Une session qui atteint
+    `max_hands_per_session` (5000 par défaut) classe les survivants par tapis
+    et est signalée comme plafonnée.
+- **Invariants** : la conservation des jetons est vérifiée après chaque main.
+  Un échec arrête la simulation avec la seed et l'index de la main, et
+  `replay_hand()` rejoue exactement cette main.
+- **Mode duplicate** (politique reset uniquement) : chaque donne est jouée une
+  fois par rotation circulaire des sièges, donc chaque bot joue chaque donne
+  depuis chaque siège.
 
-* [ ] Calculer les fréquences d'actions
+### 📊 Statistiques
 
-* [ ] Tester la distribution des mains
+Toutes les statistiques sont fusionnables : les résultats des workers se
+combinent exactement.
 
-* [ ] Tester statistiquement l'équité
+- **Par joueur** : mains, jetons nets, **bb/100** avec son écart-type et son
+  **intervalle de confiance à 95 %**, **VPIP**, **PFR**, **3-bet %**,
+  **facteur d'agression** et fréquence, **WTSD**, **W$SD**, c-bet et fold to
+  c-bet, fréquences d'actions par street, résultats par position, recaves et
+  places finales (% de victoires, place moyenne).
+- **Graphique des jetons** : jetons nets cumulés, réduit à 300 points au
+  plus.
+- **Engine Lab** : catégories de mains au showdown, split pots, side pots par
+  main, fréquences d'all-in et de run-out automatique, mains par seconde, et
+  une vérification de l'évaluateur contre les fréquences théoriques des
+  catégories à 7 cartes.
+- **Export** : JSON (tout, configuration et seed comprises) et CSV (une ligne
+  par joueur).
 
-* [ ] Tester la fréquence des splits
+### 🎭 Styles de jeu
 
-* [ ] Tester les side pots
+`BasicBot` est paramétré par un `BotProfile` (seuils de force de main, cotes
+du pot, probabilités de mise et de bluff, c-bets, tailles de mise). Le profil
+par défaut est exactement le `BasicBot` de l'Alpha 2.0, et le « niveau des
+bots » du cash game garde son comportement.
 
-* [ ] Benchmark du moteur
+| Bot             | Style                              |
+| --------------- | ---------------------------------- |
+| Nit             | Très serré et passif               |
+| TAG             | Serré-agressif                     |
+| LAG             | Large-agressif                     |
+| Calling Station | Large-passif, se couche rarement   |
+| Maniac          | Très large, très agressif          |
+| Basic           | Le bot heuristique de l'Alpha 2.0  |
+| Random          | Actions légales aléatoires         |
 
-Exemple :
+### 🏟️ Bot Arena
+
+- **Réglages** : 2 à 6 sièges (style et nom optionnel), tables prédéfinies
+  comme *TAG vs 3 Maniacs* ou *Full styles table (6-max)*, mains, blinds,
+  tapis de départ, politique de tapis, seed, workers et mode duplicate.
+- **Mode rapide** : simule en arrière-plan avec une barre de progression, la
+  vitesse, le temps restant et Annuler, puis affiche les **résultats** :
+  classement triable, graphique des jetons, résumé en langage clair basé sur
+  les intervalles de confiance, onglet *Avancé* (fréquences d'actions,
+  résultats par position, Engine Lab, seed et configuration), export JSON /
+  CSV et *Relancer (même seed)*.
+- **Mode spectateur** : les mêmes mains qu'une simulation rapide de la
+  configuration, jouées sur la table à vitesse réglable (lent / normal /
+  rapide, pause, pas à pas), avec l'historique et une vue optionnelle des
+  cartes de tous les joueurs.
+
+> 📸 *Emplacement de capture d'écran : résultats de la Bot Arena.*
+
+## Ligne de commande
+
+```bash
+# Une table de bots : affiche un tableau de synthèse et exporte JSON + CSV
+uv run python -m backend.simulation run --seats tag,maniac,maniac,maniac --hands 100000 --seed 42
+
+# Sessions à élimination, ou mode duplicate
+uv run python -m backend.simulation run --seats nit,tag,lag --policy elimination --sessions 500
+uv run python -m backend.simulation run --seats tag,lag --hands 100000 --duplicate
+
+# Matrice de matchups heads-up, et balayage d'un paramètre
+uv run python -m backend.simulation matchup --bots nit,tag,lag,station,maniac --hands 20000
+uv run python -m backend.simulation sweep --bot tag --param bluff_probability --values 0,0.1,0.2,0.3 --field station,maniac
+
+# Validation du moteur, et liste des bots
+uv run python -m backend.simulation engine-lab --samples 500000
+uv run python -m backend.simulation bots
+```
+
+Options communes : `--hands`, `--sessions`, `--blinds 5/10`, `--stack`,
+`--policy reset|rebuy|elimination`, `--seed`, `--workers`, `--batch-size`,
+`--max-hands-per-session`, `--duplicate`, `--history`, `--no-invariants`,
+`--output DIR` et `--no-export`. Les exports vont par défaut dans
+`backend/data/simulations/` (ignoré par git).
+
+## Changement dans le moteur
+
+L'évaluateur calcule désormais directement la meilleure main de 7 cartes au
+lieu de comparer les 21 combinaisons de 5 cartes : environ **12× plus
+rapide**, avec exactement les mêmes résultats, vérifiés contre l'ancien
+algorithme (conservé sous le nom `evaluate_best_of_combinations`). Aucune
+règle de poker n'a changé.
+
+## Objectifs
+
+* [x] Jouer automatiquement des milliers de mains
+* [x] Mesurer les statistiques
+* [x] Calculer les fréquences d'actions
+* [x] Tester la distribution des mains
+* [x] Tester statistiquement l'équité (fréquences des catégories à 7 cartes)
+* [x] Tester la fréquence des splits
+* [x] Tester les side pots
+* [x] Benchmark du moteur
+
+## Tests
 
 ```text
-
-Simulation
-
-──────────────
-
-Hands played : 1,000,000
-
-Player1 wins : 24.8%
-
-Player2 wins : 25.1%
-
-Player3 wins : 25.0%
-
-Player4 wins : 25.1%
-
-Split pots : 4.7%
-
+1102 passed
 ```
 
 [↑ Retour au sommaire](#sommaire)
 
 ---
 
-# V1.0 — Fonctionnalités de poker avancées
+# Beta 1.1 — Performance
 
-Après stabilisation du moteur V1.x :
+La **Beta 1.1** accélère le simulateur **sans changer un seul résultat** : la
+même seed joue toujours exactement les mêmes cartes, actions et gains.
 
-* [ ] Antes
+## Filet de sécurité
 
-* [ ] Straddle
+- Des **tests golden** (`tests/simulation/test_golden.py`) figent six
+  simulations avec seed (6 BasicBots, la table des 6 styles avec historique,
+  heads-up, mode duplicate, recave automatique, élimination). Chacune a deux
+  empreintes : un hash de chaque main (cartes, board, actions, pots, gains,
+  tapis) et un hash du résultat exporté. Elles ont été enregistrées avant
+  toute optimisation et n'ont pas changé depuis.
+- **Benchmark** : des tables fixes avec seed jouées sur un cœur, avec les
+  contrôles par défaut (invariants actifs, sans historique).
 
-* [ ] Blind levels
+```bash
+uv run python -m backend.simulation bench --hands 20000 --repeat 3
+```
 
-* [ ] Tournament mode
+`--repeat` joue chaque table plusieurs fois et garde la plus rapide, ce qui
+filtre le bruit du reste de la machine.
 
-* [ ] Cash-game mode
+## Résultats
 
-* [ ] Rebuy
+Mains par seconde sur un cœur, meilleure de trois séries de 20 000 mains,
+mesurées en alternance sur la même machine :
 
-* [ ] Add-on
+| Table               | Beta 1.0 | Beta 1.1 | Gain  |
+| ------------------- | -------: | -------: | ----: |
+| 6 BasicBots         |    1 070 |    1 500 | ×1,40 |
+| Table des 6 styles  |      775 |    1 190 | ×1,54 |
+| Heads-up TAG vs LAG |    3 704 |    5 084 | ×1,37 |
 
-* [ ] Time bank
+## Optimisations
 
-* [ ] Betting cap configurable
+- **Actions légales calculées une seule fois par décision** : elles sont
+  mises en cache sur la main (`betting.get_current_legal_actions`), avec pour
+  clé toutes les valeurs dont elles dépendent, et partagées entre le contexte
+  de décision et `apply_action`.
+- **Contexte de décision moins coûteux** : `PlayerView` et `DecisionContext`
+  sont des named tuples immuables, plusieurs fois moins chers à construire que
+  des dataclasses gelées.
+- **Historique moins coûteux** : l'historique du pot est déduit des actions,
+  qui enregistrent déjà le pot après chacune d'elles.
+- **Lecture des mains plus rapide pour les bots** : `evaluate_rank` donne la
+  catégorie et les départages sans choisir les cinq cartes, une table carte →
+  rang remplace l'analyse de chaque carte, et les fonctions de force des bots
+  (fonctions pures des cartes) sont mises en cache.
+- **Micro-coûts du moteur** : constantes partagées pour fold et check, moins
+  de parcours des sièges pour trouver le prochain joueur.
 
-* [ ] Table balancing
+## Ce qui reste
 
-* [ ] Late registration
+L'objectif d'environ 2 000 mains/s sur 6 BasicBots **n'est pas atteint**
+(environ 1 500 sur cette machine). Il ne reste plus de point chaud unique : le
+temps restant est réparti dans le modèle d'état en Python pur.
 
-* [ ] Elimination tracking
+- **Le mélange du paquet** (~6 %) ne peut pas changer : il faut tirer les
+  mêmes nombres aléatoires pour garder chaque résultat identique.
+- **Les événements** : `ActionEvent` reste une dataclass gelée (~4 %), car
+  c'est le format persisté de l'historique.
+- **Le reste** se répartit entre la logique des mises, les heuristiques des
+  bots et les collecteurs de statistiques, quelques pourcents chacun. Aller
+  plus loin demanderait une autre représentation de l'état (des tableaux au
+  lieu d'objets joueurs), c'est-à-dire une refonte du moteur plutôt qu'une
+  optimisation.
+
+Les workers parallèles continuent de passer à l'échelle avec le nombre de
+cœurs.
 
 [↑ Retour au sommaire](#sommaire)
 
 ---
 
+# V1.0 — Tournois
+
+La **V1.0** ajoute les **tournois** à une table, le **Spin & Go**, les
+**antes**, des bots qui tiennent compte de leur tapis, et les tournois dans
+la Bot Arena.
+
+## Fonctionnalités
+
+### ⏫ Blinds et antes (moteur)
+
+- `BlindLevel` (small blind, big blind, ante, type d'ante) et `BlindStructure`
+  (niveaux ordonnés). Les niveaux montent **par nombre de mains** (toujours en
+  simulation et dans les tests, entièrement déterministe) ou **par temps**
+  quand vous jouez : le temps est mesuré par l'application, jamais par le
+  moteur, et un niveau ne change qu'entre deux mains. Après le dernier niveau,
+  le jeu reste au dernier niveau.
+- **Antes classiques** (chaque joueur paie) et **big-blind antes** (la big
+  blind paie une ante pour toute la table).
+- Les antes sont enregistrées dans l'historique (`post_ante`), affichées dans
+  l'historique et dans le pot.
+
+### 🏆 Tournois
+
+- 2 à 6 joueurs, tapis de départ, structure de blinds, buy-in (monnaie
+  fictive), répartition des prix, recaves et add-on optionnels.
+- Joués **jusqu'à ce qu'un joueur ait tous les jetons**, avec les places
+  finales, les prix, la main où chaque joueur a été éliminé, le nombre de
+  mains et le niveau atteint.
+- **Répartitions prédéfinies** : le gagnant prend tout, 65 / 35, 50 / 30 / 20.
+  Par défaut : le gagnant prend tout à 2–3 joueurs, 65 / 35 à 4–6. Les prix
+  sont des unités entières ; les restes d'arrondi vont aux meilleures places.
+- **Recaves** pendant les 3 premiers niveaux, au tapis de départ ou en
+  dessous, puis un **add-on** ; chacun ajoute un buy-in au prize pool et à la
+  mise du joueur. Les bots recavent dès qu'ils le peuvent et prennent
+  l'add-on au tapis de départ ou en dessous.
+
+### 🎰 Spin & Go
+
+- 3 joueurs, structure hyper-turbo, 500 jetons (25 big
+  blinds au premier niveau).
+- Un **multiplicateur de prix** est tiré dans une table configurable *avant*
+  la première main, avec le générateur aléatoire à seed ; le prize pool vaut
+  ce nombre de buy-ins. Le gagnant prend tout, 80 / 10 / 10 à partir de ×100.
+
+### 🧠 Bots en tapis court
+
+En tournoi, les bots mesurent leur **tapis effectif en big blinds** (le plus
+petit entre leur tapis et le plus gros tapis adverse encore dans la main) :
+
+- **Push/fold** à 12 big blinds ou moins (13 pour le LAG, 15 pour le Maniac) :
+  tapis ou fold d'entrée, call des tapis adverses, selon des **ranges par
+  profondeur de tapis et par position** (`backend/bots/push_fold.py`). Jamais
+  de petite relance.
+- **Tapis court** jusqu'à 25 big blinds : ouvertures à 2,2 big blinds,
+  relances à tapis, call d'une relance seulement avec une main forte.
+- Une relance qui engage 40 % du tapis devient un tapis.
+- Chaque profil garde son style en élargissant ou en resserrant les ranges de
+  base. À 8 big blinds au bouton : Nit 23 %, Calling Station 31 %, TAG 35 %,
+  Basic 39 %, LAG 48 %, Maniac 65 % des mains jouées à tapis.
+- Les cash games ne changent pas : les résultats golden de la Beta 1.0 sont
+  toujours valables.
+
+Les 169 mains de départ sont classées par équité à tapis contre une main
+aléatoire, calculée avec l'évaluateur du projet (Monte Carlo) ; les
+pourcentages sont des approximations simplifiées des tableaux push/fold de
+Nash en 6-max.
+
+### 🏟️ Bot Arena : tournois
+
+- Types de séries **Tournoi** et **Spin & Go** à côté des séries cash. Le
+  budget est un nombre de tournois ; les batches contiennent des tournois
+  complets, chacun avec sa seed `(seed, index du tournoi)`, et une limite de
+  mains par tournoi (les tournois plafonnés sont classés au tapis et comptés
+  dans les résultats).
+- **Équité des sièges** : au tournoi *t*, le bot d'index *i* s'assoit au siège
+  *(i + t) mod n*.
+- **Statistiques** : % de victoires, ITM %, place moyenne, distribution des
+  places, **ROI** = (prix − mise) / mise avec son intervalle de confiance à
+  95 %, durée moyenne (mains, niveau). En Spin & Go : les multiplicateurs
+  tirés, le ROI qui les inclut, et le **ROI sans le tirage du multiplicateur**
+  (chaque partie payant son prize pool espéré), qui compare les bots sur leur
+  seul jeu.
+- Écran de résultats : histogramme des places, classement par ROI, résumé en
+  places et en ROI. Résultats identiques sur 1 et N workers.
+
+### 🖥️ Dans l'application
+
+- **Réglages du tournoi** : votre nom, 1 à 5 adversaires (un style pour tous
+  ou un par siège), tapis de départ, structure (Turbo / Regular / Deep),
+  vitesse des niveaux (par mains ou par temps), buy-in, répartition, recaves
+  et add-on.
+- **Réglages du Spin & Go** : votre nom, 2 adversaires, buy-in, vitesse des
+  niveaux et table de multiplicateurs ; une courte **révélation du
+  multiplicateur** affiche le prize pool avant la première main.
+- **À la table** : niveau actuel et suivant avec les mains ou le temps
+  restants, joueurs restants, votre place, tapis moyen en big blinds, prize
+  pool ; courtes notifications d'élimination avec la place et le prix ;
+  propositions de recave et d'add-on ; **Pause** fige l'horloge des niveaux
+  et la table.
+- **Quand vous êtes éliminé** : votre place et votre prix, puis **Regarder**
+  (la table continue à vitesse réglable), **Passer aux résultats** (la suite
+  est jouée instantanément, avec les mêmes mains qu'en regardant) ou
+  **Retour au menu**.
+- **Résultats** : classement final avec les prix et la main où chaque joueur
+  est sorti, vos statistiques (mains, VPIP / PFR, showdowns, tapis, plus gros
+  pot), **Rejouer** et **Retour au menu**. Le fichier de session est
+  sauvegardé avec les résultats du tournoi.
+
+> 📸 *Emplacement de capture d'écran : table de tournoi et révélation du Spin & Go.*
+
+## Choix de règles
+
+- **Les antes sont de l'argent mort** : elles vont au pot, mais ne comptent
+  jamais dans le montant à payer ni dans la taille d'une relance.
+- **Ordre de paiement avec un tapis court** :
+  - ante classique : **l'ante d'abord, puis la blind**. Un joueur qui ne peut
+    pas couvrir l'ante paie ce qu'il a et est à tapis ; il reçoit quand même
+    ses cartes et peut gagner ce que chaque autre joueur a égalé de son ante ;
+  - big-blind ante : **la blind d'abord, puis l'ante** (règle TDA). L'ante va
+    dans le **main pot**, que chaque joueur servi peut gagner, même quand la
+    big blind est à tapis pour moins ou se couche.
+- **Argent mort au-dessus de tous les joueurs restants** : les jetons mis
+  uniquement par des joueurs couchés, au-dessus de la contribution de chaque
+  joueur encore en jeu, rejoignent le plus haut pot encore gagnable.
+- **Éliminations simultanées** : le joueur qui avait le plus de jetons au
+  début de la main finit mieux classé. Des tapis exactement égaux partagent
+  la meilleure place de leur groupe et se répartissent les prix des places
+  qu'ils couvrent ; une unité indivisible va au premier d'entre eux dans le
+  sens horaire à partir de la gauche du bouton.
+- **Bouton mobile, sans bouton mort** : avant chaque main, le bouton passe au
+  joueur suivant qui a des jetons. Quand la table passe de 3 à 2 joueurs, les
+  règles du heads-up s'appliquent : le bouton paie la small blind, parle en
+  premier préflop et en dernier après le flop.
+- **Niveaux par temps** : l'horloge continue pendant qu'un joueur réfléchit
+  ou est inactif ; seule la Pause explicite la fige.
+
+## Structures de blinds
+
+Les tournois commencent avec 1500 jetons. Turbo,
+Regular et Deep partagent leurs niveaux et diffèrent par leur rythme :
+**Turbo** 6 mains / 3 min, **Regular** 10 mains / 6 min, **Deep** 15 mains / 10 min. Une big-blind ante égale à la big blind commence au niveau 4 (des
+antes classiques d'un dixième de la big blind sont disponibles avec
+`with_classic_antes`). Toutes les structures sont dans
+`backend/application/structures.py`.
+
+| Niveau | Blinds | Ante |
+| -----: | -----: | ---: |
+| 1 | 10 / 20 | — |
+| 2 | 15 / 30 | — |
+| 3 | 25 / 50 | — |
+| 4 | 50 / 100 | 100 (big blind) |
+| 5 | 75 / 150 | 150 (big blind) |
+| 6 | 100 / 200 | 200 (big blind) |
+| 7 | 150 / 300 | 300 (big blind) |
+| 8 | 200 / 400 | 400 (big blind) |
+| 9 | 300 / 600 | 600 (big blind) |
+| 10 | 400 / 800 | 800 (big blind) |
+| 11 | 500 / 1000 | 1000 (big blind) |
+| 12 | 750 / 1500 | 1500 (big blind) |
+| 13 | 1000 / 2000 | 2000 (big blind) |
+
+**Spin & Go hyper-turbo** (5 mains ou
+2 minutes par niveau, 500 jetons) :
+
+| Niveau | Blinds | Ante |
+| -----: | -----: | ---: |
+| 1 | 10 / 20 | — |
+| 2 | 15 / 30 | — |
+| 3 | 20 / 40 | — |
+| 4 | 25 / 50 | 50 (big blind) |
+| 5 | 30 / 60 | 60 (big blind) |
+| 6 | 40 / 80 | 80 (big blind) |
+| 7 | 50 / 100 | 100 (big blind) |
+| 8 | 60 / 120 | 120 (big blind) |
+| 9 | 80 / 160 | 160 (big blind) |
+| 10 | 100 / 200 | 200 (big blind) |
+| 11 | 150 / 300 | 300 (big blind) |
+| 12 | 200 / 400 | 400 (big blind) |
+
+## Multiplicateurs du Spin & Go
+
+La table par défaut est **équitable** : le prize pool espéré vaut exactement
+les trois buy-ins payés. Les probabilités sont exactes (poids entiers sur
+10 000).
+
+| Multiplicateur | Prize pool | Probabilité | Répartition |
+| ---: | ---: | ---: | --- |
+| ×2 | 2 buy-ins | 53,00% | Le gagnant prend tout |
+| ×3 | 3 buy-ins | 39,00% | Le gagnant prend tout |
+| ×5 | 5 buy-ins | 6,00% | Le gagnant prend tout |
+| ×10 | 10 buy-ins | 1,80% | Le gagnant prend tout |
+| ×100 | 100 buy-ins | 0,19% | 80 / 10 / 10 |
+| ×1000 | 1000 buy-ins | 0,01% | 80 / 10 / 10 |
+| **Espérance** | **3 buy-ins** | | |
+
+La table **Realistic (~7 % de rake)** est proche des sites réels :
+
+| Multiplicateur | Prize pool | Probabilité | Répartition |
+| ---: | ---: | ---: | --- |
+| ×2 | 2 buy-ins | 75,00% | Le gagnant prend tout |
+| ×3 | 3 buy-ins | 17,00% | Le gagnant prend tout |
+| ×5 | 5 buy-ins | 6,00% | Le gagnant prend tout |
+| ×10 | 10 buy-ins | 1,80% | Le gagnant prend tout |
+| ×100 | 100 buy-ins | 0,19% | 80 / 10 / 10 |
+| ×1000 | 1000 buy-ins | 0,01% | 80 / 10 / 10 |
+| **Espérance** | **2,78 buy-ins** | | |
+
+## Ligne de commande
+
+```bash
+# 1 000 tournois entre six styles, avec recaves et une répartition 50/30/20
+uv run python -m backend.simulation tournament --seats nit,tag,lag,station,maniac,basic \
+    --tournaments 1000 --structure turbo --payout 50-30-20 --rebuys
+
+# 1 000 Spin & Go, avec la table de multiplicateurs réaliste
+uv run python -m backend.simulation spin --seats tag,lag,maniac --tournaments 1000 \
+    --multipliers realistic
+```
+
+Options : `--seats`, `--tournaments`, `--structure turbo|regular|deep`,
+`--payout wta|65-35|50-30-20`, `--rebuys`, `--multipliers fair|realistic`,
+`--stack`, `--buy-in`, `--seed`, `--workers`, `--batch-size` (tournois par
+batch), `--max-hands-per-tournament`, `--no-invariants`, `--output` et
+`--no-export`. Un contrôle des jetons a lieu après chaque main ; un échec
+indique le tournoi et la main à rejouer avec `replay_tournament()`.
+
+## Fichiers de session
+
+Les fichiers de session sont désormais au **format version 2** : le niveau de
+blinds de la session et de chaque main, la big-blind ante de chaque main
+(`dead_money`), et les résultats du tournoi. `load_session_file()` lit les
+versions 1 et 2 (un fichier version 1 est mis à jour en mémoire) et refuse les
+versions inconnues avec un message clair.
+
+## Changements dans le moteur
+
+- Antes (`post_ante`, `Hand.dead_money`) et niveau de blinds d'une session.
+- Le constructeur de pots fusionne les jetons mis uniquement par des joueurs
+  couchés, au-dessus de tous les joueurs restants, dans le plus haut pot
+  encore disputé (avec une big-blind ante couchée, cela levait l'erreur
+  « A pot has no eligible players »).
+- Aucune autre règle n'a changé ; les résultats golden du cash game sont
+  inchangés.
+
+## Objectifs
+
+Moteur et application :
+
+* [x] Niveaux de blinds (par mains ou par temps) avec structures configurables
+* [x] Antes (y compris big-blind ante)
+* [x] Suivi des éliminations et places finales
+* [x] Répartitions des prix (prize pool, places payées)
+* [x] Add-on et recave en tournoi (optionnels selon la structure)
+
+Modes :
+
+* [x] Mode tournoi (une table, 2 à 6 joueurs)
+* [x] Spin & Go : 3 joueurs, structure hyper-turbo, multiplicateur aléatoire
+
+Bots et simulation :
+
+* [x] Jeu en tapis court (push/fold selon le tapis en big blinds)
+* [x] Tournois dans la Bot Arena (% de victoires, ROI, place moyenne)
+
+## Tests
+
+```text
+1309 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V1.1 — Outils
+
+* [ ] Relecteur de mains (basé sur l'historique de l'Alpha 1.2)
+* [ ] Calculateur d'équité (Monte Carlo, mains contre mains / contre aléatoire, n'importe quel board)
+* [ ] « Mes stats » : les statistiques du joueur humain sur toutes ses sessions (réutilise les collecteurs de la Beta 1.0)
+* [ ] Navigateur de sessions (sessions sauvegardées, résultats, graphique des jetons)
+
+---
+
+# V1.2 — Extras cash game
+
+* [ ] Règles complètes de recave / complément (humain et bots, buy-in min/max)
+* [ ] Straddle
+* [ ] Time bank pour le joueur humain
+
+---
+
 # V2.x — IA et stratégies
 
-Une fois l'interface joueur abstraite et la simulation disponibles :
+Déjà disponibles : bot aléatoire, bot basique (force de main + cotes du pot),
+profils de style (Beta 1.0), jeu en tapis court (V1.0).
 
-* [ ] Bots basiques
+* [ ] Équité Monte Carlo dans les décisions des bots (réutilise le calculateur de la V1.1)
+* [ ] Bot basé sur des ranges (ranges préflop par position)
+* [ ] Modélisation des ranges (réduire les ranges adverses selon leurs actions)
+* [ ] Décisions fondées sur l'espérance de gain
+* [ ] Bot adaptatif / exploitant (utilise les stats en direct des adversaires : VPIP, AF…)
+* [ ] IA de poker (par exemple CFR ou self-play), évaluée dans la Bot Arena
+* [ ] Ratio M (tapis / coût d'un tour de table) dans les décisions en tapis
+      court : déplacé de la V1.0, les ranges push/fold en big blinds
+      effectives n'en avaient pas besoin
 
-* [ ] Bot random
+---
 
-* [ ] Bot basé sur des ranges
+# Plus tard / peut-être
 
-* [ ] Monte-Carlo equity
-
-* [ ] Pot odds
-
-* [ ] Expected Value
-
-* [ ] Hand range modelling
-
-* [ ] Adaptive strategies
-
-* [ ] Poker AI
+* [ ] Tournois multi-tables (équilibrage des tables, inscriptions tardives)
+* [ ] Limite de relances configurable / Limit Hold'em
+* [ ] Mode spectateur pour les tournois de la Bot Arena : déplacé de la V1.0,
+      on peut regarder un tournoi en le jouant depuis le menu principal puis
+      en étant éliminé
 
 [↑ Retour au sommaire](#sommaire)
 
