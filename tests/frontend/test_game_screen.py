@@ -364,7 +364,7 @@ def test_main_window_starts_a_game_and_returns_to_the_menu(qapp: QApplication) -
     game = window.game_screen.game
 
     assert window.screens.currentWidget() is window.game_screen
-    assert game is not None
+    assert isinstance(game, PokerGame)
     assert [player.name for player in game.session.players][0] == "Hero"
     assert len(game.session.players) == 5
     assert game.save_path is None

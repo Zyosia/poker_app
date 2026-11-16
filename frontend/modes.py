@@ -9,6 +9,8 @@ class ScreenKey(StrEnum):
 
     CASH_SETUP = "cash_setup"
     ARENA_SETUP = "arena_setup"
+    TOURNAMENT_SETUP = "tournament_setup"
+    SPIN_SETUP = "spin_setup"
 
 
 @dataclass(frozen=True)
@@ -49,16 +51,14 @@ MODES: tuple[Mode, ...] = (
         name="Tournament",
         description="Rising blinds until one player holds every chip.",
         symbol="♣",
-        screen=None,
-        note="Coming in V1.0",
+        screen=ScreenKey.TOURNAMENT_SETUP,
     ),
     Mode(
         key="spin",
         name="Spin & Go",
         description="Fast three-player tournaments with a random prize.",
         symbol="♥",
-        screen=None,
-        note="Coming in V1.0",
+        screen=ScreenKey.SPIN_SETUP,
     ),
     Mode(
         key="tools",

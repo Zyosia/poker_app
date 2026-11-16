@@ -4,6 +4,9 @@ The screen never runs a blocking game loop. Each bot action or street is one
 short step triggered by a timer, and the human acts through the action panel.
 """
 
+from collections.abc import Mapping
+from typing import Protocol
+
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -16,17 +19,37 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from backend.application.controllers import HumanController
-from backend.application.game import PokerGame
+from backend.application.controllers import HumanController, PlayerController
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, get_legal_actions
-from backend.poker_engine.models import Hand, Player
+from backend.poker_engine.models import ActionEvent, Hand, Player
+from backend.poker_engine.session import GameSession
 from frontend.components.action_panel import ActionPanel
 from frontend.components.seat_widget import SeatHighlight, SeatState
 from frontend.components.table_widget import TableState, TableWidget
 from frontend.formatting import describe_action, describe_result, format_cards
 
 DEFAULT_STEP_DELAY_MS = 800
+
+
+class TableGame(Protocol):
+    """A game played step by step at one table: ``PokerGame`` or ``Tournament``."""
+
+    session: GameSession
+    hand: Hand | None
+
+    @property
+    def controllers(self) -> Mapping[str, PlayerController]: ...
+
+    @property
+    def is_hand_in_progress(self) -> bool: ...
+
+    @property
+    def is_waiting_for_human(self) -> bool: ...
+
+    def start_hand(self) -> Hand: ...
+
+    def step(self) -> ActionEvent | None: ...
 
 
 def player_status(player: Player, hand: Hand) -> str:
@@ -105,7 +128,7 @@ class GameScreen(QWidget):
         super().__init__(parent)
 
         self.step_delay_ms = DEFAULT_STEP_DELAY_MS
-        self._game: PokerGame | None = None
+        self._game: TableGame | None = None
         self._human_name = ""
         self._logged_street_count = 0
 
@@ -172,6 +195,8 @@ class GameScreen(QWidget):
         bottom_layout.addWidget(self.bottom_stack)
 
         left_layout = QVBoxLayout()
+        self.left_layout = left_layout
+        """Top bar, table and bottom panel; subclasses insert above the table."""
         left_layout.addLayout(top_bar)
         left_layout.addWidget(self.table_widget, stretch=1)
         left_layout.addWidget(bottom_panel)
@@ -193,10 +218,10 @@ class GameScreen(QWidget):
     # ------------------------------------------------------------------
 
     @property
-    def game(self) -> PokerGame | None:
+    def game(self) -> TableGame | None:
         return self._game
 
-    def start_game(self, game: PokerGame, human_name: str) -> None:
+    def start_game(self, game: TableGame, human_name: str) -> None:
         """Start playing a new game with the given human player."""
         if not isinstance(game.controllers.get(human_name), HumanController):
             raise ValueError(f"{human_name} is not controlled by a human.")
@@ -227,7 +252,9 @@ class GameScreen(QWidget):
             self._log(f"{event.player}: {describe_action(event)}")
 
         human = self._human_player()
-        self._log(f"Your cards: {format_cards(human.hand)}")
+
+        if human.hand:  # Not dealt in once out of a tournament.
+            self._log(f"Your cards: {format_cards(human.hand)}")
         self._after_step()
 
     def _play_step(self) -> None:
@@ -299,11 +326,8 @@ class GameScreen(QWidget):
 
         self._after_step()
 
-    def _show_hand_result(self, hand: Hand) -> None:
-        game = self._require_game()
-        session = game.session
-        human = self._human_player()
-
+    def _log_hand_result(self, hand: Hand) -> list[str]:
+        """Log the showdown and the winners; return the winner lines."""
         for name, evaluation in hand.showdown_evaluations.items():
             cards = next(p.hand for p in hand.table.players if p.name == name)
             self._log(f"{name} shows {format_cards(cards)} ({evaluation.name})")
@@ -312,6 +336,14 @@ class GameScreen(QWidget):
 
         for line in result_lines:
             self._log(line)
+
+        return result_lines
+
+    def _show_hand_result(self, hand: Hand) -> None:
+        game = self._require_game()
+        session = game.session
+        human = self._human_player()
+        result_lines = self._log_hand_result(hand)
 
         for player in hand.table.players:
             if player.is_eliminated and player.total_contribution > 0:
@@ -346,7 +378,7 @@ class GameScreen(QWidget):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _require_game(self) -> PokerGame:
+    def _require_game(self) -> TableGame:
         if self._game is None:
             raise RuntimeError("No game has been started.")
 

@@ -11,6 +11,7 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from backend.application.game import PokerGame
 from backend.simulation.config import SeatSpec, SimulationConfig, StackPolicy
 from backend.simulation.runner import run_simulation
 from frontend.components.line_chart import LineChart, nice_step
@@ -62,18 +63,16 @@ def test_menu_shows_the_enabled_and_coming_soon_modes(window: MainWindow) -> Non
     cards = {card.mode.key: card for card in window.main_menu.cards}
 
     assert list(cards) == [mode.key for mode in MODES]
-    assert cards["cash"].isEnabled() and cards["arena"].isEnabled()
 
-    for key in ("tournament", "spin", "tools"):
-        assert not cards[key].isEnabled()
-        assert cards[key].note_label.text().startswith("Coming")
+    for key in ("cash", "arena", "tournament", "spin"):
+        assert cards[key].isEnabled()
 
-    assert cards["tournament"].note_label.text() == "Coming in V1.0"
-    assert cards["spin"].note_label.text() == "Coming in V1.0"
+    assert not cards["tools"].isEnabled()
+    assert cards["tools"].note_label.text() == "Coming later"
 
 
 def test_disabled_modes_do_not_open_anything(window: MainWindow) -> None:
-    window.main_menu.card("tournament").click()
+    window.main_menu.card("tools").click()
 
     assert window.current_screen is window.main_menu
 
@@ -85,7 +84,7 @@ def test_cash_game_still_starts_from_the_menu(window: MainWindow) -> None:
 
     game = window.game_screen.game
     assert window.current_screen is window.game_screen
-    assert game is not None and game.hand is not None
+    assert isinstance(game, PokerGame) and game.hand is not None
     assert game.save_path is None
 
 
