@@ -9,6 +9,7 @@ Examples::
     uv run python -m backend.simulation sweep --bot tag \\
         --param bluff_probability --values 0,0.1,0.2 --field station,maniac
     uv run python -m backend.simulation engine-lab --samples 200000
+    uv run python -m backend.simulation bench --hands 20000
 """
 
 import argparse
@@ -22,6 +23,7 @@ from typing import TextIO
 
 from backend.bots.factory import BOT_TYPES
 
+from .bench import BENCH_SEED, BenchResult, run_bench
 from .config import SeatSpec, SimulationConfig, StackPolicy
 from .engine_lab import check_seven_card_frequencies
 from .matchup import MatchupResult, run_matchups, run_sweep
@@ -96,6 +98,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_table_options(lab, default_hands=20_000)
 
     commands.add_parser("bots", help="List the available bots.")
+
+    bench = commands.add_parser("bench", help="Single-core speed of fixed tables.")
+    bench.add_argument("--hands", type=int, default=20_000, help="Hands per table.")
 
     return parser
 
@@ -173,6 +178,10 @@ def _dispatch(args: argparse.Namespace, out: TextIO) -> int:
                 f"{bot_type.key:<8} {bot_type.label:<16} {bot_type.description}",
                 file=out,
             )
+        return 0
+
+    if args.command == "bench":
+        print_bench(run_bench(args.hands), out)
         return 0
 
     if args.command == "run":
@@ -333,6 +342,23 @@ def print_result(result: SimulationResult, out: TextIO) -> None:
 
     if result.totals.capped_sessions:
         print(f"Capped sessions: {result.totals.capped_sessions}", file=out)
+
+
+def print_bench(results: Sequence[BenchResult], out: TextIO) -> None:
+    print(f"\nOne core, seed {BENCH_SEED}, chip checks on", file=out)
+    print_table(
+        ("Table", "Hands", "Seconds", "Hands/s"),
+        [
+            (
+                result.table.name,
+                f"{result.hands:,}",
+                f"{result.seconds:.1f}",
+                f"{result.hands_per_second:,.0f}",
+            )
+            for result in results
+        ],
+        out,
+    )
 
 
 def print_engine_lab(result: SimulationResult, out: TextIO) -> None:
