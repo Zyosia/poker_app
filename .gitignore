@@ -437,3 +437,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Poker app: saved sessions
+backend/data/

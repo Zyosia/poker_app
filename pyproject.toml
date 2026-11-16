@@ -1,14 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "poker-project"
-version = "0.1.0"
-description = "Texas Hold'em poker engine"
+version = "0.2.0"
+description = "No Limit Texas Hold'em desktop poker application against bots"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "PySide6-Essentials>=6.7",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
 ]
+
+[tool.setuptools.packages.find]
+# The project has several top-level packages, so they are listed explicitly.
+include = ["backend*", "frontend*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# Descriptive test names and explanatory comments may exceed the line length.
+"tests/**" = ["E501"]
+
+[tool.pyright]
+include = ["backend", "frontend", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"

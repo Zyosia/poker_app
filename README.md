@@ -36,6 +36,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [Alpha 1.3 — Player Abstraction](#alpha-13--player-abstraction)
 
+- [Alpha 2.0 — Desktop Application](#alpha-20--desktop-application)
+
 - [Remaining Alpha 1.x Limitations](#remaining-alpha-1x-limitations)
 
 - [Beta 1.0 — Simulation](#beta-10--simulation)
@@ -545,120 +547,71 @@ This property is covered by dedicated chip-conservation tests.
 
 # Architecture
 
-The engine separates the main responsibilities to limit coupling between system components.
+The project is split into three layers with a single dependency direction:
+the interface talks to the application layer, the application layer talks to
+the poker engine, and the engine depends on nothing else.
 
 ```text
-game/
+backend/
+├── poker_engine/          Texas Hold'em rules (no UI, no bots)
+│   ├── constants.py       Card, Street, ActionType and Position types
+│   ├── deck.py            52-card deck
+│   ├── models.py          Player, Table, Hand and history events
+│   ├── actions.py         Actions and chip movements
+│   ├── betting.py         Action order, legal actions, action execution
+│   ├── hand.py            Hand lifecycle (start, streets, showdown)
+│   ├── hand_evaluator.py  Hand evaluation and comparison
+│   ├── pots.py            Main pot and side pots
+│   ├── showdown.py        Winners and payouts
+│   ├── history.py         Hand history recording
+│   └── session.py         Session configuration and players
+├── application/           Coordination between engine, controllers and UI
+│   ├── controllers.py     PlayerController, HumanController, DecisionContext
+│   ├── game.py            PokerGame: plays a session step by step
+│   ├── setup.py           Game creation from the user's settings
+│   └── persistence.py     Session saving (JSON)
+└── bots/                  Computer-controlled players
+    ├── random_bot.py      Random legal actions
+    └── basic_bot.py       Hand strength and pot odds heuristics
 
-│
+frontend/
+├── main.py                PySide6 application entry point
+├── terminal_ui.py         Terminal front-end
+├── theme.py               Colors and stylesheet
+├── formatting.py          Texts for cards, actions and results
+├── ui/                    Main window, menu and game screens
+└── components/            Card, seat, table and action panel widgets
 
-├── actions.py
-
-│   └── Player actions and bet management
-
-│
-
-├── betting.py
-
-│   └── Action order and betting rounds
-
-│
-
-├── constants.py
-
-│   └── Types, positions, streets, and constants
-
-│
-
-├── deck.py
-
-│   └── 52-card deck
-
-│
-
-├── engine.py
-
-│   └── Main session loop
-
-│
-
-├── hand.py
-
-│   └── Complete hand flow
-
-│
-
-├── hand_evaluator.py
-
-│   └── Hand evaluation and comparison
-
-│
-
-├── helper.py
-
-│   └── Utility functions
-
-│
-
-├── models.py
-
-│   └── Player, Table, Hand, and associated states
-
-│
-
-├── pots.py
-
-│   └── Main pot and side pot construction
-
-│
-
-├── session.py
-
-│   └── Session configuration and management
-
-│
-
-├── showdown.py
-
-│   └── Winner determination and payout distribution
-
-│
-
-└── terminal_ui.py
-
-    └── Terminal interface
+tests/                     Engine, application, bots and interface tests
 ```
 
-The architectural principle is to separate:
+The engine is driven **one step at a time**, which lets any front-end keep
+control between two steps (a graphical interface never blocks):
+
+```python
+hand = start_hand(session)  # blinds, hole cards, pre-flop round
+
+while not hand.finished:
+    if hand.current_player is None:
+        advance_hand(hand)  # next street, or showdown
+    else:
+        apply_action(hand, action)  # validated against get_legal_actions()
+```
+
+`PokerGame` (application layer) wraps this loop: each `game.step()` asks the
+controller of the player to act — a bot or the human — and executes its
+decision, or deals the next street.
+
+Inside the engine, responsibilities stay separated:
 
 ```text
-BETTING
-
-"Who acts next?"
-
-        │
-
-        ▼
-
-HAND EVALUATOR
-
-"What is the value of their hand?"
-
-        │
-
-        ▼
-
-SHOWDOWN
-
-"Who wins each pot?"
-
-        │
-
-        ▼
-
-POTS
-
-"How much does each player receive?"
+BETTING          "Who acts next, and what may they do?"
+   ▼
+HAND EVALUATOR   "What is the value of their hand?"
+   ▼
+SHOWDOWN         "Who wins each pot?"
+   ▼
+POTS             "How much does each player receive?"
 ```
 
 [↑ Back to table of contents](#table-of-contents)
@@ -697,46 +650,26 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 
 # Current Interface
 
-Alpha - 1.0 currently uses a **terminal** interface.
+The application is a **PySide6 desktop application**: one human player
+against 1 to 5 bots.
 
-When starting a session, the engine asks for the number of players:
-
-```text
-==================================================
- TEXAS HOLD'EM — NEW SESSION
-==================================================
-
-Choose the number of players (2-6).
-
-Number of players >
+```bash
+uv sync                        # install the dependencies
+uv run python -m frontend.main # start the desktop application
 ```
 
-Players are then generated automatically:
+- **Menu**: player name, number of opponents, bot level, starting stack and blinds.
+- **Table**: seats, hole cards, community cards, bets, pot and dealer button.
+- **Action panel**: only the actions the engine reports as legal are enabled,
+  with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise.
+- **Hand history**: every action, street and result of the session.
+- **Between hands**: next hand, or rebuy when the player is out of chips.
 
-```text
-2 players
+A minimal terminal front-end using the same application layer is also
+available:
 
-→ Player1
-
-→ Player2
-```
-
-or:
-
-```text
-6 players
-
-→ Player1
-
-→ Player2
-
-→ Player3
-
-→ Player4
-
-→ Player5
-
-→ Player6
+```bash
+uv run python -m frontend.terminal_ui
 ```
 
 [↑ Back to table of contents](#table-of-contents)
@@ -971,6 +904,49 @@ without knowing whether the response comes from:
 - an AI
 - a graphical interface
 - an API
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
+# Alpha 2.0 — Desktop Application
+
+**Alpha 2.0** turns the engine into a playable desktop application.
+
+## What changed
+
+- **Step-driven engine**: the engine no longer prompts a terminal. It exposes
+  `start_hand`, `get_legal_actions`, `apply_action` and `advance_hand`, and can
+  run a complete hand without any interface.
+- **Application layer**: `PokerGame` coordinates the engine and the player
+  controllers, saves the session after each hand and eliminates busted bots.
+- **Bots**: `RandomBot` (random legal actions) and `BasicBot` (hand strength,
+  pot odds, occasional bluffs). Bots only receive a `DecisionContext`, which
+  never contains the opponents' hole cards.
+- **PySide6 interface**: menu, table, action panel and hand history.
+- **Project layout**: `backend/poker_engine`, `backend/application`,
+  `backend/bots` and `frontend`.
+
+## Rule corrections
+
+- A **short all-in** above the current bet is now the amount to call. Players
+  who already acted may only call or fold; players who have not acted yet, or
+  who face at least a full raise in total, may still raise.
+- The **minimum opening bet** is the big blind.
+- A **short big blind** still requires a full big blind to call.
+- A player who is **all-in from a blind** is dealt cards.
+- **All-ins are recorded** in the hand history.
+- A raise is not offered when **no opponent can respond**.
+- Players without chips are **not dealt in** and can no longer affect a hand.
+
+## Tooling
+
+```bash
+uv run pytest            # tests
+uv run ruff check .      # lint
+uv run ruff format .     # format
+uv run pyright           # static analysis
+```
 
 [↑ Back to table of contents](#table-of-contents)
 
