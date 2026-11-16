@@ -113,6 +113,7 @@ def test_setup_builds_the_configuration(qapp: QApplication) -> None:
 
     config = setup.current_config()
 
+    assert isinstance(config, SimulationConfig)
     assert config.seats == (SeatSpec("tag"), SeatSpec("station", name="Callie"))
     assert config.hands == 10_000
     assert config.seed == 42
@@ -170,7 +171,9 @@ def test_duplicate_toggle_is_disabled_outside_the_reset_policy(
     setup.policy_combo.setCurrentIndex(
         setup.policy_combo.findData(StackPolicy.ELIMINATION)
     )
-    assert setup.current_config().stack_policy == StackPolicy.ELIMINATION
+    config = setup.current_config()
+    assert isinstance(config, SimulationConfig)
+    assert config.stack_policy == StackPolicy.ELIMINATION
 
 
 def test_invalid_settings_are_reported(qapp: QApplication) -> None:

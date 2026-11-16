@@ -112,30 +112,7 @@ class SimulationConfig:
 
     @property
     def seat_names(self) -> tuple[str, ...]:
-        """Display name of every seat.
-
-        Custom names are kept as given; default names are the bot label,
-        numbered when it appears several times.
-        """
-        custom_names = {seat.name for seat in self.seats if seat.name}
-        names: list[str] = []
-
-        for seat in self.seats:
-            if seat.name:
-                names.append(seat.name)
-                continue
-
-            base = get_bot_type(seat.bot).label
-            name = base
-            number = 2
-
-            while name in names or name in custom_names:
-                name = f"{base} {number}"
-                number += 1
-
-            names.append(name)
-
-        return tuple(names)
+        return seat_names(self.seats)
 
     @property
     def deals(self) -> int:
@@ -176,6 +153,33 @@ class SimulationConfig:
             return self
 
         return replace(self, seed=random.SystemRandom().randrange(2**63))
+
+
+def seat_names(seats: tuple[SeatSpec, ...]) -> tuple[str, ...]:
+    """Display name of every seat.
+
+    Custom names are kept as given; default names are the bot label,
+    numbered when it appears several times.
+    """
+    custom_names = {seat.name for seat in seats if seat.name}
+    names: list[str] = []
+
+    for seat in seats:
+        if seat.name:
+            names.append(seat.name)
+            continue
+
+        base = get_bot_type(seat.bot).label
+        name = base
+        number = 2
+
+        while name in names or name in custom_names:
+            name = f"{base} {number}"
+            number += 1
+
+        names.append(name)
+
+    return tuple(names)
 
 
 def derive_seed(seed: int, *parts: int | str) -> int:

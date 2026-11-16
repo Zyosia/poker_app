@@ -16,6 +16,14 @@ from PySide6.QtWidgets import (
 from backend.simulation.config import SimulationConfig, StackPolicy
 from backend.simulation.result import SimulationResult
 from backend.simulation.runner import SimulationCancelled, run_simulation
+from backend.simulation.tournament_runner import (
+    TournamentRunConfig,
+    TournamentRunResult,
+    run_tournaments,
+)
+
+ArenaConfig = SimulationConfig | TournamentRunConfig
+ArenaResult = SimulationResult | TournamentRunResult
 
 
 class SimulationThread(QThread):
@@ -29,18 +37,25 @@ class SimulationThread(QThread):
     failed = Signal(str)
     cancelled = Signal()
 
-    def __init__(self, config: SimulationConfig, parent: QWidget | None = None) -> None:
+    def __init__(self, config: ArenaConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
         self.cancel_event = threading.Event()
 
     def run(self) -> None:
         try:
-            result = run_simulation(
-                self.config,
-                progress=self.progressed.emit,
-                cancel=self.cancel_event,
-            )
+            result: ArenaResult
+
+            if isinstance(self.config, TournamentRunConfig):
+                result = run_tournaments(
+                    self.config, progress=self.progressed.emit, cancel=self.cancel_event
+                )
+            else:
+                result = run_simulation(
+                    self.config,
+                    progress=self.progressed.emit,
+                    cancel=self.cancel_event,
+                )
         except SimulationCancelled:
             self.cancelled.emit()
         except Exception as error:  # noqa: BLE001 - reported to the user
@@ -55,7 +70,7 @@ class ArenaProgressScreen(QWidget):
     """Shows the progress of a run and lets the user cancel it."""
 
     finished = Signal(object)
-    """Emitted with the ``SimulationResult``."""
+    """Emitted with the ``SimulationResult`` or ``TournamentRunResult``."""
     cancelled = Signal()
     failed = Signal(str)
 
@@ -109,12 +124,18 @@ class ArenaProgressScreen(QWidget):
     def is_running(self) -> bool:
         return self.simulation_thread is not None and self.simulation_thread.isRunning()
 
-    def start(self, config: SimulationConfig) -> None:
+    def start(self, config: ArenaConfig) -> None:
         """Start simulating ``config`` in the background."""
         if self.is_running:
             raise RuntimeError("A simulation is already running.")
 
-        unit = "sessions" if config.stack_policy == StackPolicy.ELIMINATION else "hands"
+        if isinstance(config, TournamentRunConfig):
+            unit = "tournaments"
+        elif config.stack_policy == StackPolicy.ELIMINATION:
+            unit = "sessions"
+        else:
+            unit = "hands"
+
         seats = ", ".join(config.seat_names)
         self.description_label.setText(f"{seats} — {config.workers} worker(s)")
         self.progress_bar.setRange(0, 1)
@@ -165,7 +186,7 @@ class ArenaProgressScreen(QWidget):
             self.simulation_thread.wait()
             self.simulation_thread = None
 
-    def _on_succeeded(self, result: SimulationResult) -> None:
+    def _on_succeeded(self, result: ArenaResult) -> None:
         self._finish_thread()
         self.finished.emit(result)
 
