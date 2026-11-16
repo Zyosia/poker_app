@@ -135,6 +135,21 @@ QLabel#modeDescription { font-size: 12px; color: #9aa4b2; }
 QLabel#modeNote { font-size: 11px; font-weight: 600; color: #b9861d; }
 QLabel#errorText { color: #ff7b7b; }
 QLabel#summaryText { font-size: 15px; }
+QLabel#statusText { font-size: 13px; font-weight: 600; color: #c9d1dc; }
+QLabel#noticeText {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+    background-color: #f2c14e;
+    border-radius: 8px;
+    padding: 6px 14px;
+}
+QLabel#revealText {
+    font-size: 44px;
+    font-weight: 800;
+    color: #f2c14e;
+    padding: 10px;
+}
 
 QCheckBox { spacing: 8px; }
 QCheckBox:disabled { color: #5d6675; }

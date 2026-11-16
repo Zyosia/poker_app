@@ -42,6 +42,7 @@ from backend.poker_engine.session import GameConfig, GameSession
 from .controllers import (
     DecisionContext,
     GameFormat,
+    HumanController,
     PlayerController,
     build_decision_context,
 )
@@ -331,6 +332,27 @@ class Tournament:
         return self.hand is not None and not self.hand.finished
 
     @property
+    def current_player(self) -> Player | None:
+        if self.hand is None or self.hand.finished:
+            return None
+
+        return self.hand.current_player
+
+    @property
+    def is_waiting_for_human(self) -> bool:
+        """True when the next step needs a decision from the user."""
+        player = self.current_player
+
+        if player is None:
+            return False
+
+        controller = self.controllers[player.name]
+
+        return isinstance(controller, HumanController) and not (
+            controller.has_pending_action
+        )
+
+    @property
     def is_finished(self) -> bool:
         return self._result is not None
 
@@ -379,7 +401,8 @@ class Tournament:
         return 1 + sum(1 for player in self.players_left() if player.stack > stack)
 
     def average_stack(self) -> float:
-        left = self.players_left()
+        """Average stack of the players still in; the winner's at the end."""
+        left = [player for player in self.players if player.stack > 0]
 
         return sum(player.stack for player in left) / len(left)
 
