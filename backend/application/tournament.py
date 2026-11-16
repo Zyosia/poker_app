@@ -39,7 +39,12 @@ from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.models import ActionEvent, Hand, Player
 from backend.poker_engine.session import GameConfig, GameSession
 
-from .controllers import DecisionContext, PlayerController, build_decision_context
+from .controllers import (
+    DecisionContext,
+    GameFormat,
+    PlayerController,
+    build_decision_context,
+)
 from .payouts import (
     Multiplier,
     MultiplierTable,
@@ -512,7 +517,10 @@ class Tournament:
             raise RuntimeError("No hand has been started.")
 
         return build_decision_context(
-            hand=self.hand, player=player, big_blind=self.level.big_blind
+            hand=self.hand,
+            player=player,
+            big_blind=self.level.big_blind,
+            game_format=GameFormat.TOURNAMENT,
         )
 
     def step(self) -> ActionEvent | None:

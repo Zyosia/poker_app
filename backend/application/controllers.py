@@ -5,12 +5,21 @@ validating and executing it.
 """
 
 from abc import ABC, abstractmethod
+from enum import StrEnum
 from typing import NamedTuple
 
 from backend.poker_engine.actions import Action, LegalAction
 from backend.poker_engine.betting import get_current_legal_actions, get_legal_actions
 from backend.poker_engine.constants import Card, Position, Street
 from backend.poker_engine.models import ActionEvent, Hand, Player
+
+
+class GameFormat(StrEnum):
+    """What the chips are worth: bots play short stacks differently in a
+    tournament, where busting ends the game."""
+
+    CASH = "cash"
+    TOURNAMENT = "tournament"
 
 
 class PlayerView(NamedTuple):
@@ -50,10 +59,14 @@ class DecisionContext(NamedTuple):
     """Public actions of the current hand so far, blinds and antes included."""
     ante: int = 0
     """Ante of the hand (per player, or for the table with a big-blind ante)."""
+    game_format: GameFormat = GameFormat.CASH
 
 
 def build_decision_context(
-    hand: Hand, player: Player, big_blind: int
+    hand: Hand,
+    player: Player,
+    big_blind: int,
+    game_format: GameFormat = GameFormat.CASH,
 ) -> DecisionContext:
     """Build the information ``player`` is allowed to see to decide.
 
@@ -99,6 +112,7 @@ def build_decision_context(
         street=hand.street,
         actions=tuple(hand.actions),
         ante=hand.blind_level.ante if hand.blind_level is not None else 0,
+        game_format=game_format,
     )
 
 
