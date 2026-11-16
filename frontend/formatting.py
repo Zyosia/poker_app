@@ -26,6 +26,9 @@ def describe_action(event: ActionEvent) -> str:
     if event.action == "post_bb":
         return f"posts big blind {event.amount}"
 
+    if event.action == "post_ante":
+        return f"posts ante {event.amount}"
+
     if event.action == ActionType.FOLD:
         return "folds"
 

@@ -82,7 +82,7 @@ class ArenaTable:
                     observer.on_street(hand)
         else:
             context = build_decision_context(
-                hand=hand, player=player, big_blind=self.session.config.big_blind
+                hand=hand, player=player, big_blind=self.session.blind_level.big_blind
             )
             action = self.controllers[player.name].choose_action(context)
             event = apply_action(hand, action)

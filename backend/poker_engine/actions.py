@@ -54,6 +54,37 @@ def put_chips_in_pot(player: Player, hand: Hand, amount: int) -> int:
     return actual_amount
 
 
+def post_ante(player: Player, hand: Hand, amount: int, for_table: bool) -> int:
+    """Post an ante: dead money, outside the player's bet on the street.
+
+    The chips go into the pot but not into ``current_bet``, so they count
+    neither toward the amount to call nor toward raises. A player who cannot
+    cover the ante posts what they have and is all-in.
+
+    A classic ante (``for_table`` False) is part of the player's total
+    contribution: a player all-in for a short ante only wins what the others
+    matched of it. A big-blind ante (``for_table`` True) is paid for the whole
+    table: it goes into the main pot as ``hand.dead_money``.
+    """
+    if amount < 0:
+        raise ValueError("Chip amount cannot be negative.")
+
+    actual_amount = min(amount, player.stack)
+
+    player.stack -= actual_amount
+    hand.pot += actual_amount
+
+    if for_table:
+        hand.dead_money += actual_amount
+    else:
+        player.total_contribution += actual_amount
+
+    if player.stack == 0:
+        player.all_in = True
+
+    return actual_amount
+
+
 def post_small_blind(player: Player, hand: Hand, amount: int) -> int:
     """Post the small blind."""
     return put_chips_in_pot(player=player, hand=hand, amount=amount)

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from .blinds import BlindLevel
 from .constants import MAX_TABLE_SEATS
 from .models import Hand, Player, Table
 
@@ -42,6 +43,17 @@ class GameSession:
         self.table = Table(players=players)
         self.hand_number = 0
         self.hands: list[Hand] = []
+        self.blind_level = BlindLevel(
+            small_blind=config.small_blind, big_blind=config.big_blind
+        )
+        """Forced bets of the next hand; a tournament raises them between hands."""
+
+    def set_blind_level(self, level: BlindLevel) -> None:
+        """Set the blinds and ante of the next hands, between two hands only."""
+        if self.hands and not self.hands[-1].finished:
+            raise RuntimeError("The blind level only changes between hands.")
+
+        self.blind_level = level
 
     def get_players_with_chips(self) -> list[Player]:
         """Return players who can be dealt into the next hand."""

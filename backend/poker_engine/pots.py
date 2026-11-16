@@ -25,6 +25,7 @@ class Pot:
 
 def build_pots(
     players: list[Player],
+    dead_money: int = 0,
 ) -> list[Pot]:
     """
     Build the main pot and all side pots from player
@@ -32,6 +33,11 @@ def build_pots(
 
     Folded players remain contributors but are excluded
     from eligibility.
+
+    ``dead_money`` (a big-blind ante) is no player's contribution: it goes
+    into the main pot. Chips that only folded players put in, above every
+    remaining player's contribution, are dead money too: they join the
+    highest pot that a remaining player can still win.
     """
 
     contribution_levels = sorted(
@@ -58,17 +64,37 @@ def build_pots(
         eligible_players = tuple(player for player in contributors if not player.folded)
 
         if amount > 0:
-            pots.append(
-                Pot(
-                    amount=amount,
-                    contributors=contributors,
-                    eligible_players=eligible_players,
+            if not eligible_players and pots:
+                pots[-1] = _with_dead_money(pots[-1], amount, contributors)
+            else:
+                pots.append(
+                    Pot(
+                        amount=amount,
+                        contributors=contributors,
+                        eligible_players=eligible_players,
+                    )
                 )
-            )
 
         previous_level = level
 
+    if dead_money:
+        if not pots:
+            raise ValueError("Dead money needs players in the hand.")
+
+        pots[0] = _with_dead_money(pots[0], dead_money, ())
+
     return pots
+
+
+def _with_dead_money(pot: Pot, amount: int, contributors: tuple[Player, ...]) -> Pot:
+    """Return ``pot`` with ``amount`` more chips, put in by ``contributors``."""
+    added = tuple(player for player in contributors if player not in pot.contributors)
+
+    return Pot(
+        amount=pot.amount + amount,
+        contributors=pot.contributors + added,
+        eligible_players=pot.eligible_players,
+    )
 
 
 def total_pot_amount(

@@ -130,7 +130,7 @@ class PokerGame:
             raise RuntimeError("No hand has been started.")
 
         return build_decision_context(
-            hand=self.hand, player=player, big_blind=self.session.config.big_blind
+            hand=self.hand, player=player, big_blind=self.session.blind_level.big_blind
         )
 
     def _on_hand_finished(self) -> None:

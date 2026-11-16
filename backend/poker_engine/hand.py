@@ -3,8 +3,8 @@
 A hand is driven step by step, so the caller (application, tests, UI) keeps
 control between two steps:
 
-1. ``start_hand`` posts the blinds, deals the hole cards and opens the
-   pre-flop betting round.
+1. ``start_hand`` posts the antes and blinds, deals the hole cards and opens
+   the pre-flop betting round.
 2. While ``hand.current_player`` is set, that player's decision is executed
    with ``betting.apply_action``.
 3. When the betting round is over (``hand.current_player`` is ``None``),
@@ -13,8 +13,9 @@ control between two steps:
 
 from collections.abc import Callable
 
-from .actions import Action, post_big_blind, post_small_blind
+from .actions import Action, post_ante, post_big_blind, post_small_blind
 from .betting import apply_action, begin_betting_round
+from .blinds import AnteType
 from .constants import Position, Street
 from .deck import Deck
 from .history import record_action, record_street
@@ -47,10 +48,12 @@ def start_hand(session: GameSession, deck: Deck | None = None) -> Hand:
     for player in session.players:
         player.reset_for_new_hand()
 
+    level = session.blind_level
     hand = Hand(
         table=session.table,
         deck=deck or Deck(),
-        min_bet=session.config.big_blind,
+        min_bet=level.big_blind,
+        blind_level=level,
     )
     session.hands.append(hand)
 
@@ -138,21 +141,33 @@ def assign_positions(session: GameSession, hand: Hand) -> None:
 
 
 def post_blinds(session: GameSession, hand: Hand) -> None:
-    """Post the Small Blind and Big Blind."""
-    players = session.get_players_with_chips()
+    """Post the antes, the Small Blind and the Big Blind.
+
+    Classic antes are posted before the blinds; a big-blind ante is posted
+    by the big blind after their blind (see ``blinds`` for the rules).
+    """
+    # The players dealt in received a position; a player put all-in by the
+    # ante still posts what they can (nothing) for their blind.
+    players = [player for player in session.players if player.position is not None]
 
     if len(players) < 2:
         raise RuntimeError("At least two players are required to post blinds.")
 
+    level = session.blind_level
     small_blind_position = Position.BTN if len(players) == 2 else Position.SB
 
     small_blind_player = _find_player_at(players, small_blind_position)
     big_blind_player = _find_player_at(players, Position.BB)
 
+    if level.ante and level.ante_type == AnteType.CLASSIC:
+        for player in session.table.players_after(session.table.dealer):
+            if player.position is not None:
+                _post_ante(hand, player, level.ante, for_table=False)
+
     small_blind_amount = post_small_blind(
         player=small_blind_player,
         hand=hand,
-        amount=session.config.small_blind,
+        amount=level.small_blind,
     )
     record_action(
         hand=hand,
@@ -165,7 +180,7 @@ def post_blinds(session: GameSession, hand: Hand) -> None:
     big_blind_amount = post_big_blind(
         player=big_blind_player,
         hand=hand,
-        amount=session.config.big_blind,
+        amount=level.big_blind,
     )
     record_action(
         hand=hand,
@@ -174,6 +189,25 @@ def post_blinds(session: GameSession, hand: Hand) -> None:
         amount=big_blind_amount,
         bet_before=0,
         bet_initiator=True,
+    )
+
+    if level.ante and level.ante_type == AnteType.BIG_BLIND:
+        _post_ante(hand, big_blind_player, level.ante, for_table=True)
+
+
+def _post_ante(hand: Hand, player: Player, amount: int, for_table: bool) -> None:
+    bet_before = player.current_bet
+    posted = post_ante(player=player, hand=hand, amount=amount, for_table=for_table)
+
+    if posted == 0:  # A big blind with nothing left after the blind.
+        return
+
+    record_action(
+        hand=hand,
+        player=player,
+        action="post_ante",
+        amount=posted,
+        bet_before=bet_before,
     )
 
 

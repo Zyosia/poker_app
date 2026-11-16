@@ -215,12 +215,11 @@ class GameScreen(QWidget):
     def _start_next_hand(self) -> None:
         game = self._require_game()
         hand = game.start_hand()
-        config = game.session.config
+        level = game.session.blind_level
 
         self._logged_street_count = 0
         self.info_label.setText(
-            f"HAND #{game.session.hand_number}   ·   "
-            f"BLINDS {config.small_blind}/{config.big_blind}"
+            f"HAND #{game.session.hand_number}   ·   BLINDS {level.describe()}"
         )
         self._log(f"\n── Hand #{game.session.hand_number} ──")
 

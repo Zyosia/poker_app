@@ -62,7 +62,9 @@ def find_chip_violations(hand: Hand, stacks_before: Mapping[str, int]) -> list[s
             f"chips are not conserved: {chips_before} before, {chips_after} after"
         )
 
-    contributed = sum(player.total_contribution for player in dealt_in)
+    contributed = hand.dead_money + sum(
+        player.total_contribution for player in dealt_in
+    )
     paid_out = sum(hand.payouts.values())
 
     if paid_out != contributed:

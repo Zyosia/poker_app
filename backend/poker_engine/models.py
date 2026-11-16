@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .blinds import BlindLevel
 from .constants import Card, Position, Street
 from .deck import Deck
 from .hand_evaluator import HandEvaluation
@@ -154,9 +155,13 @@ class Hand:
     deck: Deck = field(default_factory=Deck)
     min_bet: int = 1
     """Smallest legal opening bet and raise increment (the big blind)."""
+    blind_level: BlindLevel | None = None
+    """The blinds and ante the hand was dealt with."""
 
     community_cards: list[Card] = field(default_factory=list)
     pot: int = 0
+    dead_money: int = 0
+    """Chips in the pot that are no player's contribution: a big-blind ante."""
     street: Street = Street.PREFLOP
     current_bet: int = 0
     last_raise_size: int = 0
