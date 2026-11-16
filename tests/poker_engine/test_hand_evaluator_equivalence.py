@@ -13,6 +13,9 @@ from backend.poker_engine.hand_evaluator import (
     HandCategory,
     evaluate_best_of_combinations,
     evaluate_hand,
+    evaluate_rank,
+    get_straight_high,
+    straight_high,
 )
 
 FULL_DECK = [rank + suit for rank in RANKS for suit in SUITS]
@@ -49,6 +52,41 @@ def test_hands_from_reduced_decks_match_the_reference(
 
     for _ in range(1500):
         assert_same_evaluation(rng.sample(deck, card_count))
+
+
+@pytest.mark.parametrize("deck_name", ["full", *REDUCED_DECKS])
+def test_evaluate_rank_matches_the_full_evaluation(deck_name: str) -> None:
+    deck = FULL_DECK if deck_name == "full" else REDUCED_DECKS[deck_name]
+    rng = random.Random(f"rank-{deck_name}")
+
+    for _ in range(2000):
+        cards = rng.sample(deck, rng.choice([5, 6, 7]))
+        evaluation = evaluate_hand(cards[:2], cards[2:])
+
+        assert evaluate_rank(cards) == (evaluation.rank, evaluation.tiebreaker)
+
+
+def test_evaluate_rank_rejects_a_wrong_card_count() -> None:
+    with pytest.raises(ValueError):
+        evaluate_rank(["AS", "KS", "QS", "JS"])
+
+
+def test_straight_high_finds_the_same_straights_as_get_straight_high() -> None:
+    # With six or more ranks, get_straight_high reports the wheel before a
+    # higher straight (A-2-3-4-5-6 gives 5); straight_high gives the best (6).
+    # Both always agree on whether there is a straight, which is all the bots
+    # rely on, and on its value with five cards.
+    rng = random.Random(1)
+
+    for _ in range(5000):
+        ranks = [rng.randint(2, 14) for _ in range(rng.randint(1, 8))]
+
+        assert (straight_high(ranks) is None) == (get_straight_high(ranks) is None)
+
+        if len(ranks) == 5:
+            assert straight_high(ranks) == get_straight_high(ranks)
+
+    assert straight_high([14, 2, 3, 4, 5, 6]) == 6
 
 
 def test_reduced_decks_reach_every_category() -> None:

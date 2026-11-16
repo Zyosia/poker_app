@@ -1,10 +1,17 @@
 """State of the players, the table and a single hand."""
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .constants import Card, Position, Street
 from .deck import Deck
 from .hand_evaluator import HandEvaluation
+
+if TYPE_CHECKING:
+    from .actions import LegalAction
+
+    LegalActionsCache = tuple["Player", tuple[object, ...], tuple[LegalAction, ...]]
+    """(player, state the actions were computed for, legal actions)."""
 
 
 @dataclass(frozen=True)
@@ -96,7 +103,7 @@ class Player:
 
     @property
     def can_act(self) -> bool:
-        return self.is_active and not self.all_in
+        return not self.folded and not self.all_in
 
     def __str__(self) -> str:
         return f"{self.name} ({self.stack})"
@@ -121,7 +128,7 @@ class Table:
         ]
 
     def get_active_players(self) -> list[Player]:
-        return [player for player in self.players if player.is_active]
+        return [player for player in self.players if not player.folded]
 
     def players_after(self, player: Player) -> list[Player]:
         """Return every seat clockwise from the left of ``player``, ending with it."""
@@ -163,8 +170,25 @@ class Hand:
     pot_results: list[PotResult] = field(default_factory=list)
     actions: list[ActionEvent] = field(default_factory=list)
     streets: list[StreetEvent] = field(default_factory=list)
-    pot_history: list[PotEvent] = field(default_factory=list)
     finished: bool = False
+    legal_actions_cache: "LegalActionsCache | None" = field(
+        default=None, repr=False, compare=False
+    )
+    """Cache of ``betting.get_current_legal_actions``."""
+
+    @property
+    def pot_history(self) -> list[PotEvent]:
+        """The pot after every recorded action.
+
+        Derived from the actions, which already record the pot after each
+        one, so the two histories can never disagree.
+        """
+        return [
+            PotEvent(
+                sequence=event.sequence, street=event.street, amount=event.pot_after
+            )
+            for event in self.actions
+        ]
 
     def reset_street_betting(self) -> None:
         """Clear the betting state before a new street."""

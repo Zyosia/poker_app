@@ -5,17 +5,20 @@ validating and executing it.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from typing import NamedTuple
 
 from backend.poker_engine.actions import Action, LegalAction
-from backend.poker_engine.betting import get_legal_actions
+from backend.poker_engine.betting import get_current_legal_actions, get_legal_actions
 from backend.poker_engine.constants import Card, Position, Street
 from backend.poker_engine.models import ActionEvent, Hand, Player
 
 
-@dataclass(frozen=True)
-class PlayerView:
-    """Public information about a player, visible to everyone at the table."""
+class PlayerView(NamedTuple):
+    """Public information about a player, visible to everyone at the table.
+
+    A named tuple: immutable, and several times cheaper to build than a
+    frozen dataclass, which matters since every decision builds one per seat.
+    """
 
     name: str
     stack: int
@@ -27,11 +30,11 @@ class PlayerView:
     is_current_player: bool
 
 
-@dataclass(frozen=True)
-class DecisionContext:
+class DecisionContext(NamedTuple):
     """Everything a player may legitimately know when making a decision.
 
-    It never contains the hole cards of the other players.
+    It never contains the hole cards of the other players. Like
+    ``PlayerView`` it is an immutable named tuple, built once per decision.
     """
 
     player: PlayerView
@@ -59,15 +62,16 @@ def build_decision_context(
     views: list[PlayerView] = []
 
     for seat in hand.table.players:
+        # Positional arguments, in field order: the fastest way to build it.
         view = PlayerView(
-            name=seat.name,
-            stack=seat.stack,
-            current_bet=seat.current_bet,
-            total_contribution=seat.total_contribution,
-            position=seat.position,
-            folded=seat.folded,
-            all_in=seat.all_in,
-            is_current_player=seat is current_player,
+            seat.name,
+            seat.stack,
+            seat.current_bet,
+            seat.total_contribution,
+            seat.position,
+            seat.folded,
+            seat.all_in,
+            seat is current_player,
         )
         views.append(view)
 
@@ -84,7 +88,11 @@ def build_decision_context(
         pot=hand.pot,
         current_bet=hand.current_bet,
         big_blind=big_blind,
-        legal_actions=get_legal_actions(player=player, hand=hand),
+        legal_actions=(
+            get_current_legal_actions(hand)
+            if player is current_player
+            else get_legal_actions(player=player, hand=hand)
+        ),
         players=tuple(views),
         street=hand.street,
         actions=tuple(hand.actions),

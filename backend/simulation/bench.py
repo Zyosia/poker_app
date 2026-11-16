@@ -2,7 +2,7 @@
 
 Every table is seeded and played on one core with the default checks
 (chip invariants on, no history), so the numbers can be compared from one
-version of the engine to the next.
+version of the engine to the next. Use ``--repeat`` on a noisy machine.
 """
 
 from dataclasses import dataclass
@@ -49,16 +49,29 @@ def bench_config(table: BenchTable, hands: int) -> SimulationConfig:
 
 
 def run_bench(
-    hands: int, tables: tuple[BenchTable, ...] = BENCH_TABLES
+    hands: int,
+    repeat: int = 1,
+    tables: tuple[BenchTable, ...] = BENCH_TABLES,
 ) -> list[BenchResult]:
-    """Play ``hands`` hands of every table on one core."""
+    """Play ``hands`` hands of every table on one core.
+
+    With ``repeat`` above 1, each table is played several times and the
+    fastest run is kept: the other runs only measure interference from the
+    rest of the machine, like ``timeit`` does.
+    """
+    if repeat < 1:
+        raise ValueError("A benchmark runs at least once.")
+
     results = []
 
     for table in tables:
-        result = run_simulation(bench_config(table, hands))
+        config = bench_config(table, hands)
+        runs = [run_simulation(config) for _ in range(repeat)]
         results.append(
             BenchResult(
-                table=table, hands=result.totals.hands, seconds=result.duration_seconds
+                table=table,
+                hands=runs[0].totals.hands,
+                seconds=min(run.duration_seconds for run in runs),
             )
         )
 

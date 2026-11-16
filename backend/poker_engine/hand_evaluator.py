@@ -4,9 +4,14 @@ from dataclasses import dataclass
 from enum import IntEnum
 from itertools import combinations
 
-from .constants import RANKS, Card
+from .constants import RANKS, SUITS, Card
 
 RANK_VALUES: dict[str, int] = {rank: index + 2 for index, rank in enumerate(RANKS)}
+
+CARD_RANKS: dict[Card, int] = {
+    rank + suit: value for rank, value in RANK_VALUES.items() for suit in SUITS
+}
+"""Rank of every valid card, looked up once per card in the hot paths."""
 
 
 class HandCategory(IntEnum):
@@ -77,13 +82,46 @@ def evaluate_hand(
             "A Texas Hold'em hand cannot contain more than seven available cards."
         )
 
-    ranks = [card_rank(card) for card in all_cards]
+    ranks = _card_ranks(all_cards)
     suits = [card[1] for card in all_cards]
 
     category, tiebreaker, flush_suit = _best_category(ranks, suits)
     cards = _select_cards(all_cards, ranks, suits, category, tiebreaker, flush_suit)
 
     return make_evaluation(rank=category, cards=cards, tiebreaker=tiebreaker)
+
+
+def evaluate_rank(cards: list[Card]) -> tuple[HandCategory, tuple[int, ...]]:
+    """Return the category and tiebreaker of the best hand of 5 to 7 cards.
+
+    The same values as ``evaluate_hand``, without picking the five cards:
+    the cheaper choice when only the strength of the hand matters.
+    """
+    if not 5 <= len(cards) <= 7:
+        raise ValueError("A hand is evaluated from five to seven cards.")
+
+    category, tiebreaker, _ = _best_category(
+        _card_ranks(cards), [card[1] for card in cards]
+    )
+
+    return category, tiebreaker
+
+
+def _card_ranks(cards: list[Card]) -> list[int]:
+    """Ranks of the cards, with the validation of ``card_rank``."""
+    try:
+        return [CARD_RANKS[card] for card in cards]
+    except KeyError:
+        # Any card missing from the table is invalid: report it precisely.
+        return [card_rank(card) for card in cards]
+
+
+def straight_high(ranks: list[int]) -> int | None:
+    """Return the high card of the best straight among ``ranks``, if any.
+
+    Ace-low straight A-2-3-4-5 returns 5.
+    """
+    return _straight_high(ranks)
 
 
 def evaluate_best_of_combinations(cards: list[Card]) -> HandEvaluation:

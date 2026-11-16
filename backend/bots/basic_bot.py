@@ -5,7 +5,7 @@ original behaviour, the presets of ``profiles`` give other play styles.
 """
 
 import random
-from collections import Counter
+from functools import lru_cache
 
 from backend.application.controllers import DecisionContext, PlayerController
 from backend.poker_engine.actions import Action, LegalAction
@@ -14,8 +14,8 @@ from backend.poker_engine.hand_evaluator import (
     HandCategory,
     card_rank,
     card_suit,
-    evaluate_hand,
-    get_straight_high,
+    evaluate_rank,
+    straight_high,
 )
 
 from .profiles import BASIC_PROFILE, BotProfile
@@ -37,6 +37,13 @@ MADE_HAND_STRENGTH: dict[HandCategory, float] = {
 }
 
 
+# The strength functions are pure functions of the cards: caching them only
+# saves work. A hand is read several times per street (once per decision),
+# and every player reads the same board.
+STRENGTH_CACHE_SIZE = 4096
+
+
+@lru_cache(maxsize=STRENGTH_CACHE_SIZE)
 def preflop_strength(hole_cards: tuple[Card, ...]) -> float:
     """Rate two hole cards between 0 and 1 with the Chen formula."""
     return min(1.0, max(0.0, _chen_score(hole_cards) / CHEN_SCORE_FOR_FULL_STRENGTH))
@@ -63,25 +70,25 @@ def _chen_score(hole_cards: tuple[Card, ...]) -> float:
     return score
 
 
+@lru_cache(maxsize=STRENGTH_CACHE_SIZE)
 def postflop_strength(
     hole_cards: tuple[Card, ...],
     community_cards: tuple[Card, ...],
 ) -> float:
     """Rate a hand between 0 and 1 from the made hand and its draws."""
-    evaluation = evaluate_hand(list(hole_cards), list(community_cards))
-    board_ranks = [card_rank(card) for card in community_cards]
+    category, tiebreaker = evaluate_rank([*hole_cards, *community_cards])
     board_category = _board_category(community_cards)
 
     # A hand that only plays the board has no value of its own.
-    if evaluation.rank == board_category and evaluation.rank != HandCategory.PAIR:
+    if category == board_category and category != HandCategory.PAIR:
         strength = 0.15
-    elif evaluation.rank in MADE_HAND_STRENGTH:
-        strength = MADE_HAND_STRENGTH[evaluation.rank]
-    elif evaluation.rank == HandCategory.PAIR:
+    elif category in MADE_HAND_STRENGTH:
+        strength = MADE_HAND_STRENGTH[category]
+    elif category == HandCategory.PAIR:
         strength = _pair_strength(
-            pair_rank=evaluation.tiebreaker[0],
+            pair_rank=tiebreaker[0],
             hole_ranks=[card_rank(card) for card in hole_cards],
-            board_ranks=board_ranks,
+            board_ranks=[card_rank(card) for card in community_cards],
         )
     else:
         strength = 0.15
@@ -92,12 +99,14 @@ def postflop_strength(
     return strength
 
 
+@lru_cache(maxsize=STRENGTH_CACHE_SIZE)
 def _board_category(community_cards: tuple[Card, ...]) -> HandCategory | None:
     if len(community_cards) < 5:
-        counts = Counter(card_rank(card) for card in community_cards)
-        return HandCategory.PAIR if max(counts.values()) == 2 else None
+        ranks = [card_rank(card) for card in community_cards]
+        most_common = max(ranks.count(rank) for rank in ranks)
+        return HandCategory.PAIR if most_common == 2 else None
 
-    return evaluate_hand([], list(community_cards)).rank
+    return evaluate_rank(list(community_cards))[0]
 
 
 def _pair_strength(
@@ -115,15 +124,15 @@ def _pair_strength(
 
 
 def _draw_bonus(cards: tuple[Card, ...]) -> float:
-    suit_counts = Counter(card_suit(card) for card in cards)
+    suits = [card_suit(card) for card in cards]
 
-    if max(suit_counts.values()) == 4:
+    if max(suits.count(suit) for suit in set(suits)) == 4:
         return 0.2
 
     ranks = {card_rank(card) for card in cards}
     has_open_ended_draw = any(
-        get_straight_high([*ranks, missing]) is not None
-        and get_straight_high([*ranks, missing + 5]) is not None
+        straight_high([*ranks, missing]) is not None
+        and straight_high([*ranks, missing + 5]) is not None
         for missing in range(2, 10)
         if not {missing, missing + 5} & ranks
     )
