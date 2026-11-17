@@ -28,6 +28,12 @@ from .tournament import (
 
 BOT_NAMES = ("Alex", "Bella", "Carlos", "Dana", "Elio", "Fiona")
 
+TOURNAMENT_BUY_INS = (100, 500, 1_000, 5_000, 10_000)
+SPIN_BUY_INS = (100, 500, 1_000, 5_000)
+"""Buy-in presets of the setup screens; custom amounts (0 for a freeroll) too."""
+DEFAULT_TOURNAMENT_BUY_IN = 1_000
+DEFAULT_SPIN_BUY_IN = 1_000
+
 
 class BotLevel(StrEnum):
     EASY = "easy"
@@ -118,7 +124,7 @@ class TournamentSettings:
     starting_stack: int = TOURNAMENT_STARTING_STACK
     structure: str = "Turbo"
     levels_by: str = LEVELS_BY_HANDS
-    buy_in: int = 100
+    buy_in: int = DEFAULT_TOURNAMENT_BUY_IN
     payout: PayoutStructure | None = None
     rebuys: bool = False
 
@@ -167,7 +173,7 @@ class SpinSettings:
 
     player_name: str = "Hero"
     opponents: tuple[str, str] = ("tag", "lag")
-    buy_in: int = 10
+    buy_in: int = DEFAULT_SPIN_BUY_IN
     levels_by: str = LEVELS_BY_HANDS
     multipliers: MultiplierTable = FAIR_MULTIPLIERS
 
@@ -180,8 +186,8 @@ class SpinSettings:
         if self.levels_by not in (LEVELS_BY_HANDS, LEVELS_BY_TIME):
             raise ValueError("Levels go up by hands or by time.")
 
-        if self.buy_in <= 0:
-            raise ValueError("The buy-in must be positive.")
+        if self.buy_in < 0:
+            raise ValueError("The buy-in cannot be negative.")
 
         for bot in self.opponents:
             get_bot_type(bot)

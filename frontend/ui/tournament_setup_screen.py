@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from backend.application.action_clock import SPIN_CLOCK, tournament_clock
+from backend.application.bankroll import DEFAULT_BALANCE, GameMode
 from backend.application.payouts import (
     MULTIPLIER_TABLES,
     PAYOUT_PRESETS,
@@ -23,12 +25,17 @@ from backend.application.payouts import (
 from backend.application.setup import (
     LEVELS_BY_HANDS,
     LEVELS_BY_TIME,
+    SPIN_BUY_INS,
+    TOURNAMENT_BUY_INS,
     SpinSettings,
     TournamentSettings,
 )
 from backend.application.structures import TOURNAMENT_STRUCTURES
 from backend.bots.factory import BOT_TYPES
 from backend.poker_engine.constants import MAX_TABLE_SEATS
+from frontend.components.buy_in_info import BuyInInfo
+from frontend.components.clock_combo import ClockCombo
+from frontend.formatting import format_chips
 
 DEFAULT_TOURNAMENT = TournamentSettings()
 DEFAULT_SPIN = SpinSettings()
@@ -56,6 +63,49 @@ def level_speed_combo() -> QComboBox:
     combo.addItem("By time (Pause freezes the clock)", LEVELS_BY_TIME)
 
     return combo
+
+
+CUSTOM = "Custom"
+
+
+class BuyInChoice(QWidget):
+    """Buy-in presets, or any custom amount (0 for a freeroll)."""
+
+    def __init__(self, presets: tuple[int, ...], default: int) -> None:
+        super().__init__()
+        self.combo = QComboBox()
+
+        for amount in presets:
+            self.combo.addItem(format_chips(amount), amount)
+
+        self.combo.addItem(CUSTOM, None)
+        self.spin = QSpinBox()
+        self.spin.setRange(0, 1_000_000)
+        self.spin.setSingleStep(100)
+        self.spin.setGroupSeparatorShown(True)
+        self.spin.setValue(default)
+        self._sync_combo()
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.combo, stretch=1)
+        layout.addWidget(self.spin)
+
+        self.combo.activated.connect(self._on_preset)
+        self.spin.valueChanged.connect(self._sync_combo)
+
+    def value(self) -> int:
+        return self.spin.value()
+
+    def _on_preset(self, index: int) -> None:
+        amount = self.combo.itemData(index)
+
+        if amount is not None:
+            self.spin.setValue(amount)
+
+    def _sync_combo(self) -> None:
+        index = self.combo.findData(self.spin.value())
+        self.combo.setCurrentIndex(index if index >= 0 else self.combo.count() - 1)
 
 
 def setup_page(
@@ -147,10 +197,8 @@ class TournamentSetupScreen(QWidget):
             )
 
         self.speed_combo = level_speed_combo()
-        self.buy_in_spin = QSpinBox()
-        self.buy_in_spin.setRange(0, 1_000_000)
-        self.buy_in_spin.setSingleStep(10)
-        self.buy_in_spin.setValue(DEFAULT_TOURNAMENT.buy_in)
+        self.buy_in_choice = BuyInChoice(TOURNAMENT_BUY_INS, DEFAULT_TOURNAMENT.buy_in)
+        self.buy_in_spin = self.buy_in_choice.spin
         self.payout_combo = QComboBox()
         self.payout_combo.addItem("Default (by number of players)", None)
 
@@ -158,7 +206,19 @@ class TournamentSetupScreen(QWidget):
             self.payout_combo.addItem(payout.name, payout)
 
         self.rebuys_check = QCheckBox("Rebuys during 3 levels, then an add-on")
+        self.clock_combo = ClockCombo(tournament_clock(DEFAULT_TOURNAMENT.structure))
+        self.structure_combo.setCurrentIndex(
+            self.structure_combo.findData(DEFAULT_TOURNAMENT.structure)
+        )
+        self.structure_combo.currentIndexChanged.connect(
+            lambda: self.clock_combo.follow_default(
+                tournament_clock(self.structure_combo.currentData())
+            )
+        )
 
+        self.buy_in_info = BuyInInfo(GameMode.TOURNAMENT)
+        self._balance = DEFAULT_BALANCE
+        self._hints = True
         self.error_label = error_label()
         self.start_button = QPushButton("Start the tournament")
         self.start_button.setObjectName("primary")
@@ -177,19 +237,27 @@ class TournamentSetupScreen(QWidget):
         form.addRow("Starting stack", self.stack_spin)
         form.addRow("Blind structure", self.structure_combo)
         form.addRow("Level speed", self.speed_combo)
-        form.addRow("Buy-in", self.buy_in_spin)
+        form.addRow("Buy-in", self.buy_in_choice)
         form.addRow("Payout", self.payout_combo)
         form.addRow("", self.rebuys_check)
+        form.addRow("Action clock", self.clock_combo)
 
         self.setLayout(
             setup_page(
                 "♣  TOURNAMENT",
                 "Rising blinds until one player holds every chip",
                 form,
-                [self.error_label, self.start_button, self.back_button],
+                [
+                    self.buy_in_info,
+                    self.error_label,
+                    self.start_button,
+                    self.back_button,
+                ],
             )
         )
         self._update_bots()
+        self.buy_in_spin.valueChanged.connect(self.refresh_cost)
+        self.refresh_cost()
 
     def _update_bots(self) -> None:
         count = 1 if self.same_style_check.isChecked() else self.opponents_spin.value()
@@ -204,6 +272,18 @@ class TournamentSetupScreen(QWidget):
             return (self.bot_combos[0].currentData(),) * count
 
         return tuple(combo.currentData() for combo in self.bot_combos[:count])
+
+    def cost(self) -> int:
+        return self.buy_in_spin.value()
+
+    def set_bankroll(self, balance: int, hints: bool) -> None:
+        self._balance = balance
+        self._hints = hints
+        self.refresh_cost()
+
+    def refresh_cost(self) -> None:
+        affordable = self.buy_in_info.refresh(self.cost(), self._balance, self._hints)
+        self.start_button.setEnabled(affordable)
 
     def current_settings(self) -> TournamentSettings:
         payout: PayoutStructure | None = self.payout_combo.currentData()
@@ -247,15 +327,19 @@ class SpinSetupScreen(QWidget):
         for combo in self.bot_combos:
             bots.addWidget(combo)
 
-        self.buy_in_spin = QSpinBox()
-        self.buy_in_spin.setRange(1, 100_000)
-        self.buy_in_spin.setValue(DEFAULT_SPIN.buy_in)
+        self.buy_in_choice = BuyInChoice(SPIN_BUY_INS, DEFAULT_SPIN.buy_in)
+        self.buy_in_spin = self.buy_in_choice.spin
         self.speed_combo = level_speed_combo()
         self.multipliers_combo = QComboBox()
 
         for table in MULTIPLIER_TABLES:
             self.multipliers_combo.addItem(table.name, table)
 
+        self.clock_combo = ClockCombo(SPIN_CLOCK)
+
+        self.buy_in_info = BuyInInfo(GameMode.SPIN)
+        self._balance = DEFAULT_BALANCE
+        self._hints = True
         self.error_label = error_label()
         self.start_button = QPushButton("Spin!")
         self.start_button.setObjectName("primary")
@@ -269,18 +353,38 @@ class SpinSetupScreen(QWidget):
         form.setHorizontalSpacing(18)
         form.addRow("Your name", self.name_edit)
         form.addRow("Opponents", bots)
-        form.addRow("Buy-in", self.buy_in_spin)
+        form.addRow("Buy-in", self.buy_in_choice)
         form.addRow("Level speed", self.speed_combo)
         form.addRow("Multipliers", self.multipliers_combo)
+        form.addRow("Action clock", self.clock_combo)
 
         self.setLayout(
             setup_page(
                 "♥  SPIN & GO",
                 "Three players, hyper-turbo, a prize drawn before the first hand",
                 form,
-                [self.error_label, self.start_button, self.back_button],
+                [
+                    self.buy_in_info,
+                    self.error_label,
+                    self.start_button,
+                    self.back_button,
+                ],
             )
         )
+        self.buy_in_spin.valueChanged.connect(self.refresh_cost)
+        self.refresh_cost()
+
+    def cost(self) -> int:
+        return self.buy_in_spin.value()
+
+    def set_bankroll(self, balance: int, hints: bool) -> None:
+        self._balance = balance
+        self._hints = hints
+        self.refresh_cost()
+
+    def refresh_cost(self) -> None:
+        affordable = self.buy_in_info.refresh(self.cost(), self._balance, self._hints)
+        self.start_button.setEnabled(affordable)
 
     def current_settings(self) -> SpinSettings:
         first, second = (combo.currentData() for combo in self.bot_combos)

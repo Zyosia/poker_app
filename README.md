@@ -46,6 +46,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V1.0 — Tournaments](#v10--tournaments)
 
+- [V1.0.1 — Quality of Life](#v101--quality-of-life)
+
 - [V1.1 — Tools](#v11--tools)
 
 - [V1.2 — Cash Game Extras](#v12--cash-game-extras)
@@ -582,7 +584,11 @@ backend/
 │   ├── payouts.py         Payout structures, Spin & Go multipliers
 │   ├── structures.py      Default blind structures
 │   ├── hand_summary.py    A player's stats from the hand history
-│   └── persistence.py     Session saving and loading (JSON, format 2)
+│   ├── action_clock.py    Action clock, time bank, clock presets (V1.0.1)
+│   ├── equity.py          Equity of hands face up (V1.0.1)
+│   ├── bankroll.py        Bankroll, ledger, game accounts (V1.0.1)
+│   ├── profile.py         User profile file: settings and bankroll
+│   └── persistence.py     Session saving and loading (JSON, format 3)
 ├── bots/                  Computer-controlled players
 │   ├── random_bot.py      Random legal actions
 │   ├── basic_bot.py       Hand strength and pot odds heuristics
@@ -610,17 +616,19 @@ frontend/
 ├── main.py                PySide6 application entry point
 ├── terminal_ui.py         Terminal front-end
 ├── theme.py               Colors and stylesheet
-├── formatting.py          Texts for cards, actions and results
+├── formatting.py          Texts for cards, amounts (chips or BB), actions
+├── runout.py              Cards face up and equity after an all-in is called
 ├── modes.py               Modes listed by the main menu
 ├── ui/
 │   ├── main_window.py     Navigation stack (Back works everywhere)
-│   ├── main_menu_screen.py
+│   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
 │   │   tournament_results_screen.py         Tournament and Spin & Go
 │   └── arena_setup_screen.py, arena_progress_screen.py,
 │       arena_results_screen.py, arena_watch_screen.py  Bot Arena
-└── components/            Card, seat, table, action panel, line and bar charts
+└── components/            Card, seat, table, action panel, line and bar charts,
+                           clock choice, buy-in and bankroll line
 
 tests/                     Engine, application, bots, simulation and UI tests
 ```
@@ -692,7 +700,9 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 
 The application is a **PySide6 desktop application**. It opens on a **main
 menu** listing the modes: **Cash Game**, **Tournament**, **Spin & Go** and
-**Bot Arena**; a **Tools** slot is reserved. Every screen has a Back button.
+**Bot Arena**; a **Tools** slot is reserved. The menu also shows your
+**bankroll** and opens the **Bankroll** screen. Every screen has a Back
+button.
 
 ```bash
 uv sync                        # install the dependencies
@@ -701,12 +711,20 @@ uv run python -m frontend.main # start the desktop application
 
 **Cash Game** — one human player against 1 to 5 bots:
 
-- **Setup**: player name, number of opponents, bot level, starting stack and blinds.
-- **Table**: seats, hole cards, community cards, bets, pot and dealer button.
+- **Setup**: player name, number of opponents, bot level, starting stack
+  (the buy-in, paid from the bankroll), blinds and action clock.
+- **Table**: seats, hole cards, community cards, bets, pot and dealer button;
+  **Show in BB** switches every amount to big blinds. Once an all-in is
+  called, the cards are turned face up with each player's chance of winning.
 - **Action panel**: only the actions the engine reports as legal are enabled,
-  with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise.
+  with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise,
+  and the **action clock** with its time bank; **Pause** freezes it.
 - **Hand history**: every action, street and result of the session.
 - **Between hands**: next hand, or rebuy when the player is out of chips.
+  Leaving the table cashes your stack out to the bankroll.
+
+See [V1.0.1](#v101--quality-of-life) for the BB display, the all-in reveal,
+the action clock and the bankroll.
 
 **Tournament** and **Spin & Go** — you against bots with rising blinds, see
 [V1.0](#v10--tournaments).
@@ -1542,6 +1560,196 @@ Bots & simulation:
 
 ---
 
+# V1.0.1 — Quality of Life
+
+**V1.0.1** is a small update before V1.1: amounts in **big blinds**, cards
+turned **face up as soon as no more betting is possible**, an **action clock**
+with a **time bank**, and a persistent **bankroll**. No poker rule changed:
+the cash-game and tournament golden results, and every Bot Arena result, are
+unchanged, and headless simulations never use any of it.
+
+## Features
+
+### 🔢 Amounts in big blinds
+
+- A **Show in BB** checkbox on every table: cash game, tournament, Spin & Go
+  and Bot Arena Watch mode. It is one setting for all of them, remembered
+  between launches.
+- In big blinds: stacks, bets, the pot, the "Wins …" status, the amount to
+  call, the raise labels, the amount box and its presets (Min, 1/2 Pot, Pot,
+  Max). One decimal at most: `42.5 BB`, `20 BB`. In a tournament, the big
+  blind of the level the hand is played at (a new level shows from the next
+  hand); the average stack was already in big blinds.
+- **Display only**: the engine and every action stay in chips. An amount
+  typed in big blinds becomes the nearest chip amount within the legal range;
+  the highest value of the box is the exact all-in.
+- The **hand history stays in chips**: it is the record of the hand, and a
+  log never mixes two units.
+
+### 👀 Cards face up once an all-in is called
+
+- **When**: as soon as the betting is over for the rest of the hand, that is
+  when at least two players are still in the hand and **at most one of them
+  can act, with nothing to call**: everyone is all-in, or the only player
+  with chips has called the last all-in. The engine knows this moment (it is
+  when it starts dealing the streets without decisions): `is_betting_closed(hand)`
+  says so, and the engine records the action after which it happened in
+  `Hand.revealed_after_action`. The interface never re-derives the rule.
+- **What you see**: the cards of every player still in the hand are turned
+  face up at once ("*** Cards revealed ***" in the history), then each
+  remaining street is dealt about **1 s** apart (1.25 normal steps), then the
+  usual showdown and payout.
+- **Win %** under each player's cards during the run-out: **exact** from the
+  flop (every possible board is counted), and an **estimate "≈ 38%"** before
+  the flop (about 1.7 million boards: a capped sample of about 4,000 hand
+  evaluations, roughly 40 ms, so the table never stalls). The estimate uses
+  an RNG of its own, seeded from the cards on the table: the game's and the
+  deck's RNG are never touched. Only the cards face up are known; folded
+  cards count as unknown. The code (`backend/application/equity.py`) will
+  serve the V1.1 equity calculator.
+- The same in **Bot Arena Watch mode** (with "Show all cards" off) and when
+  **watching a tournament after you bust**.
+- No information leaks: nothing is shown while any player can still act.
+
+### ⏱️ Action clock and time bank
+
+As on online poker sites, each of your decisions has a **time to act**, shown
+as a bar that runs down (orange for the last 5 seconds). When it runs out, a
+**time bank** starts automatically (blue, "Time bank 34 s"). The time bank is
+shared by the whole session or tournament, is topped up slowly, and unused
+time to act is not added to it.
+
+| Preset | Time to act | Starting time bank | Top-up |
+| --- | ---: | ---: | --- |
+| Off | — | — | — |
+| Relaxed | 30 s | 120 s | +10 s every 25 hands, max 120 s |
+| Standard | 20 s | 60 s | +10 s every 25 hands, max 120 s |
+| Fast | 15 s | 30 s | +5 s every 25 hands, max 60 s |
+| Hyper | 10 s | 20 s | +5 s every 25 hands, max 40 s |
+
+- **Defaults**: Cash Game → Standard, Tournament → Standard (Fast for the
+  Turbo structure), Spin & Go → Fast. Each setup screen has an **Action
+  clock** choice, including **Off**; your choice is remembered per mode. The
+  presets live in `backend/application/action_clock.py`.
+- **Time out**: when both run out, the hand is dead: you **check** if
+  checking is free, and **fold** otherwise (the usual online behaviour). The
+  action is recorded as timed out in the hand history
+  (`Hand.timed_out_actions`) and shown as "Hero ran out of time — folds".
+- **Pause** freezes the action clock and the time bank, and restarts them
+  exactly where they were. The Pause button appears whenever there is a clock
+  to freeze: an action clock (now in cash games too) or levels by time.
+- Bots have no clock. Headless simulations, Bot Arena results and "Skip to
+  results" never use it. Time is measured in the application layer
+  (`ActionClock`, with a time source tests replace); the engine never knows
+  about time.
+
+### 💰 Bankroll
+
+An offline bankroll in a **fictional currency** (there is no real money
+anywhere in the application), starting at **100,000**. One unit is one chip.
+
+| Mode | Paid from the bankroll | Credited to the bankroll |
+| --- | --- | --- |
+| Cash game | the starting stack, when the session starts; every rebuy | your stack when you leave the table |
+| Tournament | the buy-in at the start; every rebuy and the add-on | your prize, when the tournament is over |
+| Spin & Go | the buy-in at the start | your prize, when it is over (high multipliers included) |
+| Bot Arena | — | — |
+
+- **Buy-in presets**, so the stakes are comparable across modes: tournaments
+  100 / 500 / 1,000 / 5,000 / 10,000, Spin & Go 100 / 500 / 1,000 / 5,000
+  (default 1,000 for both); custom amounts and **0-cost freerolls** are still
+  allowed. The presets live in `backend/application/setup.py`. Bot Arena and
+  the command line keep their own defaults (100 and 10): their exported
+  results would change otherwise, and ROI does not depend on the buy-in size.
+- **Not enough money**: each setup screen shows the buy-in and your bankroll;
+  a mode you cannot pay for cannot be started (Play is disabled, with a
+  message). Rebuys and add-ons you cannot pay for are not offered.
+- **Bankroll hint** (can be turned off on the Bankroll screen): a soft
+  warning when a buy-in is a large share of the bankroll, by the usual rules
+  of thumb: about **20 buy-ins** for cash games, **50** for tournaments and
+  Spin & Go (`RECOMMENDED_BUY_INS`). It never blocks.
+- **Reload**: below **1,000** (`RELOAD_THRESHOLD`), the main menu offers a
+  reload back to 100,000.
+- **Bankroll screen**: the balance, the net result overall and by mode, a
+  **graph** of the bankroll over time, and the **ledger** (date and time,
+  type, mode, amount, balance after, description; most recent first,
+  filterable by mode). **Set bankroll…** and **Reset to 100,000** are
+  recorded as **adjustments**, so the history stays honest; adjustments never
+  count as results.
+
+> 📸 *Screenshot placeholder: the all-in reveal with win %, the action clock
+> in the time bank, and the Bankroll screen.*
+
+## Leaving or closing during a game
+
+- **Cash game**: your **stack behind** (the chips not in the pot) is saved
+  at the start of each hand, after each of your actions and after each hand.
+  Leaving the table or quitting the application cashes it out. If the
+  application closes unexpectedly, it is cashed out at the next launch, with
+  a ledger entry and a message saying so. Chips already in the pot are lost,
+  as with a fold.
+- **Tournament and Spin & Go**: leaving while you are still in asks for
+  confirmation, then **forfeits** the tournament (the buy-in is lost, and a
+  "Forfeit" entry is recorded). Once you are out, leaving plays the rest of
+  the tournament instantly (the same hands as watching), so your prize is
+  known and credited. Closing the application during a tournament forfeits
+  it too (recorded at the next launch).
+- The prize is credited when the tournament is over, not when you bust:
+  bots may still rebuy and make the prize pool grow.
+
+## User profile
+
+The settings (BB display, clock per mode, bankroll hints) and the bankroll
+(balance, ledger, the game being played) are saved in `profile.json`, in the
+operating system's application data folder:
+
+| System | Location |
+| --- | --- |
+| Windows | `%APPDATA%\Poker\profile.json` |
+| macOS | `~/Library/Application Support/Poker/profile.json` |
+| Linux | `~/.local/share/Poker/profile.json` |
+
+The file has a `format_version`. Each save writes a temporary file, keeps the
+previous version as `profile.bak`, then renames the new file into place. A
+damaged file is restored from the backup; the damaged file is kept aside
+(`profile.damaged_<date>.json`) and you are told at launch. The application
+never crashes on a bad profile and never silently loses the balance. Tests
+use a temporary folder, never your profile.
+
+## Session files
+
+Session files are now **format version 3**: every hand also records
+`revealed_after_action` (the action after which the cards were turned face
+up, null if never) and `timed_out_actions` (the actions the clock decided).
+`load_session_file()` reads versions 1 to 3. These two fields join the
+golden tests' `ADDED_HISTORY_FIELDS`, so the golden hashes stay exactly the
+same; separate tests check that both are recorded at the right point.
+
+## Engine changes
+
+- `is_betting_closed(hand)` and `Hand.revealed_after_action`, set by the
+  engine when the betting closes; `Hand.timed_out_actions`, filled by the
+  application. Nothing else changed in the engine, and the benchmark is
+  unchanged (1,623 / 1,210 / 5,120 hands per second).
+
+## Objectives
+
+- [x] Amounts in big blinds on every table, remembered
+- [x] Cards face up once no more betting is possible, streets dealt one by one, win %
+- [x] Action clock and time bank, timeouts recorded, Pause freezes them
+- [x] Persistent bankroll in all three modes: view, set, reset, reload
+- [x] Time bank for the human player (moved from V1.2)
+
+## Tests
+
+```text
+1410 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
 # V1.1 — Tools
 
 - [ ] Hand replayer (built on the Alpha 1.2 history)
@@ -1555,7 +1763,6 @@ Bots & simulation:
 
 - [ ] Full rebuy / top-up rules (human and bots, min/max buy-in)
 - [ ] Straddle
-- [ ] Time bank for the human player
 
 ---
 
@@ -1661,7 +1868,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1309 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1410 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

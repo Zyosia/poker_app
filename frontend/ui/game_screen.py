@@ -4,21 +4,34 @@ The screen never runs a blocking game loop. Each bot action or street is one
 short step triggered by a timer, and the human acts through the action panel.
 """
 
+import math
+import time
 from collections.abc import Mapping
 from typing import Protocol
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from backend.application.action_clock import (
+    WARNING_SECONDS,
+    ActionClock,
+    ClockPreset,
+    TimeSource,
+    record_timeout,
+    timeout_action,
+)
+from backend.application.bankroll import GameAccount, TransactionType
 from backend.application.controllers import HumanController, PlayerController
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, get_legal_actions
@@ -27,9 +40,23 @@ from backend.poker_engine.session import GameSession
 from frontend.components.action_panel import ActionPanel
 from frontend.components.seat_widget import SeatHighlight, SeatState
 from frontend.components.table_widget import TableState, TableWidget
-from frontend.formatting import describe_action, describe_result, format_cards
+from frontend.formatting import (
+    describe_action,
+    describe_result,
+    format_amount,
+    format_cards,
+)
+from frontend.runout import (
+    RunoutEquity,
+    is_running_out,
+    revealed_names,
+    runout_delay_ms,
+)
 
 DEFAULT_STEP_DELAY_MS = 800
+CLOCK_TICK_MS = 100
+CLOCK_BAR_STEPS = 1000
+CLOCK_COLORS = {"normal": "#3ddc84", "warning": "#f2a33a", "bank": "#5aa9f2"}
 
 
 class TableGame(Protocol):
@@ -52,13 +79,24 @@ class TableGame(Protocol):
     def step(self) -> ActionEvent | None: ...
 
 
-def player_status(player: Player, hand: Hand) -> str:
-    """Return the short status line shown under a player's stack."""
+def hand_big_blind(hand: Hand) -> int:
+    """The big blind a hand is played with (the level's, in a tournament)."""
+    if hand.blind_level is not None:
+        return hand.blind_level.big_blind
+
+    return hand.min_bet
+
+
+def player_status(player: Player, hand: Hand, big_blind: int | None = None) -> str:
+    """Return the short status line shown under a player's stack.
+
+    Amounts are in big blinds of ``big_blind`` when it is set.
+    """
     if player.is_eliminated:
         return "Out"
 
     if hand.finished and player.name in hand.payouts:
-        return f"Wins {hand.payouts[player.name]}"
+        return f"Wins {format_amount(hand.payouts[player.name], big_blind)}"
 
     if player.folded:
         return "Folded"
@@ -70,14 +108,24 @@ def player_status(player: Player, hand: Hand) -> str:
 
 
 def build_table_state(
-    hand: Hand, human_name: str | None, show_all_cards: bool = False
+    hand: Hand,
+    human_name: str | None,
+    show_all_cards: bool = False,
+    in_big_blinds: bool = False,
+    equities: Mapping[str, str] | None = None,
 ) -> TableState:
     """Translate the engine state into what the table displays.
 
     Seats are rotated so the human sits at the bottom; a spectator (no human)
     sees the first seat at the bottom. Other players' cards stay face down
-    unless they reached the showdown, or ``show_all_cards`` is set.
+    unless they reached the showdown or the betting is over (an all-in
+    called), or ``show_all_cards`` is set. With ``in_big_blinds``, amounts
+    are shown in big blinds of the hand. ``equities`` adds each player's
+    chance of winning to their status during the run-out.
     """
+    big_blind = hand_big_blind(hand) if in_big_blinds else None
+    revealed = revealed_names(hand)
+    equities = equities or {}
     players = hand.table.players
     human_index = next((i for i, p in enumerate(players) if p.name == human_name), 0)
     ordered = players[human_index:] + players[:human_index]
@@ -96,7 +144,13 @@ def build_table_state(
             show_all_cards
             or player.name == human_name
             or player.name in hand.showdown_evaluations
+            or player.name in revealed
         )
+        status = player_status(player, hand, big_blind)
+
+        if player.name in equities:
+            equity = equities[player.name]
+            status = f"{status} · {equity}" if status else equity
 
         seats.append(
             SeatState(
@@ -104,9 +158,10 @@ def build_table_state(
                 stack=player.stack,
                 cards=tuple(player.hand),
                 cards_face_up=shows_cards,
-                status=player_status(player, hand),
+                status=status,
                 highlight=highlight,
                 dimmed=player.folded,
+                big_blind=big_blind,
             )
         )
 
@@ -116,6 +171,7 @@ def build_table_state(
         dealer_seat=ordered.index(hand.table.dealer),
         community_cards=tuple(hand.community_cards),
         pot=hand.pot,
+        big_blind=big_blind,
     )
 
 
@@ -123,6 +179,8 @@ class GameScreen(QWidget):
     """Plays a game and displays its state."""
 
     menu_requested = Signal()
+    show_in_big_blinds_changed = Signal(bool)
+    """Emitted when the user switches between chips and big blinds."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -131,16 +189,43 @@ class GameScreen(QWidget):
         self._game: TableGame | None = None
         self._human_name = ""
         self._logged_street_count = 0
+        self._reveal_logged = False
+        self._runout_equity = RunoutEquity()
+        self.action_clock: ActionClock | None = None
+        self.clock_time_source: TimeSource = time.monotonic
+        """Where the action clock reads the time (a fake one in tests)."""
+        self._clock_counted_hand: Hand | None = None
+        self.paused = False
+        self.account: GameAccount | None = None
+        """The cash game's money in the bankroll (None: not paid for)."""
 
         self._step_timer = QTimer(self)
         self._step_timer.setSingleShot(True)
         self._step_timer.timeout.connect(self._play_step)
+        self._clock_timer = QTimer(self)
+        self._clock_timer.setInterval(CLOCK_TICK_MS)
+        self._clock_timer.timeout.connect(self._on_clock_tick)
+
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.setObjectName("small")
+        self.pause_button.setToolTip("Freezes the clocks and the bots.")
+        self.pause_button.clicked.connect(self.toggle_pause)
+        self.pause_button.hide()
+
+        self.clock_bar = QProgressBar()
+        self.clock_bar.setRange(0, CLOCK_BAR_STEPS)
+        self.clock_bar.setFixedHeight(16)
+        self.clock_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.clock_bar.hide()
 
         self.info_label = QLabel()
         self.info_label.setObjectName("sectionTitle")
         self.menu_button = QPushButton("Menu")
         self.menu_button.setObjectName("small")
         self.menu_button.clicked.connect(self._on_menu_clicked)
+        self.big_blinds_check = QCheckBox("Show in BB")
+        self.big_blinds_check.setToolTip("Show stacks, bets and the pot in big blinds.")
+        self.big_blinds_check.toggled.connect(self._on_big_blinds_toggled)
 
         self.table_widget = TableWidget()
         self.action_panel = ActionPanel()
@@ -186,12 +271,15 @@ class GameScreen(QWidget):
     def _build_layout(self) -> None:
         top_bar = QHBoxLayout()
         top_bar.addWidget(self.info_label, stretch=1)
+        top_bar.addWidget(self.big_blinds_check)
+        top_bar.addWidget(self.pause_button)
         top_bar.addWidget(self.menu_button)
 
         bottom_panel = QFrame()
         bottom_panel.setObjectName("panel")
         bottom_layout = QVBoxLayout(bottom_panel)
         bottom_layout.setContentsMargins(16, 12, 16, 12)
+        bottom_layout.addWidget(self.clock_bar)
         bottom_layout.addWidget(self.bottom_stack)
 
         left_layout = QVBoxLayout()
@@ -221,28 +309,201 @@ class GameScreen(QWidget):
     def game(self) -> TableGame | None:
         return self._game
 
-    def start_game(self, game: TableGame, human_name: str) -> None:
-        """Start playing a new game with the given human player."""
+    @property
+    def show_in_big_blinds(self) -> bool:
+        return self.big_blinds_check.isChecked()
+
+    def set_show_in_big_blinds(self, enabled: bool) -> None:
+        """Show amounts in big blinds or chips, without emitting the change."""
+        self.big_blinds_check.blockSignals(True)
+        self.big_blinds_check.setChecked(enabled)
+        self.big_blinds_check.blockSignals(False)
+        self._refresh_amounts()
+
+    def _on_big_blinds_toggled(self, enabled: bool) -> None:
+        self._refresh_amounts()
+        self.show_in_big_blinds_changed.emit(enabled)
+
+    def _refresh_amounts(self) -> None:
+        """Redraw the table and the action panel in the current unit."""
+        hand = self._game.hand if self._game is not None else None
+
+        if hand is None:
+            self.action_panel.set_big_blind(None)
+            return
+
+        self._render_table(hand)
+        self.action_panel.set_big_blind(
+            hand_big_blind(hand) if self.show_in_big_blinds else None
+        )
+
+    def _render_table(self, hand: Hand) -> None:
+        self.table_widget.set_state(
+            build_table_state(
+                hand,
+                self._human_name,
+                in_big_blinds=self.show_in_big_blinds,
+                equities=self._runout_equity.texts(hand),
+            )
+        )
+
+    def start_game(
+        self,
+        game: TableGame,
+        human_name: str,
+        clock: ClockPreset | None = None,
+        account: GameAccount | None = None,
+    ) -> None:
+        """Start playing a new game with the given human player.
+
+        ``clock`` gives the human a time to act and a time bank (None: no
+        clock). ``account`` is the cash game's money in the bankroll: its
+        stack behind is kept up to date and cashed out when the game stops.
+        """
         if not isinstance(game.controllers.get(human_name), HumanController):
             raise ValueError(f"{human_name} is not controlled by a human.")
 
         self._step_timer.stop()
         self._game = game
         self._human_name = human_name
+        self.account = account
+        self._set_clock(clock)
         self.history_view.clear()
         self._start_next_hand()
 
     def stop(self) -> None:
-        """Stop the game in progress, if any."""
+        """Stop the game in progress, if any; a cash game is cashed out."""
         self._step_timer.stop()
+        self._stop_clock_display()
+
+        if self.account is not None and self._game is not None:
+            # Chips already in the pot stay there, as with a fold.
+            self.account.cash_out(self._human_player().stack)
+
+        self.account = None
         self._game = None
 
+    def _set_clock(self, preset: ClockPreset | None) -> None:
+        """Give the human a fresh action clock (or none), and reset Pause."""
+        self.action_clock = (
+            ActionClock(preset, self.clock_time_source) if preset is not None else None
+        )
+        self._clock_counted_hand = None
+        self.paused = False
+        self.pause_button.setText("Pause")
+        self.pause_button.setVisible(self._can_pause())
+
+    def _can_pause(self) -> bool:
+        """Pause is offered when there is a clock to freeze."""
+        return self.action_clock is not None
+
+    # --- Pause ------------------------------------------------------------------
+
+    def toggle_pause(self) -> None:
+        """Freeze (or restart) the clocks and the table."""
+        if self._game is None:
+            return
+
+        self.paused = not self.paused
+        self.pause_button.setText("Resume" if self.paused else "Pause")
+        self._on_pause_changed()
+
+    def _on_pause_changed(self) -> None:
+        clock = self.action_clock
+        game = self._require_game()
+
+        if self.paused:
+            self._step_timer.stop()
+            self._clock_timer.stop()
+
+            if clock is not None:
+                clock.pause()
+
+            if game.is_waiting_for_human:
+                self.action_panel.set_legal_actions(
+                    (), pot=0, current_bet=0, player_bet=0
+                )
+            return
+
+        if clock is not None:
+            clock.resume()
+
+        if game.is_hand_in_progress:
+            self._after_step()
+
+    # --- Action clock -----------------------------------------------------------
+
+    def _on_clock_tick(self) -> None:
+        clock = self.action_clock
+
+        if clock is None or not clock.is_turn_running or self.paused:
+            self._clock_timer.stop()
+            return
+
+        if clock.is_expired:
+            self._on_time_out()
+        else:
+            self._update_clock_bar()
+
+    def _on_time_out(self) -> None:
+        """Both the time to act and the time bank ran out: the hand is dead."""
+        hand = self._require_hand()
+        legal_actions = get_legal_actions(player=self._human_player(), hand=hand)
+        self._play_human_action(timeout_action(legal_actions), timed_out=True)
+
+    def _start_clock_display(self) -> None:
+        clock = self.action_clock
+
+        if clock is None:
+            return
+
+        if not clock.is_turn_running:
+            clock.start_turn()
+
+        self.clock_bar.show()
+        self._update_clock_bar()
+        self._clock_timer.start()
+
+    def _stop_clock_display(self) -> None:
+        self._clock_timer.stop()
+        self.clock_bar.hide()
+
+    def _update_clock_bar(self) -> None:
+        clock = self.action_clock
+
+        if clock is None:
+            return
+
+        if clock.is_in_time_bank:
+            left = clock.time_bank_left()
+            total = clock.time_bank
+            text = f"Time bank  {math.ceil(left)} s"
+            state = "bank"
+        else:
+            left = clock.time_to_act_left()
+            total = clock.preset.time_to_act
+            text = f"{math.ceil(left)} s"
+            state = "warning" if left <= WARNING_SECONDS else "normal"
+
+        self.clock_bar.setValue(round(CLOCK_BAR_STEPS * left / total) if total else 0)
+        self.clock_bar.setFormat(text)
+        self.clock_bar.setProperty("state", state)
+        self.clock_bar.setStyleSheet(
+            f"QProgressBar::chunk {{ background-color: {CLOCK_COLORS[state]}; }}"
+        )
+
+    # --- Hands ------------------------------------------------------------------
+
     def _start_next_hand(self) -> None:
+        if self.paused:
+            return
+
         game = self._require_game()
         hand = game.start_hand()
         level = game.session.blind_level
 
         self._logged_street_count = 0
+        self._reveal_logged = False
         self.info_label.setText(
             f"HAND #{game.session.hand_number}   ·   BLINDS {level.describe()}"
         )
@@ -277,15 +538,48 @@ class GameScreen(QWidget):
         hand = self._require_hand()
 
         self._log_new_streets(hand)
-        self.table_widget.set_state(build_table_state(hand, self._human_name))
+        self._log_reveal(hand)
+        self._refresh_amounts()
+
+        if self.account is not None:
+            self.account.update_stack(self._human_player().stack)
+
+        if self.paused:
+            return
 
         if hand.finished:
+            self._count_hand_for_clock(hand)
             self._show_hand_result(hand)
         elif game.is_waiting_for_human:
             self._enable_human_actions(hand)
         else:
             self._disable_human_actions()
-            self._step_timer.start(self.step_delay_ms)
+            self._step_timer.start(self._next_step_delay(hand))
+
+    def _next_step_delay(self, hand: Hand) -> int:
+        """Each street of a run-out is dealt a little slower than an action."""
+        if is_running_out(hand) and hand.current_player is None:
+            return runout_delay_ms(self.step_delay_ms)
+
+        return self.step_delay_ms
+
+    def _log_reveal(self, hand: Hand) -> None:
+        """Log the cards turned face up once the betting is over."""
+        if self._reveal_logged or hand.revealed_after_action is None:
+            return
+
+        self._reveal_logged = True
+        self._log("*** Cards revealed ***")
+
+        for player in hand.table.players:
+            if player.is_active and player.hand:
+                self._log(f"{player.name}: {format_cards(player.hand)}")
+
+    def _count_hand_for_clock(self, hand: Hand) -> None:
+        """Count each finished hand once, for the time bank's top-ups."""
+        if self.action_clock is not None and self._clock_counted_hand is not hand:
+            self._clock_counted_hand = hand
+            self.action_clock.on_hand_finished()
 
     def _enable_human_actions(self, hand: Hand) -> None:
         human = self._human_player()
@@ -297,17 +591,24 @@ class GameScreen(QWidget):
             current_bet=hand.current_bet,
             player_bet=human.current_bet,
         )
+        self._start_clock_display()
 
     def _disable_human_actions(self) -> None:
         self.bottom_stack.setCurrentWidget(self.action_panel)
         self.action_panel.set_legal_actions((), pot=0, current_bet=0, player_bet=0)
+        self._stop_clock_display()
 
     def _on_action_chosen(self, action: Action) -> None:
+        self._play_human_action(action)
+
+    def _play_human_action(self, action: Action, timed_out: bool = False) -> None:
+        """Play the human's decision; ``timed_out`` when the clock decided."""
         game = self._game
 
-        if game is None or not game.is_waiting_for_human:
+        if game is None or not game.is_waiting_for_human or self.paused:
             return
 
+        hand = self._require_hand()
         controller = game.controllers[self._human_name]
         assert isinstance(controller, HumanController)
         controller.submit(action)
@@ -321,7 +622,15 @@ class GameScreen(QWidget):
             self._after_step()
             return
 
-        if event is not None:
+        if self.action_clock is not None:
+            self.action_clock.end_turn()
+
+        self._stop_clock_display()
+
+        if event is not None and timed_out:
+            record_timeout(hand, event)
+            self._log(f"{event.player} ran out of time — {describe_action(event)}")
+        elif event is not None:
             self._log(f"{event.player}: {describe_action(event)}")
 
         self._after_step()
@@ -353,19 +662,35 @@ class GameScreen(QWidget):
             1 for player in session.get_players_with_chips() if player is not human
         )
 
+        can_rebuy = self._can_pay_rebuy()
+
         if opponents_left == 0:
             result_lines.append("You win the game!")
+        elif human.is_busted and not can_rebuy:
+            result_lines.append("Out of chips: your bankroll cannot pay a rebuy.")
         elif human.is_busted:
             result_lines.append("You are out of chips.")
 
         self.result_label.setText("   ·   ".join(result_lines))
         self.rebuy_button.setText(f"Rebuy {session.config.rebuy_stack}")
-        self.rebuy_button.setVisible(human.is_busted and opponents_left > 0)
+        self.rebuy_button.setVisible(
+            human.is_busted and opponents_left > 0 and can_rebuy
+        )
         self.next_hand_button.setVisible(not human.is_busted and opponents_left > 0)
         self.bottom_stack.setCurrentIndex(1)
 
+    def _can_pay_rebuy(self) -> bool:
+        if self.account is None:
+            return True
+
+        return self.account.can_pay(self._require_game().session.config.rebuy_stack)
+
     def _on_rebuy_clicked(self) -> None:
         game = self._require_game()
+
+        if self.account is not None:
+            self.account.pay(TransactionType.REBUY, game.session.config.rebuy_stack)
+
         game.session.rebuy_player(self._human_player())
         self._log(f"{self._human_name} rebuys {game.session.config.rebuy_stack}")
         self._start_next_hand()

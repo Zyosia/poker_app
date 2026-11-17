@@ -62,6 +62,12 @@ class LineChart(QWidget):
 
         self.x_label = "Hands"
         self.y_label = "Net chips"
+        self.point_label = "Hand"
+        """Names an x value in the hover text ("Hand 120")."""
+        self.include_zero = True
+        """Keep 0 on the y axis (net results); off for a balance."""
+        self.signed_values = True
+        """Show "+" before positive values (net results)."""
         self._names: tuple[str, ...] = ()
         self._points: list[ChartPoint] = []
         self._hover_index: int | None = None
@@ -104,8 +110,16 @@ class LineChart(QWidget):
     def _y_range(self) -> tuple[float, float, float]:
         """Return the rounded (low, high, step) of the y axis, zero included."""
         values = [value for _, point in self._points for value in point] or [0]
-        low, high = min(0, *values), max(0, *values)
-        step = nice_step(high - low or 1.0)
+
+        if self.include_zero:
+            low, high = min(0, *values), max(0, *values)
+        else:
+            low, high = min(values), max(values)
+
+        step = nice_step(high - low or max(1.0, abs(high) / 10))
+
+        if low == high:  # A flat line: centre it between two ticks.
+            low, high = low - step, high + step
 
         return math.floor(low / step) * step, math.ceil(high / step) * step, step
 
@@ -136,11 +150,11 @@ class LineChart(QWidget):
     def tooltip_text(self, index: int) -> str:
         """The hover text of a point: the hand number and every value."""
         x, values = self._points[index]
-        lines = [f"Hand {x:,}".replace(",", " ")]
+        lines = [f"{self.point_label} {x:,}".replace(",", " ")]
         ranked = sorted(
             zip(self._names, values, strict=True), key=lambda item: -item[1]
         )
-        lines.extend(f"{name}: {format_value(value)}" for name, value in ranked)
+        lines.extend(f"{name}: {self._format(value)}" for name, value in ranked)
 
         return "\n".join(lines)
 
@@ -205,11 +219,11 @@ class LineChart(QWidget):
             painter.drawText(
                 QRectF(0, y - 8, LEFT_MARGIN - 8, 16),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                format_value(value),
+                self._format(value),
             )
             value += step
 
-        x_step = nice_step(x_high - x_low)
+        x_step = max(1.0, nice_step(x_high - x_low))  # x values are whole.
         tick = math.ceil(x_low / x_step) * x_step
 
         while tick <= x_high:
@@ -239,6 +253,12 @@ class LineChart(QWidget):
             Qt.AlignmentFlag.AlignLeft,
             self.y_label,
         )
+
+    def _format(self, value: float) -> str:
+        if self.signed_values:
+            return format_value(value)
+
+        return f"{value:,.0f}".replace(",", " ")
 
     def _series_color(self, index: int) -> QColor:
         return theme.SERIES_COLORS[index % len(theme.SERIES_COLORS)]

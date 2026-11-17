@@ -22,6 +22,7 @@ from backend.simulation.result import SimulationTotals
 from backend.simulation.runner import Batch, BatchSchedule, plan_batches
 from frontend.components.table_widget import TableWidget
 from frontend.formatting import describe_action, describe_result, format_cards
+from frontend.runout import RunoutEquity, is_running_out, runout_delay_ms
 
 from .game_screen import build_table_state
 
@@ -33,6 +34,8 @@ class ArenaWatchScreen(QWidget):
     """Plays a Bot Arena configuration hand by hand on the table."""
 
     back_requested = Signal()
+    show_in_big_blinds_changed = Signal(bool)
+    """Emitted when the user switches between chips and big blinds."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,6 +46,8 @@ class ArenaWatchScreen(QWidget):
         self._pending_batches: list[Batch] = []
         self._finished_totals: SimulationTotals | None = None
         self._logged_streets = 0
+        self._reveal_logged = False
+        self._runout_equity = RunoutEquity()
         self._done = False
 
         self._timer = QTimer(self)
@@ -68,6 +73,9 @@ class ArenaWatchScreen(QWidget):
         self.spectator_check = QCheckBox("Show all cards")
         self.spectator_check.setChecked(True)
         self.spectator_check.toggled.connect(self._render)
+        self.big_blinds_check = QCheckBox("Show in BB")
+        self.big_blinds_check.setToolTip("Show stacks, bets and the pot in big blinds.")
+        self.big_blinds_check.toggled.connect(self._on_big_blinds_toggled)
         self.back_button = QPushButton("Back")
         self.back_button.clicked.connect(self._on_back_clicked)
 
@@ -87,6 +95,7 @@ class ArenaWatchScreen(QWidget):
         controls.addWidget(self.pause_button)
         controls.addWidget(self.step_button)
         controls.addWidget(self.spectator_check)
+        controls.addWidget(self.big_blinds_check)
         controls.addWidget(self.back_button)
 
         left = QVBoxLayout()
@@ -116,6 +125,21 @@ class ArenaWatchScreen(QWidget):
     def is_complete(self) -> bool:
         """True once every hand was played, or the run stopped on an error."""
         return self._done
+
+    @property
+    def show_in_big_blinds(self) -> bool:
+        return self.big_blinds_check.isChecked()
+
+    def set_show_in_big_blinds(self, enabled: bool) -> None:
+        """Show amounts in big blinds or chips, without emitting the change."""
+        self.big_blinds_check.blockSignals(True)
+        self.big_blinds_check.setChecked(enabled)
+        self.big_blinds_check.blockSignals(False)
+        self._render()
+
+    def _on_big_blinds_toggled(self, enabled: bool) -> None:
+        self._render()
+        self.show_in_big_blinds_changed.emit(enabled)
 
     def start(self, config: SimulationConfig) -> None:
         """Start watching a configuration from its first hand."""
@@ -162,6 +186,7 @@ class ArenaWatchScreen(QWidget):
             if event is not None:
                 self._log(f"{event.player}: {describe_action(event)}")
 
+            self._log_reveal()
             self._log_streets()
 
             if self.hand.finished:
@@ -181,6 +206,12 @@ class ArenaWatchScreen(QWidget):
 
         if self.hand is not None and self.hand.finished:
             delay *= HAND_END_PAUSE_FACTOR
+        elif (
+            self.hand is not None
+            and is_running_out(self.hand)
+            and self.hand.current_player is None
+        ):
+            delay = runout_delay_ms(delay)
 
         self._timer.start(delay)
 
@@ -219,6 +250,7 @@ class ArenaWatchScreen(QWidget):
         self.hand = hand
         self.hands_played += 1
         self._logged_streets = 0
+        self._reveal_logged = False
         config = self.config
         self.info_label.setText(
             f"HAND #{self.hands_played}   ·   BLINDS {config.small_blind}/"
@@ -281,6 +313,15 @@ class ArenaWatchScreen(QWidget):
             )
         )
 
+    def _log_reveal(self) -> None:
+        """Mark the moment the cards are turned face up (an all-in called)."""
+        hand = self.hand
+        assert hand is not None
+
+        if not self._reveal_logged and hand.revealed_after_action is not None:
+            self._reveal_logged = True
+            self._log("*** Cards revealed ***")
+
     def _log_streets(self) -> None:
         hand = self.hand
         assert hand is not None
@@ -300,6 +341,8 @@ class ArenaWatchScreen(QWidget):
                     self.hand,
                     human_name=None,
                     show_all_cards=self.spectator_check.isChecked(),
+                    in_big_blinds=self.show_in_big_blinds,
+                    equities=self._runout_equity.texts(self.hand),
                 )
             )
 
