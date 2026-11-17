@@ -34,10 +34,12 @@ from backend.application.action_clock import (
 )
 from backend.application.bankroll import GameAccount, TransactionType
 from backend.application.controllers import HumanController, PlayerController
+from backend.application.profile import BotCards
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, get_legal_actions
 from backend.poker_engine.models import ActionEvent, Hand, Player
 from backend.poker_engine.session import GameSession
+from frontend import theme
 from frontend.components.action_panel import ActionPanel
 from frontend.components.seat_widget import SeatHighlight, SeatState
 from frontend.components.table_widget import TableState, TableWidget
@@ -54,6 +56,7 @@ from frontend.runout import (
     revealed_names,
     runout_delay_ms,
 )
+from frontend.sounds import Sound, SoundPlayer, action_sound
 
 CLOCK_TICK_MS = 100
 CLOCK_BAR_STEPS = 1000
@@ -115,18 +118,25 @@ def build_table_state(
     in_big_blinds: bool = False,
     equities: Mapping[str, str] | None = None,
     hidden: Collection[str] = (),
+    bot_cards: BotCards = BotCards.SHOWDOWN,
 ) -> TableState:
     """Translate the engine state into what the table displays.
 
     Seats are rotated so the human sits at the bottom; a spectator (no human)
     sees the first seat at the bottom. Other players' cards stay face down
     unless they reached the showdown or the betting is over (an all-in
-    called), or ``show_all_cards`` is set. With ``in_big_blinds``, amounts
-    are shown in big blinds of the hand. ``equities`` adds each player's
-    chance of winning to their status during the run-out. The cards of the
-    ``hidden`` players (nobody saw them) always stay face down.
+    called), or ``show_all_cards`` is set. ``bot_cards`` may show them
+    earlier: once the hand is over, or always. With ``in_big_blinds``,
+    amounts are shown in big blinds of the hand. ``equities`` adds each
+    player's chance of winning to their status during the run-out. The cards
+    of the ``hidden`` players (nobody saw them) always stay face down.
     """
     big_blind = hand_big_blind(hand) if in_big_blinds else None
+    show_others = (
+        show_all_cards
+        or bot_cards == BotCards.ALWAYS
+        or (bot_cards == BotCards.HAND_END and hand.finished)
+    )
     revealed = revealed_names(hand)
     equities = equities or {}
     players = hand.table.players
@@ -144,7 +154,7 @@ def build_table_state(
             highlight = SeatHighlight.NONE
 
         shows_cards = player.name not in hidden and (
-            show_all_cards
+            show_others
             or player.name == human_name
             or player.name in hand.showdown_evaluations
             or player.name in revealed
@@ -210,6 +220,13 @@ class GameScreen(QWidget):
         self.paused = False
         self.account: GameAccount | None = None
         """The cash game's money in the bankroll (None: not paid for)."""
+        self.sounds = SoundPlayer()
+        """Silent until the main window gives the application's player."""
+        self.turn_alert = True
+        """A sound when it is your turn."""
+        self._alerted_turn: tuple[Hand, int] | None = None
+        self.bot_cards = BotCards.SHOWDOWN
+        """When you see the bots' cards (the display only)."""
 
         self._step_timer = QTimer(self)
         self._step_timer.setSingleShot(True)
@@ -298,6 +315,7 @@ class GameScreen(QWidget):
 
     def _build_layout(self) -> None:
         top_bar = QHBoxLayout()
+        top_bar.addSpacing(theme.SETTINGS_BUTTON_ROOM)
         top_bar.addWidget(self.info_label, stretch=1)
         top_bar.addWidget(QLabel("Speed"))
         top_bar.addWidget(self.speed_combo)
@@ -423,6 +441,11 @@ class GameScreen(QWidget):
         self._next_hand_due = False
         self._start_next_hand()
 
+    def set_bot_cards(self, bot_cards: BotCards) -> None:
+        """Show the bots' cards at showdown, at the end of the hand or always."""
+        self.bot_cards = bot_cards
+        self._refresh_amounts()
+
     def _render_table(self, hand: Hand) -> None:
         self.table_widget.set_state(
             build_table_state(
@@ -430,6 +453,7 @@ class GameScreen(QWidget):
                 self._human_name,
                 in_big_blinds=self.show_in_big_blinds,
                 equities=self._runout_equity.texts(hand),
+                bot_cards=self.bot_cards,
             )
         )
 
@@ -589,6 +613,7 @@ class GameScreen(QWidget):
             return
         hand = game.start_hand()
         level = game.session.blind_level
+        self.sounds.play(Sound.DEAL)
 
         self._logged_street_count = 0
         self._reveal_logged = False
@@ -617,6 +642,7 @@ class GameScreen(QWidget):
 
         if event is not None:
             self._log(f"{event.player}: {describe_action(event)}")
+            self._play_action_sound(event)
 
         self._after_step()
 
@@ -671,6 +697,12 @@ class GameScreen(QWidget):
 
     def _enable_human_actions(self, hand: Hand) -> None:
         human = self._human_player()
+        turn = (hand, len(hand.actions))
+
+        if self.turn_alert and self._alerted_turn != turn:
+            self.sounds.play(Sound.TURN)
+
+        self._alerted_turn = turn
 
         self.bottom_stack.setCurrentWidget(self.action_panel)
         self.action_panel.set_legal_actions(
@@ -721,7 +753,16 @@ class GameScreen(QWidget):
         elif event is not None:
             self._log(f"{event.player}: {describe_action(event)}")
 
+        if event is not None:
+            self._play_action_sound(event)
+
         self._after_step()
+
+    def _play_action_sound(self, event: ActionEvent) -> None:
+        sound = action_sound(event)
+
+        if sound is not None:
+            self.sounds.play(sound)
 
     def _log_hand_result(self, hand: Hand) -> list[str]:
         """Log the showdown and the winners; return the winner lines."""
@@ -729,12 +770,28 @@ class GameScreen(QWidget):
             cards = next(p.hand for p in hand.table.players if p.name == name)
             self._log(f"{name} shows {format_cards(cards)} ({evaluation.name})")
 
+        if self.bot_cards != BotCards.SHOWDOWN:
+            self._log_bot_cards(hand)
+
+        self.sounds.play(Sound.POT)
         result_lines = describe_result(hand)
 
         for line in result_lines:
             self._log(line)
 
         return result_lines
+
+    def _log_bot_cards(self, hand: Hand) -> None:
+        """The cards nobody showed, when you chose to see the bots' cards."""
+        shown = revealed_names(hand) | set(hand.showdown_evaluations)
+
+        for player in hand.table.players:
+            if player.name == self._human_name or player.name in shown:
+                continue
+
+            if player.hand:
+                folded = " (folded)" if player.folded else ""
+                self._log(f"{player.name} had {format_cards(player.hand)}{folded}")
 
     def _show_hand_result(self, hand: Hand) -> None:
         game = self._require_game()
@@ -816,12 +873,17 @@ class GameScreen(QWidget):
 
     def _log_new_streets(self, hand: Hand) -> None:
         """Log the streets dealt since the last refresh."""
-        for street_event in hand.streets[self._logged_street_count :]:
+        new_streets = hand.streets[self._logged_street_count :]
+
+        for street_event in new_streets:
             if street_event.community_cards:
                 self._log(
                     f"*** {street_event.street} *** "
                     f"{format_cards(street_event.community_cards)}"
                 )
+
+        if any(street_event.community_cards for street_event in new_streets):
+            self.sounds.play(Sound.STREET)
 
         self._logged_street_count = len(hand.streets)
 

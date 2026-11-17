@@ -8,12 +8,32 @@ from backend.poker_engine.constants import Card
 from frontend import theme
 from frontend.formatting import RANK_LABELS, SUIT_SYMBOLS
 
-RED_SUITS = {"H", "D"}
 REVEAL_DURATION_MS = 250
+TWO_COLORS = {
+    "S": theme.CARD_BLACK,
+    "H": theme.CARD_RED,
+    "D": theme.CARD_RED,
+    "C": theme.CARD_BLACK,
+}
+FOUR_COLORS = {
+    "S": theme.CARD_BLACK,
+    "H": theme.CARD_RED,
+    "D": theme.CARD_BLUE,
+    "C": theme.CARD_GREEN,
+}
+"""Every suit its own colour: diamonds and clubs never look like hearts and
+spades."""
+
+
+def suit_color(suit: str, four_colors: bool) -> QColor:
+    return (FOUR_COLORS if four_colors else TWO_COLORS)[suit]
 
 
 class CardWidget(QWidget):
     """Displays one card face up, face down, or an empty slot."""
+
+    four_colors = False
+    """The user's deck, for every card of the application (see ``suit_color``)."""
 
     def __init__(self, size: QSize, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -91,7 +111,7 @@ class CardWidget(QWidget):
     def _paint_face(self, painter: QPainter, rect: QRectF, radius: float) -> None:
         assert self._card is not None
         rank, suit = self._card[0], self._card[1]
-        color = theme.CARD_RED if suit in RED_SUITS else theme.CARD_BLACK
+        color = suit_color(suit, CardWidget.four_colors)
 
         painter.setPen(QPen(QColor("#b9bcc4"), 1))
         painter.setBrush(theme.CARD_FACE)

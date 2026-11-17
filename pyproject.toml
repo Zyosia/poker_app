@@ -8,6 +8,7 @@ version = "0.2.0"
 description = "No Limit Texas Hold'em desktop poker application against bots"
 requires-python = ">=3.12"
 dependencies = [
+    "PySide6-Addons>=6.7",
     "PySide6-Essentials>=6.7",
 ]
 
@@ -22,6 +23,10 @@ dev = [
 [tool.setuptools.packages.find]
 # The project has several top-level packages, so they are listed explicitly.
 include = ["backend*", "frontend*"]
+
+[tool.setuptools.package-data]
+# The sound effects (made by `python -m frontend.sound_synthesis`).
+frontend = ["assets/sounds/*.wav"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

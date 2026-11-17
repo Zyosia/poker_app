@@ -26,6 +26,7 @@ from backend.application.game_modes import MODE_LABELS
 from backend.application.hand_records import HandRecord, SessionRecord
 from backend.application.replay import HandReplay, ReplayError
 from backend.poker_engine.models import ActionEvent, Hand
+from frontend import theme
 from frontend.components.table_widget import TableWidget
 from frontend.formatting import describe_action, describe_result, format_cards
 from frontend.pacing import DEFAULT_TABLE_SPEED, TABLE_SPEEDS, table_speed
@@ -168,6 +169,7 @@ class ReplayerScreen(QWidget):
         self.history_view.setFixedWidth(290)
 
         top = QHBoxLayout()
+        top.addSpacing(theme.SETTINGS_BUTTON_ROOM)
         top.addWidget(self.info_label, stretch=1)
         top.addWidget(self.show_all_check)
         top.addWidget(self.big_blinds_check)

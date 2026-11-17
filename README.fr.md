@@ -53,9 +53,11 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [V1.1.1 — Outils améliorés](#v111--outils-améliorés)
 
-* [V1.2 — Extras cash game](#v12--extras-cash-game)
+* [V1.2 — Réglages et sons](#v12--réglages-et-sons)
 
 * [V2.x — IA et stratégies](#v2x--ia-et-stratégies)
+
+* [V3.x — Extras cash game](#v3x--extras-cash-game)
 
 * [Plus tard / peut-être](#plus-tard--peut-être)
 
@@ -671,8 +673,12 @@ frontend/
 ├── formatting.py          Textes des cartes, montants (jetons ou BB), actions
 ├── runout.py              Cartes retournées et équité après un all-in payé
 ├── modes.py               Modes affichés par le menu principal
+├── sounds.py              Effets sonores et leur lecteur (V1.2)
+├── sound_synthesis.py     Fabrique les fichiers son (python -m frontend.sound_synthesis)
+├── assets/sounds/         Les effets sonores (WAV)
 ├── ui/
-│   ├── main_window.py     Pile de navigation (Retour fonctionne partout)
+│   ├── main_window.py     Pile de navigation (Retour fonctionne partout), réglages
+│   ├── settings_dialog.py La fenêtre des réglages (V1.2)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -683,7 +689,8 @@ frontend/
 │       my_stats_screen.py, session_browser_screen.py   Outils (V1.1)
 └── components/            Carte, siège, table, panneau d'actions, graphiques,
                            choix de l'horloge, ligne buy-in et bankroll,
-                           sélecteur de cartes et grille des ranges
+                           sélecteur de cartes, grille des ranges, barre de
+                           bankroll et bouton des réglages
 
 tests/                     Tests moteur, application, bots, simulation et UI
 ```
@@ -755,9 +762,11 @@ La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les jo
 
 L'application est une **application de bureau PySide6**. Elle s'ouvre sur un
 **menu principal** qui liste les modes : **Cash Game**, **Tournoi**,
-**Spin & Go**, **Bot Arena** et **Tools** (les outils). Le menu affiche
-aussi votre **bankroll** et ouvre l'écran **Bankroll**.
-Chaque écran a un bouton Retour.
+**Spin & Go**, **Bot Arena** et **Tools** (les outils). Le menu et les
+écrans de réglage des modes payants affichent votre **bankroll** et ouvrent
+l'écran **Bankroll**. Chaque écran a un bouton Retour, et le bouton **⚙** en
+haut à gauche ouvre les **réglages** (votre nom, les sons, les options des
+tables) depuis n'importe où, voir [V1.2](#v12--réglages-et-sons).
 
 ```bash
 uv sync                        # installe les dépendances
@@ -766,8 +775,9 @@ uv run python -m frontend.main # lance l'application de bureau
 
 **Cash Game** — un joueur humain contre 1 à 5 bots :
 
-- **Réglages** : nom du joueur, nombre d'adversaires, niveau des bots, tapis
-  de départ (le buy-in, payé par la bankroll), blinds et horloge d'action.
+- **Réglages** : nombre d'adversaires, niveau des bots, tapis de départ (le
+  buy-in, payé par la bankroll), blinds et horloge d'action ; vous jouez sous
+  le nom choisi dans les réglages.
 - **Table** : sièges, cartes privées, cartes communes, mises, pot et bouton
   dealer ; **Show in BB** affiche tous les montants en big blinds. Une fois un
   all-in payé, les cartes sont retournées avec les chances de gain de chacun.
@@ -776,6 +786,9 @@ uv run python -m frontend.main # lance l'application de bureau
   choisir le montant d'une mise ou d'une relance, et l'**horloge d'action**
   avec sa time bank ; **Pause** la fige.
 - **Historique** : chaque action, street et résultat de la session.
+- **Effets sonores** pour les cartes, les jetons et chaque action, et les
+  **cartes des bots** montrées au showdown, à la fin de chaque main ou
+  toujours, selon les réglages.
 - **Entre deux mains** : la main suivante démarre seule une fois le
   résultat affiché (**Auto next hand**, désactivable), ou recave quand le
   joueur n'a plus de jetons. Un choix **Speed** (Slow, Normal, Fast, Turbo)
@@ -890,10 +903,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V1.1.1](#v111--outils-améliorés)) :
+[V1.2](#v12--réglages-et-sons)) :
 
 ```text
-1575 passed
+1631 passed
 ```
 
 ### État actuel
@@ -2187,10 +2200,116 @@ la Bot Arena sont identiques.
 
 ---
 
-# V1.2 — Extras cash game
+# V1.2 — Réglages et sons
 
-* [ ] Règles complètes de recave / complément (humain et bots, buy-in min/max)
-* [ ] Straddle
+La **V1.2** ajoute une **fenêtre de réglages** accessible depuis chaque
+écran, des **effets sonores**, les **cartes des bots** à la demande, et la
+**bankroll sur les écrans de réglage** des modes. Aucune règle de poker n'a
+changé : le moteur n'est pas touché, les résultats de référence et ceux de la
+Bot Arena sont inchangés.
+
+## Fonctionnalités
+
+### ⚙️ Réglages
+
+- Le **bouton ⚙** en haut à gauche de chaque écran (ou **Ctrl+,**) ouvre les
+  réglages dans une petite fenêtre au-dessus de l'écran en cours ; la fermer
+  ramène à cet écran. À une table où vous jouez, la partie **attend** tant que
+  la fenêtre est ouverte (comme avec Pause : l'horloge d'action et celle des
+  niveaux s'arrêtent) et reprend à sa fermeture ; une table que vous avez
+  mise en pause vous-même reste en pause.
+- Chaque changement s'applique aussitôt et est **enregistré dans le
+  profil**, comme la bankroll.
+
+| Section | Réglage |
+| --- | --- |
+| Joueur | **Votre nom** (1 à 12 caractères), utilisé par le Cash Game, le Tournoi et le Spin & Go dès votre prochaine partie ; les écrans de réglage l'affichent |
+| Son | **Effets sonores** activés ou non, **volume** (un bruit de jetons permet de l'entendre), un **son quand c'est à vous** |
+| Tables | **Cartes des bots** (ci-dessous), **vitesse de la table**, **main suivante automatique**, **montants en big blinds**, **jeu de cartes quatre couleurs** (♦ bleu, ♣ vert, sur toutes les cartes), **conseils de gestion de bankroll** |
+
+- **Restore defaults** remet chaque réglage de la fenêtre à sa valeur par
+  défaut, sauf votre nom.
+- Speed, Auto next hand et Show in BB restent sur les tables comme
+  raccourcis : ce sont les mêmes réglages, la fenêtre et les tables sont
+  toujours d'accord.
+
+### 🃏 Les cartes des bots
+
+| Choix | Les cartes des bots sont visibles |
+| --- | --- |
+| Au showdown seulement (par défaut) | au showdown, ou une fois un all-in payé, comme dans une vraie partie |
+| À la fin de chaque main | une fois la main finie, mains couchées comprises (grisées) |
+| Toujours | pendant toute la main, pour étudier ou régler les bots |
+
+- **Seul ce que vous voyez change.** Les bots décident toujours avec leurs
+  deux cartes et les informations publiques (`DecisionContext`) : un test
+  joue des mains avec toutes les cartes visibles à l'écran et vérifie
+  qu'aucun bot n'a jamais reçu la carte d'un autre joueur.
+- Avec les deux derniers choix, l'historique liste à la fin de la main les
+  cartes que personne n'a montrées (« Alex had K♠ Q♦ (folded) »).
+- Le relecteur garde son propre interrupteur « Show all cards ».
+
+### 🔊 Effets sonores
+
+| Moment | Son |
+| --- | --- |
+| Les cartes privées sont distribuées | deux cartes qui glissent |
+| Flop, turn, river | une carte retournée |
+| Check | deux coups frappés sur la table |
+| Fold | des cartes repoussées |
+| Call / mise ou relance / all-in | des jetons, davantage pour une relance, une pile pour un all-in |
+| Le pot va au gagnant | des jetons balayés sur la table |
+| C'est à vous | un carillon discret (désactivable) |
+| Tirage du Spin & Go | un tic pour chaque valeur affichée, puis un carillon pour le prix, une fanfare à partir de × 10 |
+
+- Les sons sont **fabriqués par le projet** (`frontend/sound_synthesis.py` :
+  bruit filtré pour les cartes, notes brèves et aiguës pour les jetons, note
+  grave amortie pour les coups, cloches pour les alertes) : aucun son
+  enregistré ni téléchargé. `python -m frontend.sound_synthesis` les réécrit
+  dans `frontend/assets/sounds/` (graine fixe, mêmes sons à chaque fois).
+- Ils sont joués par `QSoundEffect` de Qt (plusieurs peuvent se superposer :
+  un call pendant que le flop est distribué). Les tests n'ouvrent jamais de
+  périphérique audio : ils vérifient ce qu'un lecteur muet a reçu.
+- Rien n'est joué quand la fin d'un tournoi est jouée instantanément (aller
+  aux résultats).
+
+### 💰 La bankroll sur les écrans de réglage
+
+- Les écrans de réglage du **Cash Game**, du **Tournoi** et du **Spin & Go**
+  affichent la bankroll en haut à droite, avec le bouton **Bankroll** (et
+  **Reload** quand elle est presque vide), comme le menu principal.
+- **Retour** depuis l'écran Bankroll ramène à l'écran d'où il a été ouvert
+  (l'écran de réglage, ou le menu), avec le solde à jour.
+
+> 📸 *Emplacement de capture d'écran : la fenêtre des réglages au-dessus
+> d'une table, avec les cartes des bots visibles et le jeu quatre couleurs.*
+
+## Nouvelle dépendance
+
+- **PySide6-Addons** (la même version de Qt que PySide6-Essentials) pour le
+  module multimédia de Qt ; `uv sync` l'installe.
+- Pour une version PyInstaller, le dossier des sons doit être copié avec le
+  code : `datas=[("frontend/assets/sounds", "frontend/assets/sounds")]` dans
+  le fichier `.spec`.
+
+## Changements du moteur
+
+- Aucun.
+
+## Objectifs
+
+* [x] La bankroll et son bouton sur les écrans de réglage du Cash Game, du Tournoi et du Spin & Go ; Retour ramène à l'écran d'où elle a été ouverte
+* [x] Les cartes des bots : au showdown, à la fin de la main ou toujours (affichage seulement, les bots ne voient rien de plus)
+* [x] Effets sonores : cartes, jetons, chaque action, votre tour, le tirage du Spin & Go
+* [x] Une fenêtre de réglages depuis chaque écran, même à une table : votre nom, son et volume, options des tables
+
+## Tests
+
+```text
+1631 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
 
 ---
 
@@ -2208,6 +2327,15 @@ profils de style (Beta 1.0), jeu en tapis court (V1.0).
 * [ ] Ratio M (tapis / coût d'un tour de table) dans les décisions en tapis
       court : déplacé de la V1.0, les ranges push/fold en big blinds
       effectives n'en avaient pas besoin
+
+---
+
+# V3.x — Extras cash game
+
+Déplacé de la V1.2, pas prioritaire.
+
+* [ ] Règles complètes de recave / complément (humain et bots, buy-in min/max)
+* [ ] Straddle
 
 ---
 

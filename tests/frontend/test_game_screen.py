@@ -318,7 +318,7 @@ def test_menu_emits_the_chosen_settings(qapp: QApplication) -> None:
     received: list[GameSettings] = []
     menu.start_requested.connect(received.append)
 
-    menu.name_edit.setText("Nael")
+    menu.set_player_name("Nael")
     menu.opponents_spin.setValue(5)
     menu.stack_spin.setValue(2000)
     menu.blinds_combo.setCurrentIndex(1)
@@ -342,7 +342,7 @@ def test_menu_rejects_an_empty_name(qapp: QApplication) -> None:
     received: list[GameSettings] = []
     menu.start_requested.connect(received.append)
 
-    menu.name_edit.setText("   ")
+    menu.set_player_name("   ")
     menu.play_button.click()
 
     assert received == []

@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QLabel,
-    QLineEdit,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -17,6 +16,7 @@ from backend.application.action_clock import CASH_CLOCK
 from backend.application.bankroll import DEFAULT_BALANCE, GameMode
 from backend.application.setup import BotLevel, GameSettings
 from backend.poker_engine.constants import MAX_TABLE_SEATS
+from frontend.components.bankroll_bar import BankrollBar
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
 
@@ -26,6 +26,15 @@ BOT_LEVEL_LABELS = {
     BotLevel.EASY: "Easy — plays randomly",
 }
 DEFAULT_SETTINGS = GameSettings()
+
+
+def player_name_label(name: str) -> QLabel:
+    """Your name, as chosen in the settings."""
+    label = QLabel(name)
+    label.setObjectName("playerName")
+    label.setToolTip("Change your name in the settings (⚙, top left).")
+
+    return label
 
 
 class CashSetupScreen(QWidget):
@@ -44,8 +53,8 @@ class CashSetupScreen(QWidget):
         subtitle.setObjectName("subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.name_edit = QLineEdit(DEFAULT_SETTINGS.player_name)
-        self.name_edit.setMaxLength(12)
+        self.bankroll_bar = BankrollBar()
+        self.name_label = player_name_label(DEFAULT_SETTINGS.player_name)
 
         self.opponents_spin = QSpinBox()
         self.opponents_spin.setRange(1, MAX_TABLE_SEATS - 1)
@@ -86,7 +95,7 @@ class CashSetupScreen(QWidget):
         form = QFormLayout()
         form.setVerticalSpacing(12)
         form.setHorizontalSpacing(18)
-        form.addRow("Your name", self.name_edit)
+        form.addRow("Your name", self.name_label)
         form.addRow("Opponents", self.opponents_spin)
         form.addRow("Bot level", self.level_combo)
         form.addRow("Starting stack", self.stack_spin)
@@ -107,6 +116,7 @@ class CashSetupScreen(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
+        layout.addWidget(self.bankroll_bar, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addStretch()
         layout.addWidget(title)
         layout.addWidget(subtitle)
@@ -123,6 +133,9 @@ class CashSetupScreen(QWidget):
         self._hints = hints
         self.refresh_cost()
 
+    def set_player_name(self, name: str) -> None:
+        self.name_label.setText(name)
+
     def refresh_cost(self) -> None:
         affordable = self.buy_in_info.refresh(self.cost(), self._balance, self._hints)
         self.play_button.setEnabled(affordable)
@@ -132,7 +145,7 @@ class CashSetupScreen(QWidget):
         small_blind, big_blind = self.blinds_combo.currentData()
 
         return GameSettings(
-            player_name=self.name_edit.text().strip(),
+            player_name=self.name_label.text(),
             opponent_count=self.opponents_spin.value(),
             bot_level=self.level_combo.currentData(),
             starting_stack=self.stack_spin.value(),
