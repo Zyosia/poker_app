@@ -137,6 +137,17 @@ class MainWindow(QMainWindow):
             screen.set_show_in_big_blinds(self.profile.settings.show_in_big_blinds)
             screen.show_in_big_blinds_changed.connect(self.set_show_in_big_blinds)
 
+        self.played_screens = (self.game_screen, self.tournament_screen)
+        """The tables you play at: they share the speed and auto next hand."""
+
+        for played in self.played_screens:
+            if self.profile.settings.table_speed:
+                played.set_speed(self.profile.settings.table_speed)
+
+            played.set_auto_next_hand(self.profile.settings.auto_next_hand)
+            played.speed_changed.connect(self.set_table_speed)
+            played.auto_next_hand_changed.connect(self.set_auto_next_hand)
+
         self.clock_combos = (
             self.cash_setup_screen.clock_combo,
             self.tournament_setup_screen.clock_combo,
@@ -191,6 +202,18 @@ class MainWindow(QMainWindow):
             screen.set_show_in_big_blinds(enabled)
 
         self._save_setting("show_in_big_blinds", enabled)
+
+    def set_table_speed(self, name: str) -> None:
+        for played in self.played_screens:
+            played.set_speed(name)
+
+        self._save_setting("table_speed", name)
+
+    def set_auto_next_hand(self, enabled: bool) -> None:
+        for played in self.played_screens:
+            played.set_auto_next_hand(enabled)
+
+        self._save_setting("auto_next_hand", enabled)
 
     def _save_setting(self, name: str, value: object) -> None:
         setattr(self.profile.settings, name, value)

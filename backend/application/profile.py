@@ -38,6 +38,9 @@ class UserSettings:
     tournament_clock: str = ""
     spin_clock: str = ""
     bankroll_hints: bool = True
+    table_speed: str = ""
+    """The table speed the user picked ("": the default)."""
+    auto_next_hand: bool = True
     """Warn (without blocking) when a buy-in is a large share of the bankroll."""
 
     def to_dict(self) -> dict[str, Any]:

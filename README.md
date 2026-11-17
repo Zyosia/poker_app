@@ -720,8 +720,11 @@ uv run python -m frontend.main # start the desktop application
   with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise,
   and the **action clock** with its time bank; **Pause** freezes it.
 - **Hand history**: every action, street and result of the session.
-- **Between hands**: next hand, or rebuy when the player is out of chips.
-  Leaving the table cashes your stack out to the bankroll.
+- **Between hands**: the next hand starts on its own after the result is
+  shown (**Auto next hand**, can be switched off), or rebuy when the player
+  is out of chips. A **Speed** choice (Slow, Normal, Fast, Turbo) sets how
+  fast the bots act and the next hand comes. Leaving the table cashes your
+  stack out to the bankroll.
 
 See [V1.0.1](#v101--quality-of-life) for the BB display, the all-in reveal,
 the action clock and the bankroll.
@@ -1636,12 +1639,35 @@ time to act is not added to it.
   action is recorded as timed out in the hand history
   (`Hand.timed_out_actions`) and shown as "Hero ran out of time — folds".
 - **Pause** freezes the action clock and the time bank, and restarts them
-  exactly where they were. The Pause button appears whenever there is a clock
-  to freeze: an action clock (now in cash games too) or levels by time.
+  exactly where they were. It also freezes the bots, levels by time and the
+  next hand; the Pause button is on every table you play at.
 - Bots have no clock. Headless simulations, Bot Arena results and "Skip to
   results" never use it. Time is measured in the application layer
   (`ActionClock`, with a time source tests replace); the engine never knows
   about time.
+
+### ⏩ Table speed and auto next hand
+
+- **Auto next hand** (on by default): once a hand is over, its result stays
+  on screen for a moment, then the next hand is dealt on its own; the **Next
+  hand** button still deals at once. The table waits for you when there is a
+  choice to make: a rebuy when you are out of chips, or a tournament add-on.
+- **Speed**, chosen at the table: how long a bot takes to act and how long
+  the result stays on screen. The default, Normal, is close to online
+  clients such as PokerStars or Winamax (about a second per action, about
+  three seconds between hands). The board of an all-in run-out comes a
+  little slower than an action. The presets live in `frontend/pacing.py`.
+
+| Speed | Bot action / street | Result shown before the next hand |
+| --- | ---: | ---: |
+| Slow | 1.5 s | 5 s |
+| **Normal** (default) | 0.9 s | 3 s |
+| Fast | 0.45 s | 1.5 s |
+| Turbo | 0.15 s | 0.6 s |
+
+- One setting for the cash game, tournament and Spin & Go tables (also used
+  when you watch a tournament after busting), remembered between launches.
+  Bot Arena Watch mode keeps its own speed choice.
 
 ### 💰 Bankroll
 
@@ -1739,11 +1765,12 @@ same; separate tests check that both are recorded at the right point.
 - [x] Action clock and time bank, timeouts recorded, Pause freezes them
 - [x] Persistent bankroll in all three modes: view, set, reset, reload
 - [x] Time bank for the human player (moved from V1.2)
+- [x] Auto next hand and a table speed chosen at the table
 
 ## Tests
 
 ```text
-1410 passed
+1421 passed
 ```
 
 [↑ Back to table of contents](#table-of-contents)
@@ -1868,7 +1895,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1410 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1421 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

@@ -12,7 +12,6 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -33,7 +32,6 @@ NOTICE_MS = 3500
 REVEAL_TICKS = 14
 REVEAL_TICK_MS = 90
 REVEAL_HOLD_MS = 1600
-WATCH_SPEEDS = {"Slow": 1200, "Normal": 600, "Fast": 150}
 REVEAL_VALUES = tuple(entry.value for entry in FAIR_MULTIPLIERS.entries)
 """Values flashed before the drawn multiplier lands."""
 
@@ -107,9 +105,10 @@ class TournamentScreen(GameScreen):
         self._watch_timer.setSingleShot(True)
         self._watch_timer.timeout.connect(self._continue_watching)
 
-        self._clock_timer = QTimer(self)
-        self._clock_timer.setInterval(1000)
-        self._clock_timer.timeout.connect(self._refresh_status)
+        self._level_timer = QTimer(self)
+        """Refreshes the time left in a level by time, every second."""
+        self._level_timer.setInterval(1000)
+        self._level_timer.timeout.connect(self._refresh_status)
 
         self._build_tournament_page()
         self._insert_tournament_widgets()
@@ -147,13 +146,6 @@ class TournamentScreen(GameScreen):
         self.results_button.clicked.connect(self._open_results)
         self.leave_button = button("Back to menu")
         self.leave_button.clicked.connect(self._on_menu_clicked)
-        self.watch_speed_combo = QComboBox()
-
-        for label, delay in WATCH_SPEEDS.items():
-            self.watch_speed_combo.addItem(label, delay)
-
-        self.watch_speed_combo.setCurrentIndex(1)
-        self.watch_speed_combo.currentIndexChanged.connect(self._on_watch_speed)
 
         self.tournament_buttons = (
             self.tournament_rebuy_button,
@@ -171,7 +163,6 @@ class TournamentScreen(GameScreen):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         layout.addWidget(self.outcome_label, stretch=1)
-        layout.addWidget(self.watch_speed_combo)
 
         for widget in self.tournament_buttons:
             layout.addWidget(widget)
@@ -217,7 +208,6 @@ class TournamentScreen(GameScreen):
         self.tournament_account = account
         self.spectating = False
         self._announced = 0
-        self.step_delay_ms = WATCH_SPEEDS["Normal"] + 200
         self._notice_timer.stop()
         self.notice_label.hide()
         self.status_label.clear()
@@ -232,7 +222,7 @@ class TournamentScreen(GameScreen):
             self._start_reveal(tournament)
 
         if tournament.clock is not None:
-            self._clock_timer.start()
+            self._level_timer.start()
 
     def stop(self) -> None:
         """Stop every timer; an unfinished tournament is forfeited, a finished
@@ -307,12 +297,6 @@ class TournamentScreen(GameScreen):
         self._log_new_eliminations()
         self._refresh_status()
 
-    def _can_pause(self) -> bool:
-        game = self._game
-        level_clock = isinstance(game, Tournament) and game.clock is not None
-
-        return level_clock or super()._can_pause()
-
     def _after_step(self) -> None:
         super()._after_step()
         self._refresh_status()
@@ -332,7 +316,7 @@ class TournamentScreen(GameScreen):
             self.outcome_label.setText("   ·   ".join(lines))
             self.bottom_stack.setCurrentWidget(self.tournament_page)
             self._step_timer.stop()
-            self._watch_timer.start(self.step_delay_ms)
+            self._watch_timer.start(self.hand_pause_ms)
             return
 
         human = self._human_player()
@@ -367,6 +351,11 @@ class TournamentScreen(GameScreen):
 
         self._show_page(lines, *shown)
 
+        # The add-on is offered once: wait for the user's choice. An optional
+        # rebuy stays available while the result is shown.
+        if self.add_on_button not in shown:
+            self._schedule_next_hand()
+
     def _show_bust(self, lines: list[str]) -> None:
         tournament = self.tournament
         place = tournament.current_place(self._human_name)
@@ -390,8 +379,9 @@ class TournamentScreen(GameScreen):
                 f"{winner.name} wins the tournament. You finished {ordinal(you.place)}."
             )
 
-        self._clock_timer.stop()
+        self._level_timer.stop()
         self._step_timer.stop()
+        self._cancel_next_hand()
         self._save()
         self._settle_account()
         self._show_page(lines, self.results_button, self.leave_button)
@@ -404,8 +394,6 @@ class TournamentScreen(GameScreen):
     def _set_buttons(self, *shown: QPushButton) -> None:
         for widget in self.tournament_buttons:
             widget.setVisible(widget in shown)
-
-        self.watch_speed_combo.setVisible(self.spectating)
 
     def _label_rebuy(self) -> None:
         rules = self.tournament.config.rebuys
@@ -452,11 +440,11 @@ class TournamentScreen(GameScreen):
         self._log(f"{self._human_name} takes the add-on")
         self.add_on_button.hide()
         self._refresh_status()
+        self._schedule_next_hand()
 
     def watch_rest(self) -> None:
         """Keep the table playing without you, at the chosen speed."""
         self.spectating = True
-        self.step_delay_ms = self.watch_speed_combo.currentData()
         self._set_buttons(self.skip_button, self.leave_button)
         self._continue_watching()
 
@@ -509,14 +497,12 @@ class TournamentScreen(GameScreen):
 
     def stop_timers(self) -> None:
         self._step_timer.stop()
-        self._clock_timer.stop()
+        self._cancel_next_hand()
+        self._stop_clock_display()
+        self._level_timer.stop()
         self._reveal_timer.stop()
         self._reveal_hold_timer.stop()
         self._watch_timer.stop()
-
-    def _on_watch_speed(self) -> None:
-        if self.spectating:
-            self.step_delay_ms = self.watch_speed_combo.currentData()
 
     def _on_pause_changed(self) -> None:
         """Also freeze the level clock; resume watching once restarted."""

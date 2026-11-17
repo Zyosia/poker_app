@@ -765,8 +765,11 @@ uv run python -m frontend.main # lance l'application de bureau
   choisir le montant d'une mise ou d'une relance, et l'**horloge d'action**
   avec sa time bank ; **Pause** la fige.
 - **Historique** : chaque action, street et résultat de la session.
-- **Entre deux mains** : main suivante, ou recave quand le joueur n'a plus de
-  jetons. Quitter la table rend votre tapis à la bankroll.
+- **Entre deux mains** : la main suivante démarre seule une fois le
+  résultat affiché (**Auto next hand**, désactivable), ou recave quand le
+  joueur n'a plus de jetons. Un choix **Speed** (Slow, Normal, Fast, Turbo)
+  règle la vitesse des bots et de la main suivante. Quitter la table rend
+  votre tapis à la bankroll.
 
 Voir la [V1.0.1](#v101--confort-de-jeu) pour l'affichage en BB, les cartes
 retournées après un all-in, l'horloge d'action et la bankroll.
@@ -874,7 +877,7 @@ Chip integrity
 [V1.0.1](#v101--confort-de-jeu)) :
 
 ```text
-1410 passed
+1421 passed
 ```
 
 ### État actuel
@@ -1746,13 +1749,39 @@ agir non utilisé ne s'y ajoute pas.
   l'historique (`Hand.timed_out_actions`) et affichée « Hero ran out of time
   — folds ».
 - **Pause** fige l'horloge d'action et la time bank, et les relance
-  exactement où elles en étaient. Le bouton Pause apparaît dès qu'il y a une
-  horloge à figer : une horloge d'action (désormais aussi en cash game) ou
-  des niveaux au temps.
+  exactement où elles en étaient. Elle fige aussi les bots, les niveaux au
+  temps et la main suivante ; le bouton Pause est présent sur toutes les
+  tables où vous jouez.
 - Les bots n'ont pas d'horloge. Les simulations sans interface, les
   résultats de la Bot Arena et « Skip to results » ne l'utilisent jamais. Le
   temps est mesuré dans la couche application (`ActionClock`, avec une
   source de temps que les tests remplacent) ; le moteur ignore tout du temps.
+
+### ⏩ Vitesse de la table et main suivante automatique
+
+- **Auto next hand** (activé par défaut) : une fois une main terminée, son
+  résultat reste affiché un moment, puis la main suivante est distribuée
+  seule ; le bouton **Next hand** la distribue tout de suite. La table vous
+  attend quand vous avez un choix à faire : une recave quand vous n'avez
+  plus de jetons, ou l'add-on d'un tournoi.
+- **Speed**, choisie à la table : le temps que met un bot pour agir et la
+  durée d'affichage du résultat. La valeur par défaut, Normal, est proche des
+  clients en ligne comme PokerStars ou Winamax (environ une seconde par
+  action, environ trois secondes entre deux mains). Le board d'un all-in
+  arrive un peu plus lentement qu'une action. Les préréglages sont dans
+  `frontend/pacing.py`.
+
+| Vitesse | Action d'un bot / street | Résultat affiché avant la main suivante |
+| --- | ---: | ---: |
+| Slow | 1,5 s | 5 s |
+| **Normal** (par défaut) | 0,9 s | 3 s |
+| Fast | 0,45 s | 1,5 s |
+| Turbo | 0,15 s | 0,6 s |
+
+- Un seul réglage pour les tables de cash game, de tournoi et de Spin & Go
+  (utilisé aussi quand vous regardez la fin d'un tournoi après votre
+  élimination), mémorisé d'un lancement à l'autre. Le mode Watch de la Bot
+  Arena garde son propre choix de vitesse.
 
 ### 💰 Bankroll
 
@@ -1859,11 +1888,12 @@ qu'ils sont enregistrés au bon moment.
 * [x] Horloge d'action et time bank, délais dépassés enregistrés, Pause les fige
 * [x] Bankroll persistante dans les trois modes : consulter, modifier, réinitialiser, recharger
 * [x] Time bank pour le joueur humain (déplacée depuis la V1.2)
+* [x] Main suivante automatique et vitesse de la table choisie à la table
 
 ## Tests
 
 ```text
-1410 passed
+1421 passed
 ```
 
 [↑ Retour au sommaire](#sommaire)
