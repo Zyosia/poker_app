@@ -12,6 +12,7 @@ from backend.application.hand_records import load_session_record
 from backend.simulation.my_stats import compute_my_stats
 from frontend.ui.main_window import MainWindow
 from frontend.ui.replayer_screen import ReplayerScreen
+from tests.frontend.windows import cash_setup, open_table
 from tests.hand_history_text import POKERSTARS_FILE
 from tests.session_files import (
     HUMAN,
@@ -198,9 +199,11 @@ def test_the_replayer_follows_the_show_in_bb_setting(
     window = open_window(qapp, sessions)
     window.tools_screen.card("replayer").click()
 
+    table = open_table(window, "cash")
+
     window.replayer_screen.big_blinds_check.setChecked(True)
 
-    assert window.game_screen.show_in_big_blinds
+    assert table.table_screen.show_in_big_blinds
     assert window.profile.settings.show_in_big_blinds
     assert window.replayer_screen.table_widget.pot_label.text().endswith("BB")
 
@@ -341,24 +344,23 @@ def test_a_game_played_is_saved_where_the_tools_read(
     qapp: QApplication, tmp_path: Path
 ) -> None:
     window = MainWindow(session_dir=tmp_path)
-    window.game_screen.step_delay_ms = 0
-    window.main_menu.card("cash").click()
-    window.cash_setup_screen.play_button.click()
-    game = window.game_screen.game
+    table = open_table(window, "cash")
+    cash_setup(table).play_button.click()
+    screen = table.table_screen
+    game = screen.game
     assert game is not None
 
     while game.is_hand_in_progress:
         if game.is_waiting_for_human:
-            window.game_screen.action_panel.fold_button.click()
+            screen.action_panel.fold_button.click()
         else:
-            window.game_screen._play_step()  # noqa: SLF001 - the bots, at once
+            screen._play_step()  # noqa: SLF001 - the bots, at once
 
     saved = list(tmp_path.glob("*.dat"))
     assert len(saved) == 1
     data = json.loads(saved[0].read_text(encoding="utf-8"))
     assert (data["human"], data["mode"]) == ("Hero", "cash")
-    window.game_screen.stop()
-    window.back_to_menu()
+    table.close()
 
     window.main_menu.card("tools").click()
     window.tools_screen.card("replayer").click()

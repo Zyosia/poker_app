@@ -31,9 +31,9 @@ def test_duplicate_seat_names_are_rejected() -> None:
         )
 
 
-@pytest.mark.parametrize("seat_count", [1, 7])
-def test_a_table_needs_two_to_six_seats(seat_count: int) -> None:
-    with pytest.raises(ValueError, match="2 to 6 seats"):
+@pytest.mark.parametrize("seat_count", [1, 10])
+def test_a_table_needs_two_to_nine_seats(seat_count: int) -> None:
+    with pytest.raises(ValueError, match="2 to 9 seats"):
         SimulationConfig(seats=seats(*["basic"] * seat_count))
 
 

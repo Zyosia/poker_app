@@ -12,13 +12,16 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from backend.application.game_modes import GameMode
 from backend.poker_engine.constants import ActionType, Street
 from backend.poker_engine.models import ActionEvent
 from frontend.sound_synthesis import SAMPLE_RATE, write_sounds
 from frontend.sounds import Sound, SoundPlayer, action_sound, spin_prize_sound
 from frontend.ui.game_screen import GameScreen
 from frontend.ui.main_window import MainWindow
+from frontend.ui.tournament_screen import TournamentScreen
 from tests.frontend.test_game_screen import HUMAN, make_game
+from tests.frontend.windows import played_setup
 
 ProcessUntil = Callable[[Callable[[], bool]], None]
 
@@ -181,9 +184,10 @@ def test_no_turn_sound_when_the_alert_is_off(
 
 def test_the_spin_draw_ticks_then_plays_the_prize(qapp: QApplication) -> None:
     window = MainWindow(save_sessions=False, rng=random.Random(12))
-    window.main_menu.card("spin").click()
-    window.spin_setup_screen.start_button.click()
-    screen = window.tournament_screen
+    table = window.open_game_window(GameMode.SPIN)
+    played_setup(table).start_button.click()
+    screen = table.table_screen
+    assert isinstance(screen, TournamentScreen)
 
     while screen._reveal_values:  # noqa: SLF001 - run the animation instantly
         screen._reveal_tick()  # noqa: SLF001
@@ -199,6 +203,7 @@ def test_the_spin_draw_ticks_then_plays_the_prize(qapp: QApplication) -> None:
 def test_the_window_shares_its_player_with_the_tables(qapp: QApplication) -> None:
     window = MainWindow(save_sessions=False)
 
-    assert window.game_screen.sounds is window.sounds
-    assert window.tournament_screen.sounds is window.sounds
+    for mode in GameMode:
+        assert window.open_game_window(mode).table_screen.sounds is window.sounds
+
     assert window.sounds.has_audio is False  # Tests never open an audio device.

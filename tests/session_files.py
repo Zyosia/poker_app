@@ -28,7 +28,7 @@ def cash_session(path: Path, hands: int = 12, seed: int = 1) -> Path:
     """A cash game of ``hands`` hands between Hero and three bots."""
     random.seed(seed)  # The engine deals from the global RNG by default.
     game = create_game(
-        GameSettings(player_name=HUMAN, opponent_count=3),
+        GameSettings(player_name=HUMAN, opponents=("basic",) * 3),
         human_controller=BasicBot(random.Random(seed)),
         rng=random.Random(seed),
     )

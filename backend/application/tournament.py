@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 
 from backend.poker_engine.betting import apply_action
 from backend.poker_engine.blinds import BlindLevel, BlindStructure
+from backend.poker_engine.constants import MAX_TABLE_SEATS
 from backend.poker_engine.deck import Deck
 from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.models import ActionEvent, Hand, Player
@@ -56,7 +57,7 @@ from .payouts import (
 from .structures import SPIN_HYPER_TURBO, SPIN_PLAYERS, SPIN_STARTING_STACK
 
 MIN_PLAYERS = 2
-MAX_PLAYERS = 6
+MAX_PLAYERS = MAX_TABLE_SEATS
 
 HandEndCallback = Callable[[Hand, Mapping[str, int]], None]
 

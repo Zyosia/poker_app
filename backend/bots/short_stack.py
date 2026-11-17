@@ -29,6 +29,12 @@ from .push_fold import call_shove_percent, in_top_percent, open_shove_percent
 OPEN_RAISE_BIG_BLINDS = 2.2
 COMMITMENT_SHARE = 0.4
 """Putting at least this share of the stack in the pot commits to it."""
+FULL_RING_RANGE_POSITIONS = {
+    Position.UTG1: Position.UTG,
+    Position.UTG2: Position.UTG,
+    Position.LJ: Position.UTG,
+}
+"""The early seats of a full-ring table shove the tightest range (UTG's)."""
 
 
 def effective_big_blinds(context: DecisionContext) -> float:
@@ -188,7 +194,7 @@ def _range_position(context: DecisionContext) -> Position:
     if dealt_in == 2 and position == Position.BTN:
         return Position.SB
 
-    return position
+    return FULL_RING_RANGE_POSITIONS.get(position, position)
 
 
 def _shove(legal: dict[ActionType, LegalAction]) -> Action:

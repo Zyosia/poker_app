@@ -55,6 +55,8 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [V1.2 — Réglages et sons](#v12--réglages-et-sons)
 
+* [V1.3 — Multi-tabling et tables pleines](#v13--multi-tabling-et-tables-pleines)
+
 * [V2.x — IA et stratégies](#v2x--ia-et-stratégies)
 
 * [V3.x — Extras cash game](#v3x--extras-cash-game)
@@ -677,7 +679,9 @@ frontend/
 ├── sound_synthesis.py     Fabrique les fichiers son (python -m frontend.sound_synthesis)
 ├── assets/sounds/         Les effets sonores (WAV)
 ├── ui/
-│   ├── main_window.py     Pile de navigation (Retour fonctionne partout), réglages
+│   ├── navigation_window.py  Pile de navigation (Retour fonctionne partout), bouton ⚙
+│   ├── main_window.py     Le lobby : menu, outils, Bot Arena, réglages, tables
+│   ├── game_window.py     Une partie dans sa propre fenêtre (V1.3)
 │   ├── settings_dialog.py La fenêtre des réglages (V1.2)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
@@ -690,7 +694,7 @@ frontend/
 └── components/            Carte, siège, table, panneau d'actions, graphiques,
                            choix de l'horloge, ligne buy-in et bankroll,
                            sélecteur de cartes, grille des ranges, barre de
-                           bankroll et bouton des réglages
+                           bankroll, bouton des réglages et choix des bots
 
 tests/                     Tests moteur, application, bots, simulation et UI
 ```
@@ -762,22 +766,26 @@ La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les jo
 
 L'application est une **application de bureau PySide6**. Elle s'ouvre sur un
 **menu principal** qui liste les modes : **Cash Game**, **Tournoi**,
-**Spin & Go**, **Bot Arena** et **Tools** (les outils). Le menu et les
-écrans de réglage des modes payants affichent votre **bankroll** et ouvrent
-l'écran **Bankroll**. Chaque écran a un bouton Retour, et le bouton **⚙** en
-haut à gauche ouvre les **réglages** (votre nom, les sons, les options des
-tables) depuis n'importe où, voir [V1.2](#v12--réglages-et-sons).
+**Spin & Go**, **Bot Arena** et **Tools** (les outils). Le Cash Game, le
+Tournoi et le Spin & Go s'ouvrent chacun dans **leur propre fenêtre**, pour
+jouer plusieurs parties à la fois (multi-tabling, voir
+[V1.3](#v13--multi-tabling-et-tables-pleines)). Le menu et les écrans de
+réglage des modes payants affichent votre **bankroll** et ouvrent l'écran
+**Bankroll**. Chaque écran a un bouton Retour, et le bouton **⚙** en haut à
+gauche ouvre les **réglages** (votre nom, les sons, les options des tables)
+depuis n'importe quelle fenêtre, voir [V1.2](#v12--réglages-et-sons).
 
 ```bash
 uv sync                        # installe les dépendances
 uv run python -m frontend.main # lance l'application de bureau
 ```
 
-**Cash Game** — un joueur humain contre 1 à 5 bots :
+**Cash Game** — un joueur humain contre 1 à 8 bots, du heads-up à la table
+pleine :
 
-- **Réglages** : nombre d'adversaires, niveau des bots, tapis de départ (le
-  buy-in, payé par la bankroll), blinds et horloge d'action ; vous jouez sous
-  le nom choisi dans les réglages.
+- **Réglages** : nombre d'adversaires et style de jeu de chaque bot, tapis de
+  départ (le buy-in, payé par la bankroll), blinds et horloge d'action ; vous
+  jouez sous le nom choisi dans les réglages.
 - **Table** : sièges, cartes privées, cartes communes, mises, pot et bouton
   dealer ; **Show in BB** affiche tous les montants en big blinds. Une fois un
   all-in payé, les cartes sont retournées avec les chances de gain de chacun.
@@ -903,10 +911,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V1.2](#v12--réglages-et-sons)) :
+[V1.3](#v13--multi-tabling-et-tables-pleines)) :
 
 ```text
-1631 passed
+1667 passed
 ```
 
 ### État actuel
@@ -2307,6 +2315,127 @@ Bot Arena sont inchangés.
 
 ```text
 1631 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V1.3 — Multi-tabling et tables pleines
+
+La **V1.3** permet de jouer **plusieurs parties à la fois**, chacune dans sa
+propre fenêtre, comme sur les rooms en ligne (multi-tabling). Elle installe
+jusqu'à **neuf joueurs** aux tables du Cash Game et du Tournoi, et donne au
+Cash Game le même **choix d'adversaires** que le Tournoi. Dans le moteur,
+seule la taille des tables change (6 à 9 sièges) : les résultats golden et
+tous les résultats de la Bot Arena de 2 à 6 sièges sont inchangés.
+
+## Fonctionnalités
+
+### 🪟 Multi-tabling
+
+* **Cash Game**, **Tournoi** et **Spin & Go** ouvrent leurs réglages dans une
+  **nouvelle fenêtre** ; le menu principal ne change pas et devient le lobby.
+  Ouvrez autant de parties que vous voulez, de tous les modes : par exemple
+  deux cash games, un tournoi et un Spin & Go en même temps.
+* Chaque fenêtre joue sa partie des réglages à la table (et jusqu'aux
+  résultats pour un tournoi : Rejouer, ou retour aux réglages). **Retour** sur
+  l'écran de réglage ferme la fenêtre. Fermer la fenêtre d'une table encaisse
+  un cash game ; un tournoi en cours demande d'abord (il est abandonné).
+* **À vous de jouer**, comme sur Winamax :
+  * le titre de la fenêtre commence par **« Your turn »**, sa table prend un
+    **cadre doré**, et son bouton dans la barre des tâches clignote ;
+  * la table qui vous attend **passe au premier plan**, sauf si vous êtes en
+    train de décider à une autre table ; dès que vous avez joué, la **table
+    suivante** qui vous attend (celle qui attend depuis le plus longtemps)
+    passe devant ;
+  * le réglage **« Bring the table where it is your turn to the front »**
+    (Tables) désactive ce comportement ; la mise en évidence reste.
+* **Vos tables** sur le menu principal (dès qu'une table est ouverte) : un
+  bouton par table, doré quand elle vous attend, la met au premier plan.
+  **Tile** dispose les tables côte à côte sur tout l'écran ; **Cascade** les
+  empile, chacune un peu plus bas.
+* La fenêtre d'une table peut être **réduite** : quatre tables tiennent côte
+  à côte sur un écran full HD. La table, ses sièges et ses cartes
+  **rétrécissent** avec la fenêtre, l'historique se masque quand la fenêtre
+  est étroite, et les formulaires de réglage défilent.
+* **Partagés par toutes les fenêtres :**
+  * **La bankroll.** Chaque partie a son propre compte (buy-in, recaves,
+    encaissement ou gain), et chaque fenêtre affiche aussitôt le nouveau
+    solde.
+  * **Les réglages.** Il n'y a qu'une fenêtre de réglages, et toutes les
+    tables en cours attendent pendant qu'elle est ouverte.
+  * **Les sons.**
+  * **Les interrupteurs des tables.** Speed, Auto next hand et Show in BB
+    changés à une table s'appliquent à toutes.
+* **Quitter** ferme toutes les tables. Un tournoi en cours demande d'abord,
+  et y rester annule la fermeture. Si l'application se ferme pendant
+  plusieurs parties, chacune est réglée au lancement suivant : les cash
+  games sont encaissés, les tournois abandonnés.
+
+### 👥 Tables pleines (9 sièges)
+
+* **Cash Game** et **Tournoi** : **1 à 8 adversaires**, du heads-up au 6-max
+  jusqu'à la table pleine. Le Spin & Go reste une partie à trois.
+* **Positions** à partir de 7 joueurs : UTG, UTG+1, UTG+2, LJ, HJ, CO, BTN,
+  SB, BB. Le moteur les distribuait déjà pour les mains importées d'autres
+  sites.
+* **Placement des sièges** : ils sont répartis régulièrement le long du
+  bord, donc une table large place plus de sièges sur ses grands côtés qu'à
+  ses extrémités. À partir de 7 sièges ils sont un peu plus petits, pour que
+  neuf sièges ne se chevauchent jamais, même dans une petite fenêtre.
+* **Tapis courts** : à une table pleine, les premières positions (UTG+1,
+  UTG+2, LJ) font tapis avec la range la plus serrée, celle d'UTG.
+* **Répartition des gains** du tournoi par défaut :
+
+| Joueurs | Répartition |
+| --- | --- |
+| 2 à 3 | Le gagnant prend tout |
+| 4 à 6 | 65 / 35 |
+| 7 à 9 | 50 / 30 / 20 (nouveau) |
+
+* La **Bot Arena** (tables cash et tournois) et le **calculateur
+  d'équité** montent aussi jusqu'à 9 sièges ou mains.
+* Trois noms de bots de plus (Gus, Hana, Ivo) : un bot ne prend jamais votre
+  nom.
+
+### 🤖 Les adversaires du Cash Game
+
+* Les réglages du Cash Game fonctionnent comme ceux du Tournoi : le **nombre
+  d'adversaires** (1 à 8) et **un style de jeu pour chaque bot** : Nit, TAG,
+  LAG, Calling Station, Maniac, Basic ou Random. La description de chaque
+  style s'affiche en info-bulle, ou cochez **Same style for every bot**.
+* Cela remplace l'ancien choix du **niveau des bots**. Normal était le bot
+  Basic et Easy le bot Random ; les deux sont toujours dans la liste.
+* Par défaut : trois bots, TAG, LAG et Calling Station.
+
+> 📸 *Emplacement de capture d'écran : quatre tables en mosaïque, dont une
+> qui vous attend (cadre doré), avec « Vos tables » dans le lobby.*
+
+## Changements du moteur
+
+* `MAX_TABLE_SEATS` : 6 → 9. Il remplace `MAX_HAND_PLAYERS`, qui autorisait
+  9 joueurs seulement pour les mains importées ; il n'y a plus qu'une seule
+  limite.
+
+## Bankroll et profil
+
+* La bankroll garde une liste de **parties ouvertes** (`open_games`) au lieu
+  d'une seule. Les profils enregistrés par une version précédente se lisent
+  comme avant.
+* Nouveau réglage : `table_to_front` (activé par défaut).
+
+## Objectifs
+
+* [x] Les adversaires du Cash Game choisis comme ceux du Tournoi : nombre de bots, un style pour chacun
+* [x] Des tables jusqu'à 9 sièges au Cash Game et au Tournoi (et dans la Bot Arena)
+* [x] Multi-tabling : chaque Cash Game, Tournoi et Spin & Go dans sa propre fenêtre, plusieurs à la fois
+* [x] Une mécanique à la Winamax : votre tour mis en évidence, la table qui attend au premier plan, la suivante dès que vous avez joué, Tile et Cascade, les tables listées dans le lobby
+
+## Tests
+
+```text
+1667 passed
 ```
 
 [↑ Retour au sommaire](#sommaire)

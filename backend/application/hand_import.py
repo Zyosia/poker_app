@@ -34,7 +34,7 @@ from pathlib import Path
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, apply_action
 from backend.poker_engine.blinds import AnteType, BlindLevel
-from backend.poker_engine.constants import MAX_HAND_PLAYERS, ActionType, Card, Street
+from backend.poker_engine.constants import MAX_TABLE_SEATS, ActionType, Card, Street
 from backend.poker_engine.deck import Deck
 from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.hand_evaluator import evaluate_rank
@@ -427,9 +427,9 @@ def build_record(parsed: ParsedHand, number: int) -> HandRecord:
 
     names = parsed.dealt_in
 
-    if not 2 <= len(names) <= MAX_HAND_PLAYERS:
+    if not 2 <= len(names) <= MAX_TABLE_SEATS:
         raise UnsupportedHand(
-            f"{len(names)} players dealt in: the engine plays 2 to {MAX_HAND_PLAYERS}"
+            f"{len(names)} players dealt in: the engine plays 2 to {MAX_TABLE_SEATS}"
         )
 
     dealer = next(

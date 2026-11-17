@@ -320,21 +320,39 @@ def test_menu_emits_the_chosen_settings(qapp: QApplication) -> None:
 
     menu.set_player_name("Nael")
     menu.opponents_spin.setValue(5)
+    menu.bot_combos[1].setCurrentIndex(menu.bot_combos[1].findData("random"))
     menu.stack_spin.setValue(2000)
     menu.blinds_combo.setCurrentIndex(1)
-    menu.level_combo.setCurrentIndex(1)
     menu.play_button.click()
 
     assert received == [
         GameSettings(
             player_name="Nael",
-            opponent_count=5,
-            bot_level=menu.level_combo.itemData(1),
+            opponents=("tag", "random", "station", "tag", "lag"),
             starting_stack=2000,
             small_blind=10,
             big_blind=20,
         )
     ]
+
+
+def test_the_cash_setup_seats_up_to_eight_bots_of_any_style(
+    qapp: QApplication,
+) -> None:
+    menu = CashSetupScreen()
+
+    assert menu.opponents_spin.maximum() == 8
+    assert sum(not combo.isHidden() for combo in menu.bot_combos) == 3
+
+    menu.opponents_spin.setValue(8)
+    assert sum(not combo.isHidden() for combo in menu.bot_combos) == 8
+    assert len(menu.current_settings().opponents) == 8
+
+    menu.same_style_check.setChecked(True)
+    menu.bot_combos[0].setCurrentIndex(menu.bot_combos[0].findData("maniac"))
+
+    assert sum(not combo.isHidden() for combo in menu.bot_combos) == 1
+    assert menu.current_settings().opponents == ("maniac",) * 8
 
 
 def test_menu_rejects_an_empty_name(qapp: QApplication) -> None:
@@ -349,31 +367,37 @@ def test_menu_rejects_an_empty_name(qapp: QApplication) -> None:
     assert menu.error_label.text() != ""
 
 
-def test_main_window_starts_a_game_and_returns_to_the_menu(qapp: QApplication) -> None:
+def test_a_cash_game_opens_in_its_own_window_and_returns_to_its_setup(
+    qapp: QApplication,
+) -> None:
     window = MainWindow(save_sessions=False)
-    window.game_screen.step_delay_ms = 0
-
     assert window.screens.currentWidget() is window.main_menu
 
     window.main_menu.card("cash").click()
-    assert window.screens.currentWidget() is window.cash_setup_screen
+    [table] = window.game_windows
+    table.table_screen.step_delay_ms = 0
+    assert window.screens.currentWidget() is window.main_menu
+    assert table.screens.currentWidget() is table.setup_screen
 
-    window.cash_setup_screen.opponents_spin.setValue(4)
-    window.cash_setup_screen.play_button.click()
+    setup = table.setup_screen
+    assert isinstance(setup, CashSetupScreen)
+    setup.opponents_spin.setValue(8)  # A full-ring table.
+    setup.play_button.click()
 
-    game = window.game_screen.game
+    game = table.table_screen.game
 
-    assert window.screens.currentWidget() is window.game_screen
+    assert table.screens.currentWidget() is table.table_screen
     assert isinstance(game, PokerGame)
     assert [player.name for player in game.session.players][0] == "Hero"
-    assert len(game.session.players) == 5
+    assert len(game.session.players) == 9
     assert game.save_path is None
+    assert table.windowTitle().startswith(("Cash game 5/10", "Your turn"))
 
-    window.game_screen.menu_button.click()
+    table.table_screen.menu_button.click()
 
-    assert window.screens.currentWidget() is window.cash_setup_screen
-    assert window.game_screen.game is None
+    assert table.screens.currentWidget() is table.setup_screen
+    assert table.table_screen.game is None
 
-    window.cash_setup_screen.back_button.click()
+    table.setup_screen.back_button.click()  # Back closes the window.
 
-    assert window.screens.currentWidget() is window.main_menu
+    assert window.game_windows == []

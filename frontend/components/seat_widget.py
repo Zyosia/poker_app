@@ -13,6 +13,17 @@ from .card_widget import CardWidget
 
 CARD_SIZE = QSize(46, 64)
 SEAT_SIZE = QSize(150, 136)
+"""At full size: the table shrinks its seats in a small window (``set_scale``)."""
+NAME_FONT_PX = 13
+STATUS_FONT_PX = 11
+STACK_FONT_PX = 14
+MIN_FONT_PX = 9
+LINE_HEIGHT = 1.35
+"""A text line, in font sizes."""
+
+
+def scaled(size: QSize, scale: float) -> QSize:
+    return QSize(round(size.width() * scale), round(size.height() * scale))
 
 
 class SeatHighlight(Enum):
@@ -48,6 +59,7 @@ class SeatWidget(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.scale = 1.0
         self.setFixedSize(SEAT_SIZE)
 
         self.card_widgets = [CardWidget(CARD_SIZE, self) for _ in range(2)]
@@ -58,9 +70,7 @@ class SeatWidget(QFrame):
         for label in (self.name_label, self.stack_label, self.status_label):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.name_label.setStyleSheet("font-weight: 700; font-size: 13px;")
-        self.stack_label.setStyleSheet("color: #f2c14e; font-weight: 600;")
-        self.status_label.setStyleSheet("color: #9aa4b2; font-size: 11px;")
+        self._style_labels()
 
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(4)
@@ -70,6 +80,7 @@ class SeatWidget(QFrame):
         cards_layout.addStretch()
 
         layout = QVBoxLayout(self)
+        self._layout = layout
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(1)
         layout.addLayout(cards_layout)
@@ -78,6 +89,49 @@ class SeatWidget(QFrame):
         layout.addWidget(self.status_label)
 
         self._apply_highlight(SeatHighlight.NONE)
+
+    def set_scale(self, scale: float) -> None:
+        """Shrink (or restore) the seat: size, cards and text."""
+        if scale == self.scale:
+            return
+
+        self.scale = scale
+        card_size = scaled(CARD_SIZE, scale)
+        margin = round(6 * scale)
+
+        for card_widget in self.card_widgets:
+            card_widget.setFixedSize(card_size)
+
+        self._layout.setContentsMargins(margin + 2, margin, margin + 2, margin)
+        self._style_labels()
+
+        if scale == 1.0:
+            self.setFixedSize(SEAT_SIZE)
+            return
+
+        # The text shrinks less than the cards (it stays readable): the seat
+        # is as tall as its content.
+        text = sum(
+            round(self._font_px(size) * LINE_HEIGHT)
+            for size in (NAME_FONT_PX, STACK_FONT_PX, STATUS_FONT_PX)
+        )
+        height = card_size.height() + text + 2 * margin + 4
+        self.setFixedSize(round(SEAT_SIZE.width() * scale), height)
+
+    def _font_px(self, size: int) -> int:
+        return max(MIN_FONT_PX, round(size * self.scale))
+
+    def _style_labels(self) -> None:
+        self.name_label.setStyleSheet(
+            f"font-weight: 700; font-size: {self._font_px(NAME_FONT_PX)}px;"
+        )
+        self.stack_label.setStyleSheet(
+            "color: #f2c14e; font-weight: 600;"
+            f" font-size: {self._font_px(STACK_FONT_PX)}px;"
+        )
+        self.status_label.setStyleSheet(
+            f"color: #9aa4b2; font-size: {self._font_px(STATUS_FONT_PX)}px;"
+        )
 
     def set_state(self, state: SeatState) -> None:
         """Update the seat from the given state."""

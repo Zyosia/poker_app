@@ -30,33 +30,16 @@ from backend.application.setup import (
     TournamentSettings,
 )
 from backend.application.structures import TOURNAMENT_STRUCTURES
-from backend.bots.factory import BOT_TYPES
-from backend.poker_engine.constants import MAX_TABLE_SEATS
 from frontend.components.bankroll_bar import BankrollBar
+from frontend.components.bot_picker import BotPicker, bot_combo
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
 from frontend.formatting import format_chips
 
-from .cash_setup_screen import player_name_label
+from .cash_setup_screen import player_name_label, scrolling
 
 DEFAULT_TOURNAMENT = TournamentSettings()
 DEFAULT_SPIN = SpinSettings()
-SAME_FOR_ALL = "Same style for every bot"
-
-
-def bot_combo(bot: str) -> QComboBox:
-    """A choice of play style, with its description as tooltip."""
-    combo = QComboBox()
-
-    for bot_type in BOT_TYPES.values():
-        combo.addItem(bot_type.label, bot_type.key)
-        combo.setItemData(
-            combo.count() - 1, bot_type.description, Qt.ItemDataRole.ToolTipRole
-        )
-
-    combo.setCurrentIndex(combo.findData(bot))
-
-    return combo
 
 
 def level_speed_combo() -> QComboBox:
@@ -127,7 +110,7 @@ def setup_page(
 
     panel = QFrame()
     panel.setObjectName("panel")
-    panel.setFixedWidth(560)
+    panel.setFixedWidth(680)
     panel_layout = QVBoxLayout(panel)
     panel_layout.setContentsMargins(28, 24, 28, 24)
     panel_layout.setSpacing(14)
@@ -146,7 +129,7 @@ def setup_page(
     layout.addWidget(panel, alignment=Qt.AlignmentFlag.AlignHCenter)
     layout.addStretch()
 
-    return layout
+    return scrolling(layout)
 
 
 def error_label() -> QLabel:
@@ -159,7 +142,7 @@ def error_label() -> QLabel:
 
 
 class TournamentSetupScreen(QWidget):
-    """You against 1 to 5 bots, with rising blinds."""
+    """You against 1 to 8 bots, with rising blinds."""
 
     start_requested = Signal(TournamentSettings)
     back_requested = Signal()
@@ -169,26 +152,10 @@ class TournamentSetupScreen(QWidget):
 
         self.bankroll_bar = BankrollBar()
         self.name_label = player_name_label(DEFAULT_TOURNAMENT.player_name)
-        self.opponents_spin = QSpinBox()
-        self.opponents_spin.setRange(1, MAX_TABLE_SEATS - 1)
-        self.opponents_spin.setValue(len(DEFAULT_TOURNAMENT.opponents))
-        self.opponents_spin.valueChanged.connect(self._update_bots)
-
-        self.same_style_check = QCheckBox(SAME_FOR_ALL)
-        self.same_style_check.toggled.connect(self._update_bots)
-        self.bot_combos = [
-            bot_combo(DEFAULT_TOURNAMENT.opponents[index % 5])
-            for index in range(MAX_TABLE_SEATS - 1)
-        ]
-        bots = QHBoxLayout()
-        bots.setSpacing(6)
-
-        for combo in self.bot_combos:
-            bots.addWidget(combo)
-
-        self.bots_row = QWidget()
-        self.bots_row.setLayout(bots)
-        bots.setContentsMargins(0, 0, 0, 0)
+        self.bot_picker = BotPicker(DEFAULT_TOURNAMENT.opponents)
+        self.opponents_spin = self.bot_picker.opponents_spin
+        self.same_style_check = self.bot_picker.same_style_check
+        self.bot_combos = self.bot_picker.bot_combos
 
         self.stack_spin = QSpinBox()
         self.stack_spin.setRange(100, 100_000)
@@ -238,9 +205,8 @@ class TournamentSetupScreen(QWidget):
         form.setVerticalSpacing(10)
         form.setHorizontalSpacing(18)
         form.addRow("Your name", self.name_label)
-        form.addRow("Opponents", self.opponents_spin)
-        form.addRow("", self.same_style_check)
-        form.addRow("Bots", self.bots_row)
+        form.addRow("Opponents", self.bot_picker.count_widget)
+        form.addRow("Bots", self.bot_picker.style_widget)
         form.addRow("Starting stack", self.stack_spin)
         form.addRow("Blind structure", self.structure_combo)
         form.addRow("Level speed", self.speed_combo)
@@ -263,23 +229,11 @@ class TournamentSetupScreen(QWidget):
                 self.bankroll_bar,
             )
         )
-        self._update_bots()
         self.buy_in_spin.valueChanged.connect(self.refresh_cost)
         self.refresh_cost()
 
-    def _update_bots(self) -> None:
-        count = 1 if self.same_style_check.isChecked() else self.opponents_spin.value()
-
-        for index, combo in enumerate(self.bot_combos):
-            combo.setVisible(index < count)
-
     def opponents(self) -> tuple[str, ...]:
-        count = self.opponents_spin.value()
-
-        if self.same_style_check.isChecked():
-            return (self.bot_combos[0].currentData(),) * count
-
-        return tuple(combo.currentData() for combo in self.bot_combos[:count])
+        return self.bot_picker.opponents()
 
     def cost(self) -> int:
         return self.buy_in_spin.value()

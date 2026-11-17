@@ -72,6 +72,8 @@ class UserSettings:
     """A ``BotCards`` value."""
     four_color_deck: bool = False
     """Diamonds blue and clubs green, so the four suits never look alike."""
+    table_to_front: bool = True
+    """Multi-tabling: the table waiting for you comes to the front."""
 
     def to_dict(self) -> dict[str, Any]:
         return {item.name: getattr(self, item.name) for item in fields(self)}

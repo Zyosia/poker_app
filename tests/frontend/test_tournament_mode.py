@@ -22,7 +22,10 @@ from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import get_legal_actions
 from backend.poker_engine.constants import ActionType
 from frontend.ui.main_window import MainWindow
+from frontend.ui.tournament_results_screen import TournamentResultsScreen
 from frontend.ui.tournament_screen import TournamentScreen
+from frontend.ui.tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
+from tests.frontend.windows import open_table, tournament_screen
 
 TIMEOUT_SECONDS = 60
 
@@ -99,11 +102,22 @@ def keep_playing(screen: TournamentScreen) -> QPushButton | None:
     return None
 
 
-def start(window: MainWindow, mode: str, **fields: object) -> TournamentScreen:
-    window.main_menu.card(mode).click()
+def results_shown(window: MainWindow) -> bool:
+    """The results replaced the table, in the game's window."""
+    table = window.game_windows[-1]
 
-    if mode == "tournament":
-        setup = window.tournament_setup_screen
+    return table.current_screen is table.results_screen
+
+
+def results(window: MainWindow) -> TournamentResultsScreen:
+    return window.game_windows[-1].results_screen
+
+
+def start(window: MainWindow, mode: str, **fields: object) -> TournamentScreen:
+    table = open_table(window, mode)
+    setup = table.setup_screen
+
+    if isinstance(setup, TournamentSetupScreen):
         setup.opponents_spin.setValue(int(fields.get("opponents", 2)))  # type: ignore[arg-type]
         setup.stack_spin.setValue(int(fields.get("stack", 200)))  # type: ignore[arg-type]
         setup.rebuys_check.setChecked(bool(fields.get("rebuys", False)))
@@ -112,29 +126,32 @@ def start(window: MainWindow, mode: str, **fields: object) -> TournamentScreen:
             setup.speed_combo.setCurrentIndex(
                 setup.speed_combo.findData(LEVELS_BY_TIME)
             )
-    else:
-        setup = window.spin_setup_screen
 
+    assert isinstance(setup, TournamentSetupScreen | SpinSetupScreen)
     setup.start_button.click()
-    assert window.current_screen is window.tournament_screen
+    assert table.current_screen is table.table_screen
 
-    return window.tournament_screen
+    return tournament_screen(table)
 
 
 # --- Menu -----------------------------------------------------------------
 
 
 def test_the_menu_opens_both_tournament_modes(window: MainWindow) -> None:
-    window.main_menu.card("tournament").click()
-    assert window.current_screen is window.tournament_setup_screen
+    tournament = open_table(window, "tournament")
+    assert isinstance(tournament.setup_screen, TournamentSetupScreen)
 
-    window.tournament_setup_screen.back_button.click()
-    window.main_menu.card("spin").click()
-    assert window.current_screen is window.spin_setup_screen
+    tournament.setup_screen.back_button.click()
+    assert window.game_windows == []
+
+    spin = open_table(window, "spin")
+    assert isinstance(spin.setup_screen, SpinSetupScreen)
+    assert window.current_screen is window.main_menu
 
 
 def test_the_setup_builds_the_settings(window: MainWindow) -> None:
-    setup = window.tournament_setup_screen
+    setup = open_table(window, "tournament").setup_screen
+    assert isinstance(setup, TournamentSetupScreen)
     setup.opponents_spin.setValue(3)
     setup.same_style_check.setChecked(True)
     setup.bot_combos[0].setCurrentIndex(setup.bot_combos[0].findData("maniac"))
@@ -163,20 +180,21 @@ def test_a_small_tournament_plays_to_the_results(window: MainWindow) -> None:
 
     play(
         screen,
-        until=lambda: window.current_screen is window.tournament_results_screen,
+        until=lambda: results_shown(window),
         decide=keep_playing,
         plan=ActionType.CALL,
     )
 
-    results = window.tournament_results_screen
+    screen_of_results = results(window)
     assert tournament.is_finished
-    assert results.standings_table.rowCount() == 3
-    assert "RESULTS" in results.title_label.text()
-    assert "Hands played" in results.stats_label.text()
+    assert screen_of_results.standings_table.rowCount() == 3
+    assert "RESULTS" in screen_of_results.title_label.text()
+    assert "Hands played" in screen_of_results.stats_label.text()
     assert sum(f.prize for f in tournament.result.finishes) == tournament.prize_pool
 
-    results.menu_button.click()
-    assert window.current_screen is window.main_menu
+    screen_of_results.menu_button.click()
+    table = window.game_windows[-1]
+    assert table.current_screen is table.setup_screen
 
 
 def test_antes_are_posted_and_shown_once_the_levels_rise(window: MainWindow) -> None:
@@ -208,7 +226,7 @@ def test_skip_to_results_after_busting(busting_window: MainWindow) -> None:
 
     play(
         screen,
-        until=lambda: window.current_screen is window.tournament_results_screen,
+        until=lambda: results_shown(window),
         decide=bust_then_skip,
     )
 
@@ -216,7 +234,7 @@ def test_skip_to_results_after_busting(busting_window: MainWindow) -> None:
     assert finish.place > 1, "this seed makes the human bust first"
     assert finish.eliminated_on_hand is not None
     assert tournament.result.winner.name != name
-    assert "You finished" in window.tournament_results_screen.outcome_label.text()
+    assert "You finished" in results(window).outcome_label.text()
 
 
 def test_watching_after_busting_plays_the_rest(busting_window: MainWindow) -> None:
@@ -234,12 +252,12 @@ def test_watching_after_busting_plays_the_rest(busting_window: MainWindow) -> No
 
     play(
         screen,
-        until=lambda: window.current_screen is window.tournament_results_screen,
+        until=lambda: results_shown(window),
         decide=bust_then_watch,
     )
 
     assert screen.spectating
-    assert window.tournament_results_screen.standings_table.rowCount() == 4
+    assert results(window).standings_table.rowCount() == 4
 
 
 def test_a_busted_player_is_offered_a_rebuy(window: MainWindow) -> None:
@@ -299,12 +317,11 @@ def test_a_spin_and_go_reveals_its_multiplier_and_ends_with_a_winner(
 
     play(
         screen,
-        until=lambda: window.current_screen is window.tournament_results_screen,
+        until=lambda: results_shown(window),
         decide=keep_playing,
     )
 
-    results = window.tournament_results_screen
-    assert f"multiplier × {multiplier.value}" in results.outcome_label.text()
+    assert f"multiplier × {multiplier.value}" in results(window).outcome_label.text()
     assert tournament.result.winner.prize == tournament.prize_pool
 
 

@@ -20,6 +20,7 @@ from backend.application.controllers import (
     PlayerController,
 )
 from backend.application.game import PokerGame
+from backend.application.game_modes import GameMode
 from backend.application.profile import ProfileStore
 from backend.application.setup import SpinSettings, create_spin_and_go
 from backend.poker_engine.actions import Action
@@ -235,19 +236,21 @@ def test_the_speeds_and_their_default() -> None:
 def test_the_speed_is_shared_and_remembered(qapp: QApplication, tmp_path: Path) -> None:
     path = tmp_path / "profile.json"
     window = MainWindow(save_sessions=False, profile=ProfileStore(path))
-    screen = window.game_screen
+    screen = window.open_game_window(GameMode.CASH).table_screen
+    tournament = window.open_game_window(GameMode.TOURNAMENT).table_screen
     assert screen.speed == "Normal" and screen.step_delay_ms == 900
 
     screen.speed_combo.activated.emit(screen.speed_combo.findData("Turbo"))
-    window.tournament_screen.auto_next_check.setChecked(False)
+    tournament.auto_next_check.setChecked(False)
 
     assert screen.step_delay_ms == 150 and screen.hand_pause_ms == 600
-    assert window.tournament_screen.speed == "Turbo"
+    assert tournament.speed == "Turbo"
     assert not screen.auto_next_hand
     window.close()
 
     reopened = MainWindow(save_sessions=False, profile=ProfileStore(path))
-    assert reopened.tournament_screen.speed == "Turbo"
-    assert reopened.game_screen.step_delay_ms == 150
-    assert not reopened.game_screen.auto_next_hand
+    assert reopened.open_game_window(GameMode.TOURNAMENT).table_screen.speed == "Turbo"
+    cash = reopened.open_game_window(GameMode.CASH).table_screen
+    assert cash.step_delay_ms == 150
+    assert not cash.auto_next_hand
     reopened.close()

@@ -9,10 +9,9 @@ Card = str
 RANKS: Final[str] = "23456789TJQKA"
 SUITS: Final[str] = "CDHS"
 
-MAX_TABLE_SEATS: Final[int] = 6
-"""Seats of the application's tables (cash game, tournaments, Bot Arena)."""
-MAX_HAND_PLAYERS: Final[int] = 9
-"""Players the engine can deal in: full-ring hands imported from other sites."""
+MAX_TABLE_SEATS: Final[int] = 9
+"""Seats of a full-ring table: the most players the engine deals in (cash
+games, tournaments, Bot Arena, and hands imported from other sites)."""
 
 
 class Street(StrEnum):
