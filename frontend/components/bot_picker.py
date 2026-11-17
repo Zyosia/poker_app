@@ -6,16 +6,29 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGridLayout,
     QHBoxLayout,
+    QPushButton,
     QSpinBox,
     QWidget,
 )
 
 from backend.bots.factory import BOT_TYPES
 from backend.poker_engine.constants import MAX_TABLE_SEATS
+from frontend.ui.guide_window import open_guide
 
 MAX_OPPONENTS = MAX_TABLE_SEATS - 1
 COMBO_COLUMNS = 4
 SAME_FOR_ALL = "Same style for every bot"
+HELP_TOOLTIP = "What do the play styles mean? Opens the guide."
+
+
+def help_button(bot: str | None = None) -> QPushButton:
+    """A "?" button opening the bot styles of the guide (at ``bot``)."""
+    button = QPushButton("?")
+    button.setObjectName("help")
+    button.setToolTip(HELP_TOOLTIP)
+    button.clicked.connect(lambda: open_guide("bots", bot))
+
+    return button
 
 
 def bot_combo(bot: str) -> QComboBox:
@@ -50,6 +63,7 @@ class BotPicker:
         )
 
         self.same_style_check = QCheckBox(SAME_FOR_ALL)
+        self.help_button = help_button()
         self.bot_combos = [
             bot_combo(defaults[index % len(defaults)]) for index in range(MAX_OPPONENTS)
         ]
@@ -60,6 +74,7 @@ class BotPicker:
         count_layout.setSpacing(14)
         count_layout.addWidget(self.opponents_spin, stretch=1)
         count_layout.addWidget(self.same_style_check)
+        count_layout.addWidget(self.help_button)
 
         self.style_widget = QWidget()
         grid = QGridLayout(self.style_widget)

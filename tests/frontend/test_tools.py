@@ -104,7 +104,7 @@ def test_the_replayer_steps_through_a_hand(qapp: QApplication, sessions: Path) -
     replay = replayer.replay
     assert replay is not None and replayer.hand is not None
     record = replay.record
-    first_lines = replayer.history_view.toPlainText().splitlines()
+    first_lines = replayer.history_view.text().splitlines()
 
     assert first_lines[0].startswith(f"── Hand #{record.number}")
     assert f"Dealt to {HUMAN}" in first_lines[1]
@@ -115,16 +115,16 @@ def test_the_replayer_steps_through_a_hand(qapp: QApplication, sessions: Path) -
 
     replayer.next_button.click()
     assert replayer.step == 1
-    assert len(replayer.history_view.toPlainText().splitlines()) > len(first_lines)
+    assert len(replayer.history_view.text().splitlines()) > len(first_lines)
 
     replayer.last_button.click()
     assert replayer.hand.finished
     assert not replayer.next_button.isEnabled()
-    assert "wins" in replayer.history_view.toPlainText().splitlines()[-1]
+    assert "wins" in replayer.history_view.text().splitlines()[-1]
 
     replayer.first_button.click()
     assert replayer.step == 0
-    assert replayer.history_view.toPlainText().splitlines() == first_lines
+    assert replayer.history_view.text().splitlines() == first_lines
 
 
 def test_show_all_cards_turns_every_hand_face_up(
@@ -186,7 +186,7 @@ def test_a_hand_saved_before_v1_1_shows_its_history_as_text(
     assert replayer.replay is None
     assert replayer.view_stack.currentWidget() is replayer.message_label
     assert "saved before V1.1" in replayer.message_label.text()
-    history = replayer.history_view.toPlainText()
+    history = replayer.history_view.text()
     assert "posts small blind" in history and " wins " in history
     assert not replayer.play_button.isEnabled()
     assert not replayer.next_button.isEnabled()
@@ -412,6 +412,6 @@ def test_unseen_cards_stay_face_down_in_the_replayer(
     assert seats["Hero"].cards_face_up
     assert not seats["Bob Smith"].cards_face_up, "he mucked: nobody saw them"
     assert not seats["Dan"].cards_face_up
-    history = replayer.history_view.toPlainText()
+    history = replayer.history_view.text()
     assert "Bob Smith mucks" in history and "Hero shows" in history
     assert "PokerStars #241234567890" in replayer.info_label.text()

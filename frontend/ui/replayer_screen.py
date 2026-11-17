@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -25,35 +24,71 @@ from PySide6.QtWidgets import (
 from backend.application.game_modes import MODE_LABELS
 from backend.application.hand_records import HandRecord, SessionRecord
 from backend.application.replay import HandReplay, ReplayError
+from backend.poker_engine.constants import Card
 from backend.poker_engine.models import ActionEvent, Hand
 from frontend import theme
+from frontend.components.hand_history import (
+    HISTORY_WIDTH,
+    HandHistoryView,
+    HistoryEntry,
+    Tone,
+)
 from frontend.components.table_widget import TableWidget
-from frontend.formatting import describe_action, describe_result, format_cards
+from frontend.formatting import describe_result, format_cards
 from frontend.pacing import DEFAULT_TABLE_SPEED, TABLE_SPEEDS, table_speed
 from frontend.runout import RunoutEquity
 
 from .game_screen import build_table_state
 
 
-def action_line(event: ActionEvent, timed_out: tuple[int, ...]) -> str:
-    line = f"{event.player}: {describe_action(event)}"
+def action_entry(event: ActionEvent, timed_out: tuple[int, ...]) -> HistoryEntry:
+    suffix = " (ran out of time)" if event.sequence in timed_out else ""
 
-    return f"{line} (ran out of time)" if event.sequence in timed_out else line
+    return lambda view: view.add_action(event, suffix=suffix)
 
 
-def hand_header(session: SessionRecord, record: HandRecord) -> list[str]:
-    lines = [f"── Hand #{record.number} — blinds {record.blind_level.describe()} ──"]
+def street_entry(street: str, board: tuple[Card, ...]) -> HistoryEntry:
+    return lambda view: view.add_section(
+        street.capitalize(), board, line=f"*** {street} *** {format_cards(board)}"
+    )
+
+
+def revealed_entry() -> HistoryEntry:
+    return lambda view: view.add_section(
+        "Cards revealed", line="*** Cards revealed ***"
+    )
+
+
+def cards_entry(
+    player: str, cards: tuple[Card, ...], detail: str, line: str
+) -> HistoryEntry:
+    return lambda view: view.add_cards(player, cards, detail, line=line)
+
+
+def note_entry(text: str, tone: Tone = Tone.NOTE) -> HistoryEntry:
+    return lambda view: view.add_note(text, tone)
+
+
+def hand_header(session: SessionRecord, record: HandRecord) -> list[HistoryEntry]:
+    """The hand's number and blinds, and your cards."""
+    blinds = record.blind_level.describe()
+    entries: list[HistoryEntry] = [
+        lambda view: view.start_hand(
+            record.number, blinds, line=f"── Hand #{record.number} — blinds {blinds} ──"
+        )
+    ]
     cards = record.hole_cards(session.human)
 
     if cards and session.human not in record.hidden:
-        lines.append(f"Dealt to {session.human}: {format_cards(cards)}")
+        line = f"Dealt to {session.human}: {format_cards(cards)}"
+        entries.append(lambda view: view.add_section("Your cards", cards, line=line))
 
-    return lines
+    return entries
 
 
-def record_history(session: SessionRecord, record: HandRecord) -> list[str]:
-    """The text history of a hand from its record alone (no replay needed)."""
-    lines = hand_header(session, record)
+def record_history(session: SessionRecord, record: HandRecord) -> list[HistoryEntry]:
+    """The history of a hand from its record alone (no replay needed)."""
+    entries = hand_header(session, record)
     streets = iter(record.streets[1:])
     street = record.streets[0].street if record.streets else None
 
@@ -61,22 +96,25 @@ def record_history(session: SessionRecord, record: HandRecord) -> list[str]:
         while event.street != street:
             dealt = next(streets)
             street = dealt.street
-            lines.append(f"*** {street} *** {format_cards(dealt.community_cards)}")
+            entries.append(street_entry(street, dealt.community_cards))
 
-        lines.append(action_line(event, record.timed_out_actions))
+        entries.append(action_entry(event, record.timed_out_actions))
 
         if event.sequence == record.revealed_after_action:
-            lines.append("*** Cards revealed ***")
+            entries.append(revealed_entry())
 
     for dealt in streets:
-        lines.append(f"*** {dealt.street} *** {format_cards(dealt.community_cards)}")
+        entries.append(street_entry(dealt.street, dealt.community_cards))
 
     for name, evaluation in record.showdown.items():
-        lines.append(f"{name} shows {evaluation.name}")
+        entries.append(note_entry(f"{name} shows {evaluation.name}"))
 
-    lines += [f"{name} wins {amount}" for name, amount in record.payouts.items()]
+    entries += [
+        note_entry(f"{name} wins {amount}", Tone.RESULT)
+        for name, amount in record.payouts.items()
+    ]
 
-    return lines
+    return entries
 
 
 class ReplayerScreen(QWidget):
@@ -92,8 +130,8 @@ class ReplayerScreen(QWidget):
         self.replay: HandReplay | None = None
         self.hand: Hand | None = None
         self.step = 0
-        self._step_lines: list[list[str]] = []
-        """The history lines each step adds (step 0: the deal)."""
+        self._step_entries: list[list[HistoryEntry]] = []
+        """What each step adds to the history (step 0: the deal)."""
         self._equity = RunoutEquity()
 
         self._timer = QTimer(self)
@@ -164,9 +202,10 @@ class ReplayerScreen(QWidget):
         self.view_stack.addWidget(self.table_widget)
         self.view_stack.addWidget(self.message_label)
 
-        self.history_view = QPlainTextEdit()
-        self.history_view.setReadOnly(True)
-        self.history_view.setFixedWidth(290)
+        self.history_view = HandHistoryView()
+        self.history_view.setFixedWidth(HISTORY_WIDTH)
+        self._shown_step = -1
+        """The last step written in the history (-1: none)."""
 
         top = QHBoxLayout()
         top.addSpacing(theme.SETTINGS_BUTTON_ROOM)
@@ -232,7 +271,9 @@ class ReplayerScreen(QWidget):
         record = self.record
         self.replay = None
         self.hand = None
-        self._step_lines = []
+        self._step_entries = []
+        self._shown_step = -1
+        self.history_view.hero = session.human
 
         if record is None:
             self._show_message("This session has no hands.", [])
@@ -252,14 +293,14 @@ class ReplayerScreen(QWidget):
             self._show_message(str(error), record_history(session, record))
             return
 
-        self._step_lines = self._history_by_step(session, self.replay)
+        self._step_entries = self._history_by_step(session, self.replay)
         self.view_stack.setCurrentWidget(self.table_widget)
         self.go_to(0)
 
-    def _show_message(self, text: str, history: list[str]) -> None:
+    def _show_message(self, text: str, history: list[HistoryEntry]) -> None:
         self.message_label.setText(text)
         self.view_stack.setCurrentWidget(self.message_label)
-        self.history_view.setPlainText("\n".join(history))
+        self._write_history(history, clear=True)
         self.step_label.setText("")
         self._update_buttons()
 
@@ -269,40 +310,44 @@ class ReplayerScreen(QWidget):
 
     def _history_by_step(
         self, session: SessionRecord, replay: HandReplay
-    ) -> list[list[str]]:
+    ) -> list[list[HistoryEntry]]:
+        """What each step adds to the history (the deal first)."""
         record = replay.record
         hand = replay.start()
+        blinds = [action_entry(event, ()) for event in hand.actions]
         steps = [
             hand_header(session, record)
-            + [action_line(event, ()) for event in hand.actions]
+            + blinds
+            + [lambda view: view.add_section("Pre-flop")]
         ]
 
         while not hand.finished:
             streets = len(hand.streets)
             event = replay.advance(hand)
-            lines = []
+            entries = []
 
             if event is not None:
-                lines.append(action_line(event, record.timed_out_actions))
+                entries.append(action_entry(event, record.timed_out_actions))
 
             if event is not None and event.sequence == hand.revealed_after_action:
-                lines.append("*** Cards revealed ***")
+                entries.append(revealed_entry())
 
             for street in hand.streets[streets:]:
-                lines.append(
-                    f"*** {street.street} *** {format_cards(street.community_cards)}"
-                )
+                entries.append(street_entry(street.street, street.community_cards))
 
             if hand.finished:
-                lines += self._result_lines(hand, record.hidden)
+                entries += self._result_entries(hand, record.hidden)
 
-            steps.append(lines)
+            steps.append(entries)
 
         return steps
 
     @staticmethod
-    def _result_lines(hand: Hand, hidden: frozenset[str]) -> list[str]:
-        lines = []
+    def _result_entries(hand: Hand, hidden: frozenset[str]) -> list[HistoryEntry]:
+        entries: list[HistoryEntry] = []
+
+        if hand.showdown_evaluations:
+            entries.append(lambda view: view.add_section("Showdown"))
 
         for player in hand.table.players:
             evaluation = hand.showdown_evaluations.get(player.name)
@@ -310,13 +355,25 @@ class ReplayerScreen(QWidget):
             if evaluation is None:
                 continue
 
-            if player.name in hidden:
-                lines.append(f"{player.name} mucks")
-            else:
-                cards = format_cards(player.hand)
-                lines.append(f"{player.name} shows {cards} ({evaluation.name})")
+            name = player.name
 
-        return lines + describe_result(hand)
+            if name in hidden:
+                entries.append(cards_entry(name, (), "mucks", f"{name} mucks"))
+            else:
+                cards = tuple(player.hand)
+                line = f"{name} shows {format_cards(cards)} ({evaluation.name})"
+                entries.append(cards_entry(name, cards, evaluation.name, line))
+
+        return entries + [
+            note_entry(line, Tone.RESULT) for line in describe_result(hand)
+        ]
+
+    def _write_history(self, entries: list[HistoryEntry], clear: bool) -> None:
+        if clear:
+            self.history_view.clear()
+
+        for entry in entries:
+            entry(self.history_view)
 
     # --- Steps ---------------------------------------------------------------
 
@@ -329,14 +386,23 @@ class ReplayerScreen(QWidget):
 
         self.step = max(0, min(step, replay.step_count))
         self.hand = replay.hand_at(self.step)
-        lines = [line for lines in self._step_lines[: self.step + 1] for line in lines]
-        self.history_view.setPlainText("\n".join(lines))
-        self.history_view.verticalScrollBar().setValue(
-            self.history_view.verticalScrollBar().maximum()
-        )
+        self._show_history_to(self.step)
         self.step_label.setText(f"Step {self.step} / {replay.step_count}")
         self._render()
         self._update_buttons()
+
+    def _show_history_to(self, step: int) -> None:
+        """The history up to ``step``: only the new steps when going forward,
+        written again when going back."""
+        forward = step >= self._shown_step >= 0
+        first = self._shown_step + 1 if forward else 0
+        entries = [
+            entry
+            for entries in self._step_entries[first : step + 1]
+            for entry in entries
+        ]
+        self._write_history(entries, clear=not forward)
+        self._shown_step = step
 
     def _go_to_end(self) -> None:
         if self.replay is not None:

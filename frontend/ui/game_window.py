@@ -9,7 +9,7 @@ and brings the table waiting for you to the front.
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import QWidget
 
 from backend.application.bankroll import GameAccount, InsufficientFundsError
@@ -47,6 +47,7 @@ CLOCK_SETTINGS = {
 }
 """The user's clock choice for each mode's setup screen."""
 YOUR_TURN = "Your turn"
+TILE_SHORTCUT = "Ctrl+T"
 WINDOW_SIZE = (1180, 820)
 """At most: a smaller screen gets a smaller window."""
 MIN_WINDOW_SIZE = (820, 480)
@@ -133,6 +134,9 @@ class GameWindow(NavigationWindow):
         table.show_in_big_blinds_changed.connect(lobby.set_show_in_big_blinds)
         table.speed_changed.connect(lobby.set_table_speed)
         table.auto_next_hand_changed.connect(lobby.set_auto_next_hand)
+        table.history_shown_changed.connect(lobby.set_show_history)
+        table.tile_requested.connect(lobby.tile_tables)
+        QShortcut(QKeySequence(TILE_SHORTCUT), self, lobby.tile_tables)
         table.your_turn_changed.connect(self._on_your_turn_changed)
 
         if isinstance(table, TournamentScreen):
@@ -151,6 +155,7 @@ class GameWindow(NavigationWindow):
         table.set_show_in_big_blinds(settings.show_in_big_blinds)
         table.set_speed(settings.table_speed or DEFAULT_TABLE_SPEED)
         table.set_auto_next_hand(settings.auto_next_hand)
+        table.set_history_shown(settings.show_history)
         table.turn_alert = settings.turn_alert
         table.set_bot_cards(BotCards(settings.bot_cards))
         self.setup_screen.set_player_name(settings.player_name)

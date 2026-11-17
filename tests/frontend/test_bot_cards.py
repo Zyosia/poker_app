@@ -115,7 +115,7 @@ def test_the_history_lists_the_cards_nobody_showed(
     game.controllers["Bot2"] = FoldingBot()
     process_until(lambda: game.hand is not None and game.hand.finished)
 
-    history = screen.history_view.toPlainText()
+    history = screen.history_view.text()
     assert "Bot1 had " in history and "(folded)" in history
     assert f"{HUMAN} had" not in history
 
@@ -132,7 +132,7 @@ def test_at_showdown_only_the_history_lists_no_hidden_cards(
     game.controllers["Bot2"] = FoldingBot()
     process_until(lambda: game.hand is not None and game.hand.finished)
 
-    assert " had " not in screen.history_view.toPlainText()
+    assert " had " not in screen.history_view.text()
 
 
 # --- The bots see nothing more ---------------------------------------------------

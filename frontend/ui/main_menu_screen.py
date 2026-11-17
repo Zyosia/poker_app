@@ -137,6 +137,7 @@ class MainMenuScreen(QWidget):
     mode_selected = Signal(object)
     """Emitted with the chosen ``Mode``."""
     quit_requested = Signal()
+    guide_requested = Signal()
 
     def __init__(self, modes: Sequence[Mode], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -160,9 +161,21 @@ class MainMenuScreen(QWidget):
             self.cards.append(card)
             grid.addWidget(card, index // CARD_COLUMNS, index % CARD_COLUMNS)
 
+        self.guide_button = QPushButton("Guide")
+        self.guide_button.setToolTip(
+            "How the application works, the bot styles and the poker terms."
+        )
+        self.guide_button.setFixedWidth(200)
+        self.guide_button.clicked.connect(self.guide_requested)
         self.quit_button = QPushButton("Quit")
         self.quit_button.setFixedWidth(200)
         self.quit_button.clicked.connect(self.quit_requested)
+        buttons = QHBoxLayout()
+        buttons.setSpacing(12)
+        buttons.addStretch()
+        buttons.addWidget(self.guide_button)
+        buttons.addWidget(self.quit_button)
+        buttons.addStretch()
 
         self.bankroll_bar = BankrollBar()
         self.tables_panel = TablesPanel()
@@ -179,7 +192,7 @@ class MainMenuScreen(QWidget):
         layout.addSpacing(18)
         layout.addWidget(self.tables_panel, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(18)
-        layout.addWidget(self.quit_button, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addLayout(buttons)
         layout.addStretch()
 
     def card(self, key: str) -> ModeCard:

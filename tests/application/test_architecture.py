@@ -17,6 +17,8 @@ BACKEND_MODULES = (
     "backend.bots.basic_bot",
     "backend.bots.random_bot",
     "backend.bots.factory",
+    "backend.bots.strategy_bot",
+    "backend.bots.push_fold_solver",
     "backend.simulation.runner",
     "backend.simulation.my_stats",
 )

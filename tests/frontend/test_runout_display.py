@@ -56,7 +56,7 @@ def test_calling_an_all_in_turns_the_cards_up_before_the_flop(
     assert hand.revealed_after_action is not None
     assert hand.community_cards == []
     assert all(card.is_face_up for card in bot_cards)
-    history = screen.history_view.toPlainText()
+    history = screen.history_view.text()
     assert "*** Cards revealed ***" in history
     assert history.index("Hero: calls") < history.index("*** Cards revealed ***")
 
@@ -79,7 +79,7 @@ def test_calling_an_all_in_turns_the_cards_up_before_the_flop(
 
     assert hand.finished
     assert "%" not in screen.table_widget.seat_widgets[0].status_label.text()
-    history = screen.history_view.toPlainText()
+    history = screen.history_view.text()
     assert history.count("*** Cards revealed ***") == 1
     screen.stop()
 
@@ -110,4 +110,4 @@ def test_watch_mode_reveals_the_cards_of_an_all_in_called(qapp: QApplication) ->
             assert seat.card_widgets[0].is_face_up
             assert seat.status_label.text().endswith("%")
 
-    assert "*** Cards revealed ***" in screen.history_view.toPlainText()
+    assert "*** Cards revealed ***" in screen.history_view.text()

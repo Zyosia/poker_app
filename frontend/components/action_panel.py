@@ -15,6 +15,8 @@ from backend.poker_engine.constants import ActionType
 from frontend.formatting import big_blinds_to_chips, format_amount
 
 BIG_BLIND_DECIMALS = 1
+BUTTON_MIN_WIDTH = 120
+"""Narrow enough for the hand history to fit beside a table window."""
 
 
 class ActionPanel(QWidget):
@@ -47,7 +49,7 @@ class ActionPanel(QWidget):
 
         for button in (self.fold_button, self.call_button, self.raise_button):
             button.setMinimumHeight(48)
-            button.setMinimumWidth(150)
+            button.setMinimumWidth(BUTTON_MIN_WIDTH)
 
         self.amount_slider = QSlider(Qt.Orientation.Horizontal)
         self.amount_spin = QDoubleSpinBox()

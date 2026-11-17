@@ -49,7 +49,7 @@ def test_the_basic_and_random_styles_keep_their_bots() -> None:
 
 
 def test_every_preset_has_a_label_and_a_description() -> None:
-    assert set(STYLES) | {"random"} == set(BOT_TYPES)
+    assert set(STYLES) | {"random", "shark", "adaptive"} == set(BOT_TYPES)
 
     for bot_type in BOT_TYPES.values():
         assert bot_type.label

@@ -26,6 +26,7 @@ from backend.application.payouts import FAIR_MULTIPLIERS
 from backend.application.persistence import save_session
 from backend.application.tournament import Tournament
 from backend.poker_engine.models import Hand
+from frontend.components.hand_history import Tone
 from frontend.sounds import Sound, spin_prize_sound
 
 from .game_screen import GameScreen
@@ -178,10 +179,10 @@ class TournamentScreen(GameScreen):
         left = self.left_layout
         status_bar = QHBoxLayout()
         status_bar.addWidget(self.status_label, stretch=1)
-        left.insertLayout(1, status_bar)
-        left.insertWidget(2, self.notice_label)
+        left.insertLayout(0, status_bar)
+        left.insertWidget(1, self.notice_label)
         # While it shows, the reveal takes the table's place.
-        left.insertWidget(3, self.reveal_label, stretch=1)
+        left.insertWidget(2, self.reveal_label, stretch=1)
         self.menu_button.setText("Leave")
 
     # --- Flow ---------------------------------------------------------------
@@ -570,7 +571,7 @@ class TournamentScreen(GameScreen):
             for name, prize in zip(elimination.names, elimination.prizes, strict=True):
                 text = f"{name} is out in {ordinal(elimination.place)} place"
                 text += f" and wins {prize}" if prize else ""
-                self._log(text)
+                self._log(text, Tone.ALERT)
                 notices.append(text)
 
         self._announced = len(tournament.eliminations)
@@ -651,7 +652,8 @@ class TournamentScreen(GameScreen):
         assert multiplier is not None
         self._log(
             f"Prize multiplier: × {multiplier.value} — "
-            f"prize pool {self.tournament.prize_pool}"
+            f"prize pool {self.tournament.prize_pool}",
+            Tone.RESULT,
         )
         self.reveal_label.hide()
         self.table_widget.show()

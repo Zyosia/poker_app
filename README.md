@@ -56,7 +56,11 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V1.3 — Multi-tabling and Full Ring](#v13--multi-tabling-and-full-ring)
 
-- [V2.x — AI and Strategies](#v2x--ai-and-strategies)
+- [V1.4 — Hand History and Tiling](#v14--hand-history-and-tiling)
+
+- [V2.0 — AI, Strategies and Guide](#v20--ai-strategies-and-guide)
+
+- [V2.x — Next](#v2x--next)
 
 - [V3.x — Cash Game Extras](#v3x--cash-game-extras)
 
@@ -606,6 +610,12 @@ backend/
 │   ├── profiles.py        BotProfile and the play-style presets
 │   ├── short_stack.py     Stack-aware tournament play
 │   ├── push_fold.py       Push/fold ranges by depth and position
+│   ├── preflop_charts.py  Opening and answering ranges by position (V2.0)
+│   ├── opponent_model.py  Opponents' live stats and ranges (V2.0)
+│   ├── monte_carlo.py     Random showdowns against those ranges (V2.0)
+│   ├── strategy_bot.py    Shark and Adaptive: charts, M ratio, EV (V2.0)
+│   ├── push_fold_solver.py  Heads-up push/fold solved by CFR+ (V2.0)
+│   ├── heads_up_push_fold.py  Its solution, generated (V2.0)
 │   └── factory.py         Bot creation from a name (nit, tag, lag, …)
 └── simulation/            Headless bot simulations (Beta 1.0)
     ├── config.py          SimulationConfig, SeatSpec, StackPolicy, seeds
@@ -631,6 +641,7 @@ frontend/
 ├── formatting.py          Texts for cards, amounts (chips or BB), actions
 ├── runout.py              Cards face up and equity after an all-in is called
 ├── modes.py               Modes listed by the main menu
+├── guide.py               The content of the Guide (V2.0)
 ├── sounds.py              Sound effects and the player (V1.2)
 ├── sound_synthesis.py     Makes the sound files (python -m frontend.sound_synthesis)
 ├── assets/sounds/         The sound effects (WAV)
@@ -639,6 +650,7 @@ frontend/
 │   ├── main_window.py     The lobby: menu, tools, Bot Arena, settings, tables
 │   ├── game_window.py     One game in its own window (V1.3)
 │   ├── settings_dialog.py The settings window (V1.2)
+│   ├── guide_window.py    The Guide: application, bot styles, terms (V2.0)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -649,8 +661,8 @@ frontend/
 │       my_stats_screen.py, session_browser_screen.py   Tools (V1.1)
 └── components/            Card, seat, table, action panel, line and bar charts,
                            clock choice, buy-in and bankroll line, card picker,
-                           range grid, bankroll bar, settings button and
-                           bot picker
+                           range grid, bankroll bar, settings button, bot
+                           picker and hand history (V1.4)
 
 tests/                     Engine, application, bots, simulation and UI tests
 ```
@@ -747,7 +759,9 @@ full-ring table:
 - **Action panel**: only the actions the engine reports as legal are enabled,
   with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise,
   and the **action clock** with its time bank; **Pause** freezes it.
-- **Hand history**: every action, street and result of the session.
+- **Hand history**: every hand of the session in a block of its own, the
+  cards drawn and the actions coloured by kind; the **History** button shows
+  or hides it, see [V1.4](#v14--hand-history-and-tiling).
 - **Sound effects** for the cards, the chips and every action, and the
   **bots' cards** shown at showdown, at the end of each hand or always, as
   chosen in the settings.
@@ -765,6 +779,11 @@ the action clock and the bankroll.
 
 **Bot Arena** — bots against bots (cash tables, tournaments and Spin & Go),
 see [Beta 1.0](#beta-10--simulation) and [V1.0](#v10--tournaments).
+
+**Guide** — the **Guide** button of the main menu explains the
+application, each bot style (with how to beat it) and the poker terms; the
+**?** next to the play styles opens it on the bots, see
+[V2.0](#v20--ai-strategies-and-guide).
 
 **Tools** — the hand replayer, the equity calculator, your stats across
 sessions and the session browser, see [V1.1](#v11--tools); cards picked with
@@ -2284,18 +2303,278 @@ are unchanged.
 
 ---
 
-# V2.x — AI and Strategies
+# V1.4 — Hand History and Tiling
 
-Already available: random bot, basic bot (hand strength + pot odds), play-style profiles (Beta 1.0).
+**V1.4** redraws the **hand history** beside the tables you play, so it
+reads at a glance (as on Winamax), lets you **show or hide** it, and makes
+**Tile** keep each table's shape. It also adds a **Tile** button on the
+tables. No poker rule changed.
 
-- [ ] Monte Carlo equity inside bot decisions (reuses the V1.1 equity calculator)
-- [ ] Range-based bot (preflop ranges by position)
-- [ ] Hand range modelling (narrowing opponents' ranges from their actions)
-- [ ] Expected value–based decisions
-- [ ] Adaptive / exploitative bot (uses opponents' live stats: VPIP, AF…)
-- [ ] Poker AI (e.g. CFR or self-play), evaluated in Bot Arena
-- [ ] M ratio (stack / cost of an orbit) in short-stack decisions: moved from
-      V1.0, the push/fold ranges by effective big blinds did not need it
+## Features
+
+### 📜 The hand history
+
+- **One block per hand**: its number and blinds, the blinds posted, **your
+  cards**, then every street (**Pre-flop**, **Flop**, **Turn**, **River**)
+  with **the board so far drawn as cards**, and the **showdown** with each
+  player's cards and hand.
+- **Two columns**: who acted, and what they did. Your name stands out.
+- **Colours by kind**: folds and blinds are grey, checks and calls white,
+  bets and raises orange, all-ins red. The result is green; eliminations and
+  timeouts are orange.
+- With the bots' cards shown at the end of the hand (V1.2), their hands are
+  drawn in the showdown block, marked "folded".
+- The latest action stays in view. Scroll up to read an earlier hand; the
+  history stops following until you are back at the bottom. The last 40
+  hands stay in the view; the session file keeps them all.
+- Every history of the application uses it: the tables you play (Cash
+  Game, Tournament, Spin & Go), the **hand replayer** and the **Bot Arena**
+  viewer.
+  - The **replayer** writes it step by step as you move through the hand:
+    stepping forward adds the new lines, stepping back writes the hand
+    again up to that step.
+  - The **Bot Arena** viewer draws every bot's hole cards at the start of
+    each hand (a spectator sees them all), then the streets and the
+    showdown.
+
+### 👁️ Show or hide it
+
+- A **History** button at the right end of the table's top bar (gold while
+  the history is shown) shows or hides it; the table takes the room.
+- It is one setting for every table, remembered in the profile, and also in
+  the settings window (Tables). Restore defaults shows it again.
+- When the window is too narrow for the table **and** the history, the
+  history steps aside and the button is greyed out. The table's controls
+  need about 1 060 pixels with the history, so a table tiled at half a full
+  HD screen shows it without the history.
+- The top bar now spans the whole window, above the table and the history,
+  so its buttons stay readable in a small window. The action buttons are a
+  little narrower (120 pixels at least), to make room for the history.
+
+### 🪟 Tiling
+
+- **Tile** no longer stretches the windows to fill the screen. Every table
+  keeps **a table's shape** (16:10) and is as large as the screen allows,
+  never larger than a new table window (1 180 pixels wide):
+
+| Tables (1080p screen) | Arrangement |
+| --- | --- |
+| 1 | 1 180 × 737, at the top, centred |
+| 2 | side by side, 960 × 600 each |
+| 3 or 4 | 2 × 2, 832 × 520 each, centred |
+| More | a grid at the minimum size (820 × 480), overlapping to fit |
+
+- The grid (columns and rows) is the one giving the largest tables. The
+  tables start at the top of the screen and are centred across it.
+- A **Tile** button on every table's top bar, and **Ctrl+T** in any window
+  (the lobby too), tile every open table without going back to the lobby.
+
+> 📸 *Screenshot placeholder: a table with the new hand history, and two
+> tables tiled side by side.*
+
+## Engine changes
+
+- None.
+
+## Objectives
+
+- [x] A button to show or hide the hand history, remembered for every table
+- [x] A hand history that reads like Winamax's: blocks per hand, cards drawn, actions in columns and colours
+- [x] The same history in the hand replayer and the Bot Arena viewer
+- [x] Tile keeps the tables' proportions instead of stretching them
+- [x] Tile from the tables' windows (button and Ctrl+T)
+
+## Tests
+
+```text
+1681 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
+# V2.0 — AI, Strategies and Guide
+
+**V2.0** adds two stronger bots, **Shark** and **Adaptive**, built on every
+item of the V2.x list: Monte Carlo equity, pre-flop ranges by position,
+opponents' ranges read from their actions, expected-value decisions, live
+statistics of the opponents, the M ratio and a push/fold strategy solved by
+**CFR**. A **Guide** window explains the application, each bot style and the
+poker terms, so a newcomer finds their way without this file. No poker rule
+changed, and the existing bots play exactly as before (the golden tests are
+unchanged).
+
+## Features
+
+### 🦈 Shark: the strategy bot
+
+- **Pre-flop, by charts** (`backend/bots/preflop_charts.py`). It opens a
+  range that depends on **how many players are still to act**: about 10% of
+  hands under the gun of a full ring, 17% under the gun of 6-max, 45% on the
+  button, 76% for the small blind heads-up. Against a raise it reads the
+  **width of the raiser's range**: it re-raises about a quarter of it and
+  calls more of it in position; the big blind defends wider, and the small
+  blind re-raises or folds (no flat call out of position). Facing a re-raise,
+  QQ+ and AK go on, JJ–77, AQs–ATs, KQs and AQo call with deep stacks.
+- **Opponents' ranges** (`opponent_model.py`). Every opponent starts with all
+  the hands they could hold, then each action narrows it: a raise keeps an
+  opening range, a re-raise the best 6%, a call a middle band (the best hands
+  would have re-raised), a check by the big blind any hand. After the flop,
+  each hand of the range is rated on the board of the time: a bet keeps the
+  made hands and a few bluffs, a call drops most of the air, a check makes the
+  strongest hands less likely.
+- **Monte Carlo equity** (`monte_carlo.py`). 200 random deals per decision
+  after the flop, from those ranges (never a card it can see) and the rest of
+  the board, with the project's hand evaluator and an RNG of the bot's own.
+  Each deal also records how strong each opponent's hand is now, which
+  decides whether they would call a bet.
+- **Expected value**. It compares, in chips from now on: fold (0), check
+  (equity × pot), call (equity × (pot + call) − call), and bets or raises of
+  half the pot, three quarters, the pot and all-in. For a bet, each opponent
+  calls with the hands strong enough for the price they get (the share of the
+  pot they pay, plus 5 points) and folds the others; a deal where everyone
+  folds wins the pot, otherwise the bot wins its share of the bigger pot
+  against the callers, minus its bet. The best value wins, the passive option
+  on a tie. An all-in is only considered when the stack is at most 1.5 times
+  the pot, or when it is the only raise left.
+- **Tournaments: the M ratio**. M is the effective stack divided by the cost
+  of a round of blinds and antes. At **M ≤ 7** the bot shoves or folds (the
+  V1.0 push/fold ranges, for 1.5 × M big blinds: antes make the ranges
+  wider); up to **M 15** it opens to 2.2 big blinds and re-raises all-in or
+  folds. **Heads-up with 20 big blinds or less**, it plays the push/fold
+  equilibrium solved by CFR (below).
+- Like every bot, it only reads what a player may know: the public actions,
+  the board and its own cards.
+
+### 🧠 Adaptive: it learns its opponents
+
+- **Every controller now sees each finished hand**: `PlayerController.observe_hand`
+  receives its public actions (folds after the player's last decision
+  included). `PokerGame`, the tournament and the Bot Arena table call it; the
+  other bots ignore it.
+- The Adaptive bot counts, per opponent, the **VPIP**, the **PFR**, the
+  **aggression factor** after the flop and the **folds to a bet**. Until an
+  opponent has played enough hands, the figures lean on those of a typical
+  player (20 imaginary hands at VPIP 28%, PFR 18%, AF 2, 45% folds to a bet).
+- It plays the Shark's game with those figures:
+  - an opponent who raises more than usual has a **wider opening range**,
+    re-raised and called wider; one who plays more hands has wider calls;
+  - **aggressive players are expected to bluff more**: their bets keep more
+    weak hands;
+  - against players who **fold to bets** more than usual it bluffs more, and
+    against **calling stations** it stops bluffing and bets thinner for value;
+  - it **steals the blinds** more often when the players left are tight.
+- The Shark uses the typical player for everyone and never learns: the two
+  bots differ only by this.
+
+### ♟️ CFR: heads-up push/fold solved
+
+- **The game**: heads-up, no ante, an effective stack of S big blinds; the
+  small blind shoves or folds, the big blind calls or folds. It is the end of
+  every heads-up tournament (the last two players of a Spin & Go).
+- **The method** (`backend/bots/push_fold_solver.py`): **CFR+**
+  (counterfactual regret minimization). The two strategies play each other
+  over and over; each hand adds to its *regret* what the other action would
+  have won, and plays its actions in proportion to their positive regret. The
+  average strategy converges to a **Nash equilibrium**; `exploitability`
+  measures what a best response would still win.
+- **The equities** of the 169 × 169 pairs of starting hands come from a Monte
+  Carlo (400 random suits and boards per pair, seed 20261117); card removal
+  is exact (each pair weighs the combinations that share no card).
+- **The solution**: 600 iterations for every stack from 1 to 20 big blinds,
+  each with an exploitability below 0.0001 big blind per hand, written as
+  ranges in `heads_up_push_fold.py` (generated, about 7 minutes:
+  `python -m backend.bots.push_fold_solver`). It matches the published
+  heads-up charts:
+
+| Effective stack | Small blind shoves | Big blind calls |
+| ---: | ---: | ---: |
+| 5 BB | 72% | 62% |
+| 10 BB | 58% | 38% |
+| 15 BB | 45% | 28% |
+| 20 BB | 40% | 22% |
+
+### 📊 Measured in the Bot Arena
+
+Duplicate heads-up matchups, 3,000 hands per pair (bb/100 of the row bot,
+95% margin):
+
+| | TAG | LAG | Calling Station | Maniac | Nit |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **Shark** | +34 ±25 | +9 ±49 | +466 ±88 | +265 ±112 | +49 ±13 |
+| **Adaptive** | +42 ±31 | +41 ±52 | +570 ±93 | +362 ±121 | — |
+
+- **Adaptive against Shark**: +2 ±54, even: they only differ against
+  players who are not typical.
+- **6-max**, every deal from every seat (12,000 hands): Adaptive +259 ±65
+  bb/100, Shark +197 ±54, TAG +175, LAG +166, Maniac −368, Calling
+  Station −428.
+- **Tournaments** (120 six-player games): Shark +29% ROI, Adaptive +26%,
+  LAG +9%, TAG −1%. **Spin & Go** (600 games against TAG and LAG): the Shark
+  wins 36% of them and has the best ROI without the multiplier draw (+7%).
+- **The limit**: at a full 9-seat table with a Random bot giving its chips
+  away, the looser styles (LAG, TAG) win more than the Shark and the
+  Adaptive, which keep to tight full-ring charts and do not open wider
+  against very loose players yet.
+- **Speed**: about 15 ms per hand for a table with strategy bots, against
+  about 1 ms with heuristic bots only: the Bot Arena runs those tables
+  slower.
+
+### 📖 The Guide
+
+- A **Guide** button on the main menu, beside Quit, opens one window for the
+  whole application, with five pages:
+  - **Welcome**: what the application is and how to start, in three steps,
+    and where a newcomer to poker should begin;
+  - **Game modes**: Cash Game, Tournament, Spin & Go, Bot Arena and Tools;
+  - **At the table**: acting, the action clock, Show in BB, the hand
+    history, several tables (Tile, Cascade, Ctrl+T), settings and bankroll;
+  - **Bot styles**: a card per bot with how it plays, five meters (hands
+    played, aggression, bluffs, calls down, strength), its VPIP, PFR and
+    aggression factor measured in the Bot Arena, and **how to beat it**;
+  - **Poker terms**: positions, actions, statistics (VPIP, PFR, AF, WTSD,
+    bb/100, ROI) and strategy (range, equity, pot odds, EV, M ratio,
+    push/fold, CFR).
+- A **?** button next to the play styles of the Cash Game and Tournament
+  setups, and on each Bot Arena seat, opens the Bot styles page (on that
+  bot's card from the Bot Arena).
+- The content lives in `frontend/guide.py`; a test checks that every bot has
+  a card.
+
+> 📸 *Screenshot placeholder: the Guide on the Bot styles page.*
+
+## Engine changes
+
+- None. In the application layer, `PlayerController.observe_hand` (does
+  nothing by default) is called at the end of every hand.
+
+## Objectives
+
+- [x] Monte Carlo equity inside bot decisions
+- [x] Range-based bot (pre-flop ranges by position)
+- [x] Hand range modelling (narrowing opponents' ranges from their actions)
+- [x] Expected value–based decisions
+- [x] Adaptive / exploitative bot (opponents' live stats: VPIP, PFR, AF, folds to a bet)
+- [x] Poker AI: heads-up push/fold solved by CFR+, evaluated in the Bot Arena
+- [x] M ratio in short-stack decisions
+- [x] A Guide: the application, the bot styles and the poker terms
+
+## Tests
+
+```text
+1722 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
+# V2.x — Next
+
+- [ ] Strategy bots that open wider against very loose players (full ring)
+- [ ] Faster Monte Carlo decisions for long Bot Arena runs
+- [ ] Push/fold equilibria with antes, and for three players
 
 ---
 
@@ -2395,7 +2674,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1667 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1722 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

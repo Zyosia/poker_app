@@ -5,7 +5,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QRect, QSize
+from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import QApplication
 
 from backend.application.profile import ProfileStore
@@ -16,8 +17,8 @@ from frontend.components.table_widget import (
     seat_angles,
     table_scale,
 )
-from frontend.ui.game_window import GameWindow
-from frontend.ui.main_window import MainWindow
+from frontend.ui.game_window import MIN_WINDOW_SIZE, GameWindow
+from frontend.ui.main_window import TILE_ASPECT, MainWindow, tile_rects
 from tests.frontend.windows import ProcessUntil, cash_setup, open_table, start_test_game
 
 
@@ -185,22 +186,80 @@ def test_closing_a_waiting_table_forgets_it(
 # --- Arranging the tables -----------------------------------------------------------
 
 
-def test_tile_arranges_the_tables_side_by_side(
+FULL_HD = QRect(0, 0, 1920, 1040)
+"""A 1080p screen, less the taskbar."""
+
+
+def test_two_tiled_tables_keep_a_tables_shape() -> None:
+    """Side by side, not stretched to the height of the screen."""
+    rects = tile_rects(2, FULL_HD)
+
+    assert rects == [QRect(0, 0, 960, 600), QRect(960, 0, 960, 600)]
+    assert all(
+        rect.width() / rect.height() == pytest.approx(TILE_ASPECT) for rect in rects
+    )
+
+
+def test_one_tiled_table_is_never_larger_than_a_new_table() -> None:
+    [rect] = tile_rects(1, FULL_HD)
+
+    assert rect.size() == QSize(1180, 737)
+    assert rect.top() == 0 and rect.center().x() == pytest.approx(960, abs=1)
+
+
+@pytest.mark.parametrize("count", [3, 4])
+def test_three_or_four_tables_share_a_two_by_two_grid(count: int) -> None:
+    rects = tile_rects(count, FULL_HD)
+
+    assert {rect.size() for rect in rects} == {QSize(832, 520)}
+    assert [(rect.x(), rect.y()) for rect in rects] == [
+        (128, 0),
+        (960, 0),
+        (128, 520),
+        (960, 520),
+    ][:count]
+    for index, rect in enumerate(rects):
+        assert all(not rect.intersects(other) for other in rects[index + 1 :])
+
+
+def test_too_many_tables_overlap_rather_than_shrink_below_the_minimum() -> None:
+    rects = tile_rects(9, FULL_HD)
+
+    assert {rect.size() for rect in rects} == {QSize(*MIN_WINDOW_SIZE)}
+    assert all(FULL_HD.contains(rect) for rect in rects)
+
+
+def test_tile_moves_the_windows(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(window, "_screen_area", lambda: QRect(0, 0, 3840, 2160))
-    tables = [open_table(window, "cash") for _ in range(4)]
+    tables = [open_table(window, "cash") for _ in range(2)]
 
     window.main_menu.tables_panel.tile_button.click()
 
-    frames = [table.frameGeometry() for table in tables]
-    assert [(frame.x(), frame.y()) for frame in frames] == [
-        (0, 0),
-        (1920, 0),
-        (0, 1080),
-        (1920, 1080),
+    expected = tile_rects(2, QRect(0, 0, 3840, 2160))
+    assert [table.frameGeometry().topLeft() for table in tables] == [
+        rect.topLeft() for rect in expected
     ]
-    assert all(frame.width() <= 1920 and frame.height() <= 1080 for frame in frames)
+    assert [table.frameGeometry().size() for table in tables] == [
+        rect.size() for rect in expected
+    ]
+
+
+def test_a_table_tiles_every_table_from_its_own_window(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tiled: list[bool] = []
+    monkeypatch.setattr(window, "tile_tables", lambda: tiled.append(True))
+    table = open_table(window, "cash")  # Connected after the patch.
+
+    table.table_screen.tile_button.click()
+    shortcut = next(
+        s for s in table.findChildren(QShortcut) if s.key().toString() == "Ctrl+T"
+    )
+    shortcut.activated.emit()
+
+    assert tiled == [True, True]
 
 
 def test_cascade_stacks_the_tables(
