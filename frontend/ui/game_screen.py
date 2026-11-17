@@ -6,7 +6,7 @@ short step triggered by a timer, and the human acts through the action panel.
 
 import math
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Protocol
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -114,6 +114,7 @@ def build_table_state(
     show_all_cards: bool = False,
     in_big_blinds: bool = False,
     equities: Mapping[str, str] | None = None,
+    hidden: Collection[str] = (),
 ) -> TableState:
     """Translate the engine state into what the table displays.
 
@@ -122,7 +123,8 @@ def build_table_state(
     unless they reached the showdown or the betting is over (an all-in
     called), or ``show_all_cards`` is set. With ``in_big_blinds``, amounts
     are shown in big blinds of the hand. ``equities`` adds each player's
-    chance of winning to their status during the run-out.
+    chance of winning to their status during the run-out. The cards of the
+    ``hidden`` players (nobody saw them) always stay face down.
     """
     big_blind = hand_big_blind(hand) if in_big_blinds else None
     revealed = revealed_names(hand)
@@ -141,7 +143,7 @@ def build_table_state(
         else:
             highlight = SeatHighlight.NONE
 
-        shows_cards = (
+        shows_cards = player.name not in hidden and (
             show_all_cards
             or player.name == human_name
             or player.name in hand.showdown_evaluations

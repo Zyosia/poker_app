@@ -51,6 +51,8 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [V1.1 — Outils](#v11--outils)
 
+* [V1.1.1 — Outils améliorés](#v111--outils-améliorés)
+
 * [V1.2 — Extras cash game](#v12--extras-cash-game)
 
 * [V2.x — IA et stratégies](#v2x--ia-et-stratégies)
@@ -630,12 +632,14 @@ backend/
 │   ├── hand_summary.py    Statistiques d'un joueur depuis l'historique
 │   ├── action_clock.py    Horloge d'action, time bank, préréglages (V1.0.1)
 │   ├── equity.py          Équité après un all-in (V1.0.1), calculateur (V1.1)
+│   ├── ranges.py          Mains de départ, notation des ranges, préréglages (V1.1.1)
 │   ├── game_modes.py      Cash game, tournoi, Spin & Go
 │   ├── bankroll.py        Bankroll, journal, comptes de partie (V1.0.1)
 │   ├── profile.py         Fichier de profil : réglages et bankroll
 │   ├── persistence.py     Sauvegarde et chargement des sessions (JSON, format 4)
 │   ├── hand_records.py    Sessions sauvegardées relues en enregistrements (V1.1)
-│   └── replay.py          Une main enregistrée redistribuée pas à pas (V1.1)
+│   ├── replay.py          Une main enregistrée redistribuée pas à pas (V1.1)
+│   └── hand_import.py     Historiques de mains PokerStars et Winamax (V1.1.1)
 ├── bots/                  Joueurs contrôlés par l'ordinateur
 │   ├── random_bot.py      Actions légales aléatoires
 │   ├── basic_bot.py       Heuristiques : force de main et cotes du pot
@@ -678,7 +682,8 @@ frontend/
 │   └── tools_screen.py, replayer_screen.py, equity_screen.py,
 │       my_stats_screen.py, session_browser_screen.py   Outils (V1.1)
 └── components/            Carte, siège, table, panneau d'actions, graphiques,
-                           choix de l'horloge, ligne buy-in et bankroll
+                           choix de l'horloge, ligne buy-in et bankroll,
+                           sélecteur de cartes et grille des ranges
 
 tests/                     Tests moteur, application, bots, simulation et UI
 ```
@@ -786,6 +791,11 @@ montent, voir [V1.0](#v10--tournois).
 **Bot Arena** — des bots contre des bots (tables cash, tournois et Spin & Go),
 voir [Beta 1.0](#beta-10--simulation) et [V1.0](#v10--tournois).
 
+**Tools** (outils) — le relecteur de mains, le calculateur d'équité, vos
+statistiques et le navigateur de sessions, voir [V1.1](#v11--outils) ; les
+cartes choisies à la souris, les ranges et les historiques PokerStars et
+Winamax, voir [V1.1.1](#v111--outils-améliorés).
+
 Une interface terminal minimale, basée sur la même couche application, reste
 disponible :
 
@@ -880,10 +890,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V1.1](#v11--outils)) :
+[V1.1.1](#v111--outils-améliorés)) :
 
 ```text
-1516 passed
+1575 passed
 ```
 
 ### État actuel
@@ -2049,6 +2059,128 @@ mains précédentes étaient perdues.
 
 ```text
 1516 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V1.1.1 — Outils améliorés
+
+La **V1.1.1** améliore les outils de la V1.1 avant la V1.2 : dans le
+calculateur d'équité, les cartes se **choisissent à la souris** et un joueur
+peut avoir une **range** (peinte sur une grille, tapée, ou prise dans les
+préréglages) ; le navigateur de sessions **ouvre les historiques de mains
+PokerStars et Winamax** pour le relecteur. Aucune règle de poker n'a
+changé : les résultats de référence (golden tests) et tous les résultats de
+la Bot Arena sont identiques.
+
+## Fonctionnalités
+
+### 🖱️ Choisir les cartes
+
+- Chaque main et le board sont des emplacements de cartes : cliquez sur un
+  emplacement, puis sur une carte du **sélecteur** (les 52 cartes, une ligne
+  par couleur). L'emplacement vide suivant est aussitôt sélectionné, donc
+  une main se choisit en deux clics.
+- Les cartes déjà utilisées sont grisées et ne peuvent pas être choisies deux
+  fois ; un clic droit vide un emplacement. Une main laissée vide reste une
+  main aléatoire.
+
+### 🎯 Ranges
+
+- Chaque joueur a une **main** (Hand) ou une **range** (Range). Une range se
+  peint sur la **grille 13 × 13** (les paires sur la diagonale, les mains
+  assorties au-dessus, les dépareillées en dessous ; cliquez sur une main,
+  ou faites glisser pour en peindre plusieurs), se tape dans la notation
+  habituelle (`QQ+, AKs, A5s-A2s, KTo+, 22-55, K9s-K6s`), ou se prend dans
+  les **préréglages**. Le nombre de combinaisons et la part de toutes les
+  mains de départ sont affichés (`backend/application/ranges.py`).
+- **Préréglages**, des approximations de tableaux courants en cash game
+  6-max à 100 BB, comme point de départ à ajuster :
+
+| Préréglage | Combinaisons | Part |
+| --- | ---: | ---: |
+| UTG open | 234 | 17,6 % |
+| HJ open | 318 | 24,0 % |
+| CO open | 442 | 33,3 % |
+| BTN open | 658 | 49,6 % |
+| SB open | 542 | 40,9 % |
+| BB vs BTN open — call | 608 | 45,9 % |
+| BB vs BTN open — 3-bet | 98 | 7,4 % |
+| SB vs BTN open — 3-bet | 140 | 10,6 % |
+| BTN vs CO open — 3-bet | 90 | 6,8 % |
+| BTN vs CO open — call | 200 | 15,1 % |
+| Premium (top 3%) | 34 | 2,6 % |
+| Any two | 1 326 | 100 % |
+
+- **Comment une range compte** : chaque combinaison d'une range qui ne
+  partage aucune carte avec une autre main ou le board compte autant, comme
+  dans les outils d'équité courants. Les cartes retirées sont comptées
+  exactement : QQ+ contre AK fait environ 69 %, car avec un AK sorti il ne
+  reste que 3 combinaisons d'AA et 3 de KK à côté des 6 de QQ.
+- **Exact ou estimé** : chaque combinaison des ranges est comptée avec
+  chaque board quand il y a au plus 50 000 donnes (AA contre KK au turn :
+  6 × 44 = 264 donnes) ; sinon 60 000 donnes aléatoires, avec la marge
+  d'erreur à 95 %. Une main aléatoire est la range de toutes les mains, donc
+  une main contre une main aléatoire à la river est désormais exacte aussi.
+- Le % de gain affiché aux tables après un all-in est identique au dernier
+  chiffre près (300 situations vérifiées avant et après).
+
+### 📥 Historiques de mains PokerStars et Winamax
+
+- **Sessions → Open file…** lit les historiques de mains `.txt` de
+  **PokerStars** (une ou plusieurs mains par fichier) et de **Winamax** (une
+  session entière par fichier). Le fichier rejoint la liste des sessions, et
+  ses mains s'ouvrent dans le relecteur.
+- **Vérifiés par le moteur** (`backend/application/hand_import.py`) : chaque
+  main est redistribuée avec les joueurs, les tapis, les cartes et les
+  décisions de l'historique, et les blinds et antes, l'ordre de parole,
+  chaque montant, le board et les gagnants (avec le rake et les mises non
+  payées) doivent être exactement ceux de l'historique. Une main que le
+  moteur ne joue pas comme le site l'a jouée est écartée, avec la raison
+  (dans le résumé de la session) : un autre jeu que le No Limit Hold'em, le
+  run it twice, une blind morte ou manquée, un straddle, un bouton mort.
+- **Cartes inconnues** : un historique ne montre que vos cartes et celles
+  montrées au showdown. Les autres joueurs reçoivent des cartes que personne
+  n'a, qui restent toujours face cachée, même avec « Show all cards » ; un
+  joueur qui a jeté ses cartes au showdown reçoit la main la plus faible qui
+  reste, donc le gagnant reste le même. Aucun % de gain n'est affiché pendant
+  la distribution après un all-in avec une main inconnue.
+- **Montants** : les montants en argent réel sont comptés en centimes
+  (0,25 € devient 25 ; « Show in BB » donne la lecture habituelle), les
+  jetons de tournoi restent des jetons. Les résultats sont avant le rake.
+- **Full ring** : jusqu'à 9 joueurs dans la main. Les tables de
+  l'application restent de 2 à 6 joueurs.
+- Les formats ont été relevés sur des mains d'exemple publiées et des
+  analyseurs open source, et sont testés sur des historiques écrits à la main
+  pour les deux sites (rake, mise non payée, joueur absent, messages du chat,
+  cartes jetées au showdown, noms avec des espaces, main de tournoi à 7
+  joueurs avec antes) et sur des mains jouées par le moteur, écrites comme
+  PokerStars et Winamax les écrivent, en jetons et en centimes, puis relues à
+  l'identique. Les sites changent parfois leurs formats : une main illisible
+  est signalée, jamais importée de travers.
+
+> 📸 *Emplacement de capture d'écran : une main contre une range sur la
+> grille, et une main PokerStars importée dans le relecteur.*
+
+## Changements du moteur
+
+- Des positions pour 7, 8 et 9 joueurs dans la main (UTG+1, UTG+2 et LJ sont
+  ajoutées ; `MAX_HAND_PLAYERS = 9`), pour les historiques full ring. Les
+  mains de 2 à 6 joueurs, l'ordre de parole et toutes les règles sont
+  inchangés.
+
+## Objectifs
+
+* [x] Cartes choisies à la souris dans le calculateur d'équité
+* [x] Ranges : grille, notation et préréglages ; mains et ranges contre des ranges
+* [x] Historiques de mains PokerStars et Winamax dans le navigateur de sessions et le relecteur
+
+## Tests
+
+```text
+1575 passed
 ```
 
 [↑ Retour au sommaire](#sommaire)

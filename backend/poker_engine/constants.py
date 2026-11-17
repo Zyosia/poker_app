@@ -10,6 +10,9 @@ RANKS: Final[str] = "23456789TJQKA"
 SUITS: Final[str] = "CDHS"
 
 MAX_TABLE_SEATS: Final[int] = 6
+"""Seats of the application's tables (cash game, tournaments, Bot Arena)."""
+MAX_HAND_PLAYERS: Final[int] = 9
+"""Players the engine can deal in: full-ring hands imported from other sites."""
 
 
 class Street(StrEnum):
@@ -34,3 +37,6 @@ class Position(StrEnum):
     UTG = "UTG"
     HJ = "HJ"
     CO = "CO"
+    UTG1 = "UTG+1"
+    UTG2 = "UTG+2"
+    LJ = "LJ"

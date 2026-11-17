@@ -50,6 +50,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V1.1 — Tools](#v11--tools)
 
+- [V1.1.1 — Tools Improvements](#v111--tools-improvements)
+
 - [V1.2 — Cash Game Extras](#v12--cash-game-extras)
 
 - [V2.x — AI and Strategies](#v2x--ai-and-strategies)
@@ -586,12 +588,14 @@ backend/
 │   ├── hand_summary.py    A player's stats from the hand history
 │   ├── action_clock.py    Action clock, time bank, clock presets (V1.0.1)
 │   ├── equity.py          Run-out equity (V1.0.1), equity calculator (V1.1)
+│   ├── ranges.py          Starting hands, range notation, preset ranges (V1.1.1)
 │   ├── game_modes.py      Cash game, tournament, Spin & Go
 │   ├── bankroll.py        Bankroll, ledger, game accounts (V1.0.1)
 │   ├── profile.py         User profile file: settings and bankroll
 │   ├── persistence.py     Session saving and loading (JSON, format 4)
 │   ├── hand_records.py    Saved sessions read back as records (V1.1)
-│   └── replay.py          A recorded hand dealt again, step by step (V1.1)
+│   ├── replay.py          A recorded hand dealt again, step by step (V1.1)
+│   └── hand_import.py     PokerStars and Winamax hand histories (V1.1.1)
 ├── bots/                  Computer-controlled players
 │   ├── random_bot.py      Random legal actions
 │   ├── basic_bot.py       Hand strength and pot odds heuristics
@@ -634,7 +638,8 @@ frontend/
 │   └── tools_screen.py, replayer_screen.py, equity_screen.py,
 │       my_stats_screen.py, session_browser_screen.py   Tools (V1.1)
 └── components/            Card, seat, table, action panel, line and bar charts,
-                           clock choice, buy-in and bankroll line
+                           clock choice, buy-in and bankroll line, card picker
+                           and range grid
 
 tests/                     Engine, application, bots, simulation and UI tests
 ```
@@ -741,7 +746,9 @@ the action clock and the bankroll.
 see [Beta 1.0](#beta-10--simulation) and [V1.0](#v10--tournaments).
 
 **Tools** — the hand replayer, the equity calculator, your stats across
-sessions and the session browser, see [V1.1](#v11--tools).
+sessions and the session browser, see [V1.1](#v11--tools); cards picked with
+the mouse, ranges, and PokerStars and Winamax hand histories, see
+[V1.1.1](#v111--tools-improvements).
 
 A minimal terminal front-end using the same application layer is also
 available:
@@ -1920,6 +1927,118 @@ latest hand's, and the cards of the earlier hands were lost.
 
 ---
 
+# V1.1.1 — Tools Improvements
+
+**V1.1.1** improves the V1.1 tools before V1.2: in the equity calculator,
+cards are **picked with the mouse** and a player can hold a **range**
+(painted on a grid, typed, or taken from a preset); the session browser
+**opens PokerStars and Winamax hand histories** for the replayer. No poker
+rule changed: the golden results and every Bot Arena result are unchanged.
+
+## Features
+
+### 🖱️ Picking cards
+
+- Every hand and the board are card places: click a place, then a card of
+  the **picker** (the 52 cards, one row per suit). The next empty place is
+  selected at once, so a hand takes two clicks.
+- Cards already used are dimmed and cannot be picked twice; a right click
+  empties a place. A hand left empty is still a random hand.
+
+### 🎯 Ranges
+
+- Every player is a **Hand** or a **Range**. A range is painted on the
+  **13 × 13 grid** (pairs on the diagonal, suited hands above it, offsuit
+  below; click a hand, or drag to paint several), typed in the usual
+  notation (`QQ+, AKs, A5s-A2s, KTo+, 22-55, K9s-K6s`), or taken from a
+  **preset**. The number of combinations and the share of all starting
+  hands are shown (`backend/application/ranges.py`).
+- **Presets**, approximations of common 100 BB 6-max cash-game charts, as a
+  starting point to adjust:
+
+| Preset | Combinations | Share |
+| --- | ---: | ---: |
+| UTG open | 234 | 17.6% |
+| HJ open | 318 | 24.0% |
+| CO open | 442 | 33.3% |
+| BTN open | 658 | 49.6% |
+| SB open | 542 | 40.9% |
+| BB vs BTN open — call | 608 | 45.9% |
+| BB vs BTN open — 3-bet | 98 | 7.4% |
+| SB vs BTN open — 3-bet | 140 | 10.6% |
+| BTN vs CO open — 3-bet | 90 | 6.8% |
+| BTN vs CO open — call | 200 | 15.1% |
+| Premium (top 3%) | 34 | 2.6% |
+| Any two | 1,326 | 100% |
+
+- **How a range counts**: every combination of a range that shares no card
+  with another hand or the board counts the same, as in common equity tools.
+  Card removal is exact: QQ+ against AK is about 69%, because with an AK out
+  only 3 AA and 3 KK combinations are left beside the 6 QQ.
+- **Exact or estimated**: every combination of the ranges is counted with
+  every board when there are at most 50,000 deals (AA against KK on the
+  turn: 6 × 44 = 264 deals); otherwise 60,000 random deals, with the 95%
+  margin of error. A random hand is the range of any two cards, so a hand
+  against a random hand on the river is now exact too.
+- The win % shown at the tables after an all-in is unchanged to the last
+  bit (300 situations checked before and after).
+
+### 📥 PokerStars and Winamax hand histories
+
+- **Sessions → Open file…** reads `.txt` hand histories of **PokerStars**
+  (one or more hands per file) and **Winamax** (a whole session per file).
+  The file joins the list of sessions, and its hands open in the replayer.
+- **Checked by the engine** (`backend/application/hand_import.py`): every
+  hand is dealt again with the players, stacks, cards and decisions of the
+  history, and the forced bets, the order of action, every amount, the board
+  and the winners (with the rake and the uncalled bets) must be exactly
+  those of the history. A hand the engine does not play as the site did is
+  left out, with the reason (in the session's summary): another game than No
+  Limit Hold'em, run it twice, a dead or missed blind, a straddle, a dead
+  button.
+- **Unknown cards**: a history only shows your cards and those shown at
+  showdown. The other players get cards nobody holds, which always stay face
+  down, even with "Show all cards"; a player who mucked at showdown gets the
+  weakest hand left, so the winner stays the same. No win % is shown during
+  an all-in run-out with an unknown hand.
+- **Amounts**: real-money amounts are counted in cents (0.25 € becomes 25;
+  "Show in BB" gives the usual reading), tournament chips stay chips. The
+  results are before the rake.
+- **Full ring**: up to 9 players dealt in. The application's own tables stay
+  2 to 6 players.
+- The formats were read from published sample hands and open-source parsers,
+  and are tested on handwritten histories of both sites (rake, uncalled bet,
+  a player sitting out, chat lines, a muck at showdown, names with spaces, a
+  7-player tournament hand with antes) and on hands played by the engine,
+  written as PokerStars and Winamax write them, in chips and in cents, and
+  read back identically. The sites change their formats from time to time: a
+  hand that cannot be read is reported, never imported wrongly.
+
+> 📸 *Screenshot placeholder: a hand against a range on the grid, and an
+> imported PokerStars hand in the replayer.*
+
+## Engine changes
+
+- Positions for 7, 8 and 9 players dealt in (UTG+1, UTG+2 and LJ are added;
+  `MAX_HAND_PLAYERS = 9`), for full-ring histories. Hands of 2 to 6 players,
+  the order of action and every rule are unchanged.
+
+## Objectives
+
+- [x] Cards picked with the mouse in the equity calculator
+- [x] Ranges: grid, notation and presets; hands and ranges against ranges
+- [x] PokerStars and Winamax hand histories in the session browser and the replayer
+
+## Tests
+
+```text
+1575 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
 # V1.2 — Cash Game Extras
 
 - [ ] Full rebuy / top-up rules (human and bots, min/max buy-in)
@@ -2029,7 +2148,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1516 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1575 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

@@ -1,4 +1,4 @@
-"""The V1.1 tools: replayer, equity calculator, My stats and sessions."""
+"""The V1.1 tools: replayer, My stats and sessions (equity: test_equity_screen)."""
 
 import json
 from pathlib import Path
@@ -10,10 +10,9 @@ from PySide6.QtWidgets import QApplication
 from backend.application.game_modes import GameMode
 from backend.application.hand_records import load_session_record
 from backend.simulation.my_stats import compute_my_stats
-from frontend.formatting import parse_cards
-from frontend.ui.equity_screen import EquityScreen
 from frontend.ui.main_window import MainWindow
 from frontend.ui.replayer_screen import ReplayerScreen
+from tests.hand_history_text import POKERSTARS_FILE
 from tests.session_files import (
     HUMAN,
     cash_session,
@@ -335,128 +334,6 @@ def test_my_stats_without_any_session(qapp: QApplication, tmp_path: Path) -> Non
     assert screen.positions_table.rowCount() == 0
 
 
-# --- Equity calculator -------------------------------------------------------------
-
-
-def test_equity_on_the_flop_is_exact(qapp: QApplication) -> None:
-    screen = EquityScreen()
-    screen.set_hands(["Ah Ad", "Kc Ks"], "2c 7d 9h")
-
-    screen.calculate()
-    screen.run_to_end()
-
-    assert screen.status_label.text() == "Exact: 990 of 990 boards counted"
-    aces, kings = screen.rows
-    assert aces.equity_label.text() == "91.6%"
-    assert kings.equity_label.text() == "8.4%"
-    assert screen.calculate_button.isEnabled() and not screen.stop_button.isEnabled()
-
-
-def test_equity_against_a_random_hand_is_estimated(qapp: QApplication) -> None:
-    screen = EquityScreen()
-    screen.seed = 4
-    screen.set_hands(["A♠ A♦", ""])
-
-    screen.calculate()
-    assert screen.is_running and screen.stop_button.isEnabled()
-    screen.run_to_end()
-
-    assert screen.status_label.text().startswith("Estimate: 60 000 random boards")
-    equity = float(screen.rows[0].equity_label.text().split("%")[0])
-    assert equity == pytest.approx(85.2, abs=1.5)
-    assert "±" in screen.rows[0].equity_label.text()
-
-
-def test_the_equity_screen_runs_on_the_event_loop(qapp: QApplication) -> None:
-    screen = EquityScreen()
-    screen.seed = 1
-    screen.set_hands(["", "", ""])
-
-    screen.calculate()
-    QTest.qWait(60)
-
-    assert screen.calculator is not None and screen.calculator.boards > 0
-    screen.stop()
-    assert not screen.is_running
-
-
-@pytest.mark.parametrize(
-    ("hands", "board", "message"),
-    [
-        (["Ah Ad", "Ah Kd"], "", "twice"),
-        (["Ah", "Kc Ks"], "", "Hand 1: two cards"),
-        (["Ah Ad", "Kc Ks"], "2c 3c 4c 5c 6c 7c", "at most five"),
-        (["Zz Ad", "Kc Ks"], "", "not a card"),
-    ],
-)
-def test_wrong_cards_are_explained(
-    qapp: QApplication, hands: list[str], board: str, message: str
-) -> None:
-    screen = EquityScreen()
-    screen.set_hands(hands, board)
-
-    screen.calculate()
-
-    assert message in screen.error_label.text()
-    assert not screen.is_running
-
-
-def test_hands_can_be_added_and_removed(qapp: QApplication) -> None:
-    screen = EquityScreen()
-    assert len(screen.rows) == 2
-    assert not screen.rows[0].remove_button.isEnabled()
-
-    for _ in range(6):
-        screen.add_button.click()
-
-    assert len(screen.rows) == 6
-    assert not screen.add_button.isEnabled()
-
-    screen.rows[2].remove_button.click()
-    assert len(screen.rows) == 5
-    assert [row.label.text() for row in screen.rows][-1] == "Hand 5"
-
-
-def test_typing_makes_the_results_stale(qapp: QApplication) -> None:
-    screen = EquityScreen()
-    screen.set_hands(["Ah Ad", "Kc Ks"], "2c 7d 9h")
-    screen.calculate()
-    screen.run_to_end()
-
-    screen.board_edit.setText("2c 7d 9h Qs")
-
-    assert screen.rows[0].equity_label.text() == "—"
-    assert screen.status_label.text() == ""
-    assert [w.card for w in screen.board_preview.card_widgets][:4] == [
-        "2C",
-        "7D",
-        "9H",
-        "QS",
-    ]
-
-
-@pytest.mark.parametrize(
-    ("text", "cards"),
-    [
-        ("AsKd", ("AS", "KD")),
-        ("as kd", ("AS", "KD")),
-        ("A♠ K♦", ("AS", "KD")),
-        ("10h, 9h", ("TH", "9H")),
-        ("", ()),
-    ],
-)
-def test_cards_are_read_in_every_usual_spelling(
-    text: str, cards: tuple[str, ...]
-) -> None:
-    assert parse_cards(text) == cards
-
-
-@pytest.mark.parametrize("text", ["A", "Ax", "1s", "AsAs"])
-def test_unreadable_cards_are_refused(text: str) -> None:
-    with pytest.raises(ValueError):
-        parse_cards(text)
-
-
 # --- Saving the games the tools read ----------------------------------------------
 
 
@@ -488,3 +365,51 @@ def test_a_game_played_is_saved_where_the_tools_read(
 
     assert window.current_screen is window.replayer_screen
     assert window.replayer_screen.replay is not None
+
+
+# --- Hand histories of other sites -------------------------------------------------
+
+
+def test_the_browser_opens_a_pokerstars_history(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    path = tmp_path / "pokerstars.txt"
+    path.write_text(POKERSTARS_FILE, encoding="utf-8")
+    window = open_window(qapp, tmp_path)
+    window.tools_screen.card("sessions").click()
+    browser = window.session_browser_screen
+
+    browser.open_file(path)
+
+    session = browser.session
+    assert session is not None and session.source == "PokerStars"
+    assert browser.hands_table.rowCount() == 2
+    summary = browser.summary_label.text()
+    assert "Imported from PokerStars" in summary
+    assert "2 hands not played by this engine" in summary
+    assert "dead or missed blind" in browser.summary_label.toolTip()
+
+
+def test_unseen_cards_stay_face_down_in_the_replayer(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    path = tmp_path / "pokerstars.txt"
+    path.write_text(POKERSTARS_FILE, encoding="utf-8")
+    window = open_window(qapp, tmp_path)
+    window.tools_screen.card("sessions").click()
+    browser = window.session_browser_screen
+    browser.open_file(path)
+    browser.select_hand(0)
+    browser.replay_button.click()
+    replayer = window.replayer_screen
+    replayer.show_all_check.setChecked(True)
+
+    replayer.last_button.click()
+
+    seats = {seat.name: seat for seat in replayer.table_widget.state.seats}
+    assert seats["Hero"].cards_face_up
+    assert not seats["Bob Smith"].cards_face_up, "he mucked: nobody saw them"
+    assert not seats["Dan"].cards_face_up
+    history = replayer.history_view.toPlainText()
+    assert "Bob Smith mucks" in history and "Hero shows" in history
+    assert "PokerStars #241234567890" in replayer.info_label.text()
