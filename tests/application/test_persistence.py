@@ -191,11 +191,11 @@ def antes_session() -> GameSession:
     return session
 
 
-def test_saved_sessions_are_format_version_2_with_blind_levels(tmp_path: Path) -> None:
+def test_saved_sessions_are_format_version_3_with_blind_levels(tmp_path: Path) -> None:
     path = save_session(antes_session(), tmp_path / "session.dat")
     data = json.loads(path.read_text(encoding="utf-8"))
 
-    assert data["format_version"] == FORMAT_VERSION == 2
+    assert data["format_version"] == FORMAT_VERSION == 3
     assert data["session"]["blind_level"] == {
         "small_blind": 10,
         "big_blind": 20,
@@ -226,13 +226,14 @@ def test_a_version_1_file_loads_and_is_upgraded(tmp_path: Path) -> None:
 
     for hand in data["hands"]:
         del hand["blind_level"], hand["dead_money"]
+        del hand["revealed_after_action"], hand["timed_out_actions"]
 
     path = tmp_path / "old.dat"
     path.write_text(json.dumps(data), encoding="utf-8")
 
     loaded = load_session_file(path)
 
-    assert loaded["format_version"] == 2
+    assert loaded["format_version"] == 3
     expected_level = {
         "small_blind": 5,
         "big_blind": 10,
@@ -242,6 +243,26 @@ def test_a_version_1_file_loads_and_is_upgraded(tmp_path: Path) -> None:
     assert loaded["session"]["blind_level"] == expected_level
     assert loaded["hands"][0]["blind_level"] == expected_level
     assert loaded["hands"][0]["dead_money"] == 0
+    assert loaded["hands"][0]["revealed_after_action"] is None
+    assert loaded["hands"][0]["timed_out_actions"] == []
+
+
+def test_a_version_2_file_loads_without_reveals_or_timeouts(tmp_path: Path) -> None:
+    data = serialize_session(antes_session())
+    data["format_version"] = 2
+
+    for hand in data["hands"]:
+        del hand["revealed_after_action"], hand["timed_out_actions"]
+
+    path = tmp_path / "v2.dat"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    loaded = load_session_file(path)
+
+    assert loaded["format_version"] == 3
+    assert loaded["hands"][0]["blind_level"]["ante"] == 20
+    assert loaded["hands"][0]["revealed_after_action"] is None
+    assert loaded["hands"][0]["timed_out_actions"] == []
 
 
 def test_an_unknown_version_is_rejected_clearly(tmp_path: Path) -> None:
@@ -250,7 +271,7 @@ def test_an_unknown_version_is_rejected_clearly(tmp_path: Path) -> None:
     path = tmp_path / "future.dat"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(SessionFileError, match="version 99.*reads versions 1, 2"):
+    with pytest.raises(SessionFileError, match="version 99.*reads versions 1, 2, 3"):
         load_session_file(path)
 
 

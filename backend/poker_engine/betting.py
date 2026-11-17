@@ -77,6 +77,22 @@ def betting_round_can_continue(hand: Hand) -> bool:
     return lone_player.current_bet < highest_opposing_bet
 
 
+def is_betting_closed(hand: Hand) -> bool:
+    """Return True once no more betting is possible for the rest of the hand.
+
+    At least two players are still in the hand, and at most one of them can
+    act and has nothing to call: every other player is all-in. The remaining
+    streets are then dealt without any decision, and the players' cards can
+    be shown.
+    """
+    if hand.finished:
+        return False
+
+    return len(hand.table.get_active_players()) >= 2 and not (
+        betting_round_can_continue(hand)
+    )
+
+
 def needs_to_act(player: Player, hand: Hand) -> bool:
     """Return True if the player still owes a decision in this round."""
     if not player.can_act:
@@ -180,6 +196,9 @@ def begin_betting_round(hand: Hand) -> None:
         seats=_seats_in_street_order(hand),
     )
 
+    if hand.current_player is None:
+        _record_betting_closed(hand)
+
 
 def apply_action(hand: Hand, action: Action) -> ActionEvent:
     """Execute the action of the current player and move the action on.
@@ -239,7 +258,16 @@ def apply_action(hand: Hand, action: Action) -> ActionEvent:
             seats=hand.table.players_after(player),
         )
 
+        if hand.current_player is None:
+            _record_betting_closed(hand)
+
     return event
+
+
+def _record_betting_closed(hand: Hand) -> None:
+    """Note the last action before the betting closed (once per hand)."""
+    if hand.revealed_after_action is None and is_betting_closed(hand):
+        hand.revealed_after_action = len(hand.actions)
 
 
 def _execute(

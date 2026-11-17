@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QLabel, QWidget
 
 from backend.poker_engine.constants import Card
 from frontend import theme
+from frontend.formatting import format_amount
 
 from .card_widget import CardWidget
 from .seat_widget import SEAT_SIZE, SeatState, SeatWidget
@@ -39,7 +40,8 @@ class TableState:
     """Everything the table displays.
 
     Seats are listed clockwise; the first one is drawn at the bottom of the
-    table. ``bets`` holds the chips each seat has in front of it.
+    table. ``bets`` holds the chips each seat has in front of it. Amounts
+    are shown in big blinds when ``big_blind`` is set, in chips otherwise.
     """
 
     seats: tuple[SeatState, ...]
@@ -47,6 +49,7 @@ class TableState:
     dealer_seat: int | None
     community_cards: tuple[Card, ...]
     pot: int
+    big_blind: int | None = None
 
 
 class TableWidget(QWidget):
@@ -90,15 +93,24 @@ class TableWidget(QWidget):
             )
             card_widget.set_card(card, face_up=True, animated=True)
 
-        self.pot_label.setText(f"Pot  {state.pot:,}".replace(",", " "))
+        self.pot_label.setText(f"Pot  {format_amount(state.pot, state.big_blind)}")
         self.pot_label.setVisible(state.pot > 0)
         self.pot_label.adjustSize()
 
         self._layout_children()
         self.update()
 
+    def bet_texts(self) -> list[str]:
+        """The labels drawn for the bets in front of the seats (seat order)."""
+        return [
+            format_amount(bet, self._state.big_blind)
+            for bet in self._state.bets
+            if bet > 0
+        ]
+
     def _rebuild_seats(self, count: int) -> None:
         for seat_widget in self.seat_widgets:
+            seat_widget.hide()  # At once: deleteLater waits for the event loop.
             seat_widget.deleteLater()
 
         self.seat_widgets = [SeatWidget(self) for _ in range(count)]
@@ -197,7 +209,7 @@ class TableWidget(QWidget):
 
     def _paint_bet(self, painter: QPainter, seat_index: int, bet: int) -> None:
         position = self._point_toward_center(seat_index, BET_DISTANCE_RATIO)
-        text = f"{bet:,}".replace(",", " ")
+        text = format_amount(bet, self._state.big_blind)
 
         font = QFont(self.font())
         font.setPixelSize(13)

@@ -47,6 +47,8 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [V1.0 — Tournois](#v10--tournois)
 
+* [V1.0.1 — Confort de jeu](#v101--confort-de-jeu)
+
 * [V1.1 — Outils](#v11--outils)
 
 * [V1.2 — Extras cash game](#v12--extras-cash-game)
@@ -626,7 +628,11 @@ backend/
 │   ├── payouts.py         Répartitions des prix, multiplicateurs du Spin & Go
 │   ├── structures.py      Structures de blinds par défaut
 │   ├── hand_summary.py    Statistiques d'un joueur depuis l'historique
-│   └── persistence.py     Sauvegarde et chargement des sessions (JSON, format 2)
+│   ├── action_clock.py    Horloge d'action, time bank, préréglages (V1.0.1)
+│   ├── equity.py          Équité des mains retournées (V1.0.1)
+│   ├── bankroll.py        Bankroll, journal, comptes de partie (V1.0.1)
+│   ├── profile.py         Fichier de profil : réglages et bankroll
+│   └── persistence.py     Sauvegarde et chargement des sessions (JSON, format 3)
 ├── bots/                  Joueurs contrôlés par l'ordinateur
 │   ├── random_bot.py      Actions légales aléatoires
 │   ├── basic_bot.py       Heuristiques : force de main et cotes du pot
@@ -654,17 +660,19 @@ frontend/
 ├── main.py                Point d'entrée de l'application PySide6
 ├── terminal_ui.py         Interface terminal
 ├── theme.py               Couleurs et feuille de style
-├── formatting.py          Textes des cartes, actions et résultats
+├── formatting.py          Textes des cartes, montants (jetons ou BB), actions
+├── runout.py              Cartes retournées et équité après un all-in payé
 ├── modes.py               Modes affichés par le menu principal
 ├── ui/
 │   ├── main_window.py     Pile de navigation (Retour fonctionne partout)
-│   ├── main_menu_screen.py
+│   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
 │   │   tournament_results_screen.py         Tournoi et Spin & Go
 │   └── arena_setup_screen.py, arena_progress_screen.py,
 │       arena_results_screen.py, arena_watch_screen.py  Bot Arena
-└── components/            Carte, siège, table, panneau d'actions, graphiques
+└── components/            Carte, siège, table, panneau d'actions, graphiques,
+                           choix de l'horloge, ligne buy-in et bankroll
 
 tests/                     Tests moteur, application, bots, simulation et UI
 ```
@@ -737,6 +745,7 @@ La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les jo
 L'application est une **application de bureau PySide6**. Elle s'ouvre sur un
 **menu principal** qui liste les modes : **Cash Game**, **Tournoi**,
 **Spin & Go** et **Bot Arena** ; un emplacement **Outils** est réservé.
+Le menu affiche aussi votre **bankroll** et ouvre l'écran **Bankroll**.
 Chaque écran a un bouton Retour.
 
 ```bash
@@ -746,13 +755,21 @@ uv run python -m frontend.main # lance l'application de bureau
 
 **Cash Game** — un joueur humain contre 1 à 5 bots :
 
-- **Réglages** : nom du joueur, nombre d'adversaires, niveau des bots, tapis de départ et blinds.
-- **Table** : sièges, cartes privées, cartes communes, mises, pot et bouton dealer.
+- **Réglages** : nom du joueur, nombre d'adversaires, niveau des bots, tapis
+  de départ (le buy-in, payé par la bankroll), blinds et horloge d'action.
+- **Table** : sièges, cartes privées, cartes communes, mises, pot et bouton
+  dealer ; **Show in BB** affiche tous les montants en big blinds. Une fois un
+  all-in payé, les cartes sont retournées avec les chances de gain de chacun.
 - **Panneau d'actions** : seules les actions que le moteur déclare légales sont
   actives, avec un curseur et des raccourcis (Min, 1/2 Pot, Pot, Max) pour
-  choisir le montant d'une mise ou d'une relance.
+  choisir le montant d'une mise ou d'une relance, et l'**horloge d'action**
+  avec sa time bank ; **Pause** la fige.
 - **Historique** : chaque action, street et résultat de la session.
-- **Entre deux mains** : main suivante, ou recave quand le joueur n'a plus de jetons.
+- **Entre deux mains** : main suivante, ou recave quand le joueur n'a plus de
+  jetons. Quitter la table rend votre tapis à la bankroll.
+
+Voir la [V1.0.1](#v101--confort-de-jeu) pour l'affichage en BB, les cartes
+retournées après un all-in, l'horloge d'action et la bankroll.
 
 **Tournoi** et **Spin & Go** — vous contre des bots, avec des blinds qui
 montent, voir [V1.0](#v10--tournois).
@@ -854,10 +871,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V1.0](#v10--tournois)) :
+[V1.0.1](#v101--confort-de-jeu)) :
 
 ```text
-1309 passed
+1410 passed
 ```
 
 ### État actuel
@@ -1643,6 +1660,216 @@ Bots et simulation :
 
 ---
 
+# V1.0.1 — Confort de jeu
+
+La **V1.0.1** est une petite mise à jour avant la V1.1 : les montants en
+**big blinds**, les cartes **retournées dès qu'aucune mise n'est plus
+possible**, une **horloge d'action** avec **time bank**, et une **bankroll**
+persistante. Aucune règle de poker n'a changé : les résultats de référence
+(golden tests) du cash game et des tournois, et tous les résultats de la Bot
+Arena, sont identiques, et les simulations sans interface n'utilisent rien
+de tout cela.
+
+## Fonctionnalités
+
+### 🔢 Montants en big blinds
+
+- Une case **Show in BB** sur toutes les tables : cash game, tournoi,
+  Spin & Go et mode Watch de la Bot Arena. C'est un seul réglage pour toutes,
+  mémorisé d'un lancement à l'autre.
+- En big blinds : les tapis, les mises, le pot, le statut « Wins … », le
+  montant à suivre, les libellés de relance, la case du montant et ses
+  raccourcis (Min, 1/2 Pot, Pot, Max). Une décimale au plus : `42.5 BB`,
+  `20 BB`. En tournoi, la big blind du niveau de la main (un nouveau niveau
+  s'affiche dès la main suivante) ; le tapis moyen était déjà en big blinds.
+- **Affichage seulement** : le moteur et toutes les actions restent en
+  jetons. Un montant tapé en big blinds devient le nombre de jetons le plus
+  proche dans les limites légales ; la valeur la plus haute de la case est
+  exactement le tapis.
+- L'**historique reste en jetons** : c'est le relevé de la main, et un
+  journal ne mélange jamais deux unités.
+
+### 👀 Cartes retournées après un all-in payé
+
+- **Quand** : dès que les mises sont terminées pour le reste de la main,
+  c'est-à-dire quand au moins deux joueurs sont encore dans le coup et
+  qu'**au plus un d'entre eux peut agir, sans rien à suivre** : tout le monde
+  est all-in, ou le seul joueur qui a encore des jetons a payé le dernier
+  all-in. Le moteur connaît ce moment (c'est là qu'il commence à distribuer
+  les streets sans décision) : `is_betting_closed(hand)` l'indique, et le
+  moteur enregistre l'action après laquelle il est arrivé dans
+  `Hand.revealed_after_action`. L'interface ne recalcule jamais la règle.
+- **À l'écran** : les cartes de tous les joueurs encore dans le coup sont
+  retournées d'un coup (« *** Cards revealed *** » dans l'historique), puis
+  chaque street restante est distribuée à environ **1 s** d'intervalle
+  (1,25 pas normal), puis vient le showdown habituel avec le paiement.
+- **% de gain** sous les cartes de chaque joueur pendant la distribution :
+  **exact** à partir du flop (tous les boards possibles sont comptés), et
+  une **estimation « ≈ 38% »** avant le flop (environ 1,7 million de boards :
+  un échantillon plafonné à environ 4 000 évaluations de mains, à peu près
+  40 ms, pour que la table ne se fige jamais). L'estimation utilise son
+  propre générateur aléatoire, initialisé à partir des cartes sur la table :
+  le générateur de la partie et du paquet n'est jamais touché. Seules les
+  cartes visibles sont connues ; les cartes couchées comptent comme
+  inconnues. Le code (`backend/application/equity.py`) servira au
+  calculateur d'équité de la V1.1.
+- Pareil en **mode Watch de la Bot Arena** (avec « Show all cards »
+  décoché) et quand vous **regardez la suite d'un tournoi après avoir été
+  éliminé**.
+- Aucune fuite d'information : rien n'est montré tant qu'un joueur peut
+  encore agir.
+
+### ⏱️ Horloge d'action et time bank
+
+Comme sur les sites de poker en ligne, chacune de vos décisions a un **temps
+pour agir**, affiché par une barre qui se vide (orange pendant les 5
+dernières secondes). Quand il est écoulé, une **time bank** démarre
+automatiquement (en bleu, « Time bank 34 s »). La time bank est partagée par
+toute la session ou tout le tournoi, se recharge lentement, et le temps pour
+agir non utilisé ne s'y ajoute pas.
+
+| Préréglage | Temps pour agir | Time bank de départ | Recharge |
+| --- | ---: | ---: | --- |
+| Off | — | — | — |
+| Relaxed | 30 s | 120 s | +10 s toutes les 25 mains, max 120 s |
+| Standard | 20 s | 60 s | +10 s toutes les 25 mains, max 120 s |
+| Fast | 15 s | 30 s | +5 s toutes les 25 mains, max 60 s |
+| Hyper | 10 s | 20 s | +5 s toutes les 25 mains, max 40 s |
+
+- **Par défaut** : Cash Game → Standard, Tournoi → Standard (Fast pour la
+  structure Turbo), Spin & Go → Fast. Chaque écran de réglages propose un
+  choix **Action clock**, dont **Off** ; votre choix est mémorisé pour chaque
+  mode. Les préréglages sont dans `backend/application/action_clock.py`.
+- **Temps écoulé** : quand les deux sont épuisés, la main est morte : vous
+  **checkez** si c'est gratuit, sinon vous vous **couchez** (le comportement
+  habituel en ligne). L'action est enregistrée comme hors délai dans
+  l'historique (`Hand.timed_out_actions`) et affichée « Hero ran out of time
+  — folds ».
+- **Pause** fige l'horloge d'action et la time bank, et les relance
+  exactement où elles en étaient. Le bouton Pause apparaît dès qu'il y a une
+  horloge à figer : une horloge d'action (désormais aussi en cash game) ou
+  des niveaux au temps.
+- Les bots n'ont pas d'horloge. Les simulations sans interface, les
+  résultats de la Bot Arena et « Skip to results » ne l'utilisent jamais. Le
+  temps est mesuré dans la couche application (`ActionClock`, avec une
+  source de temps que les tests remplacent) ; le moteur ignore tout du temps.
+
+### 💰 Bankroll
+
+Une bankroll hors ligne dans une **monnaie fictive** (il n'y a d'argent réel
+nulle part dans l'application), qui démarre à **100 000**. Une unité vaut un
+jeton.
+
+| Mode | Payé par la bankroll | Crédité à la bankroll |
+| --- | --- | --- |
+| Cash game | le tapis de départ, au début de la session ; chaque recave | votre tapis quand vous quittez la table |
+| Tournoi | le buy-in au départ ; chaque recave et l'add-on | votre prix, à la fin du tournoi |
+| Spin & Go | le buy-in au départ | votre prix, à la fin (gros multiplicateurs compris) |
+| Bot Arena | — | — |
+
+- **Buy-ins prédéfinis**, pour des enjeux comparables d'un mode à l'autre :
+  tournois 100 / 500 / 1 000 / 5 000 / 10 000, Spin & Go 100 / 500 / 1 000 /
+  5 000 (1 000 par défaut pour les deux) ; les montants libres et les
+  **freerolls à 0** restent possibles. Les préréglages sont dans
+  `backend/application/setup.py`. La Bot Arena et la ligne de commande
+  gardent leurs propres valeurs par défaut (100 et 10) : sinon leurs
+  résultats exportés changeraient, et le ROI ne dépend pas du montant du
+  buy-in.
+- **Pas assez d'argent** : chaque écran de réglages affiche le buy-in et
+  votre bankroll ; un mode que vous ne pouvez pas payer ne peut pas être
+  lancé (Play est désactivé, avec un message). Les recaves et add-ons que
+  vous ne pouvez pas payer ne sont pas proposés.
+- **Conseil de bankroll** (désactivable depuis l'écran Bankroll) : un
+  avertissement discret quand un buy-in représente une grosse part de la
+  bankroll, selon les règles habituelles : environ **20 buy-ins** en cash
+  game, **50** en tournoi et en Spin & Go (`RECOMMENDED_BUY_INS`). Il ne
+  bloque jamais.
+- **Recharge** : sous **1 000** (`RELOAD_THRESHOLD`), le menu principal
+  propose de revenir à 100 000.
+- **Écran Bankroll** : le solde, le résultat net global et par mode, un
+  **graphique** de la bankroll dans le temps, et le **journal** (date et
+  heure, type, mode, montant, solde après, description ; le plus récent en
+  premier, filtrable par mode). **Set bankroll…** et **Reset to 100,000**
+  sont enregistrés comme **ajustements**, pour que l'historique reste
+  honnête ; les ajustements ne comptent jamais comme des résultats.
+
+> 📸 *Emplacement de capture d'écran : les cartes retournées avec le % de
+> gain, l'horloge d'action dans la time bank, et l'écran Bankroll.*
+
+## Quitter ou fermer pendant une partie
+
+- **Cash game** : votre **tapis restant** (les jetons qui ne sont pas dans
+  le pot) est sauvegardé au début de chaque main, après chacune de vos
+  actions et après chaque main. Quitter la table ou l'application le rend à
+  la bankroll. Si l'application se ferme de façon inattendue, il est rendu
+  au lancement suivant, avec une ligne au journal et un message qui le dit.
+  Les jetons déjà dans le pot sont perdus, comme sur un fold.
+- **Tournoi et Spin & Go** : quitter alors que vous êtes encore en jeu
+  demande une confirmation, puis vous fait **abandonner** le tournoi (le
+  buy-in est perdu, et une ligne « Forfeit » est enregistrée). Une fois
+  éliminé, quitter joue instantanément la fin du tournoi (les mêmes mains
+  qu'en le regardant), pour que votre prix soit connu et crédité. Fermer
+  l'application pendant un tournoi le fait aussi abandonner (enregistré au
+  lancement suivant).
+- Le prix est crédité à la fin du tournoi, pas à votre élimination : les
+  bots peuvent encore se recaver et faire grossir le prize pool.
+
+## Profil utilisateur
+
+Les réglages (affichage en BB, horloge par mode, conseils de bankroll) et la
+bankroll (solde, journal, partie en cours) sont sauvegardés dans
+`profile.json`, dans le dossier de données d'application du système :
+
+| Système | Emplacement |
+| --- | --- |
+| Windows | `%APPDATA%\Poker\profile.json` |
+| macOS | `~/Library/Application Support/Poker/profile.json` |
+| Linux | `~/.local/share/Poker/profile.json` |
+
+Le fichier a un `format_version`. Chaque sauvegarde écrit un fichier
+temporaire, garde la version précédente dans `profile.bak`, puis renomme le
+nouveau fichier à sa place. Un fichier abîmé est restauré depuis la
+sauvegarde ; le fichier abîmé est mis de côté
+(`profile.damaged_<date>.json`) et vous êtes prévenu au lancement.
+L'application ne plante jamais sur un profil illisible et ne perd jamais le
+solde en silence. Les tests utilisent un dossier temporaire, jamais votre
+profil.
+
+## Fichiers de session
+
+Les fichiers de session passent au **format 3** : chaque main enregistre
+aussi `revealed_after_action` (l'action après laquelle les cartes ont été
+retournées, null sinon) et `timed_out_actions` (les actions décidées par
+l'horloge). `load_session_file()` lit les versions 1 à 3. Ces deux champs
+rejoignent `ADDED_HISTORY_FIELDS` dans les golden tests, donc les empreintes
+de référence restent exactement les mêmes ; des tests séparés vérifient
+qu'ils sont enregistrés au bon moment.
+
+## Changements du moteur
+
+- `is_betting_closed(hand)` et `Hand.revealed_after_action`, renseigné par
+  le moteur quand les mises se terminent ; `Hand.timed_out_actions`, rempli
+  par l'application. Rien d'autre n'a changé dans le moteur, et le benchmark
+  est inchangé (1 623 / 1 210 / 5 120 mains par seconde).
+
+## Objectifs
+
+* [x] Montants en big blinds sur toutes les tables, mémorisés
+* [x] Cartes retournées dès qu'aucune mise n'est plus possible, streets une par une, % de gain
+* [x] Horloge d'action et time bank, délais dépassés enregistrés, Pause les fige
+* [x] Bankroll persistante dans les trois modes : consulter, modifier, réinitialiser, recharger
+* [x] Time bank pour le joueur humain (déplacée depuis la V1.2)
+
+## Tests
+
+```text
+1410 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
 # V1.1 — Outils
 
 * [ ] Relecteur de mains (basé sur l'historique de l'Alpha 1.2)
@@ -1656,7 +1883,6 @@ Bots et simulation :
 
 * [ ] Règles complètes de recave / complément (humain et bots, buy-in min/max)
 * [ ] Straddle
-* [ ] Time bank pour le joueur humain
 
 ---
 

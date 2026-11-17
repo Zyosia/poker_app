@@ -7,6 +7,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from backend.poker_engine.constants import Card
+from frontend.formatting import format_amount
 
 from .card_widget import CardWidget
 
@@ -31,6 +32,8 @@ class SeatState:
     status: str
     highlight: SeatHighlight = SeatHighlight.NONE
     dimmed: bool = False
+    big_blind: int | None = None
+    """Show the stack in big blinds when set, in chips otherwise."""
 
 
 BORDER_COLORS = {
@@ -79,7 +82,7 @@ class SeatWidget(QFrame):
     def set_state(self, state: SeatState) -> None:
         """Update the seat from the given state."""
         self.name_label.setText(state.name)
-        self.stack_label.setText(f"{state.stack:,}".replace(",", " "))
+        self.stack_label.setText(format_amount(state.stack, state.big_blind))
         self.status_label.setText(state.status)
 
         for index, card_widget in enumerate(self.card_widgets):

@@ -7,6 +7,7 @@ timed level clock, the Spin & Go multiplier reveal, and what to do once you
 are out: watch the rest, skip to the results, or go back to the menu.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -14,10 +15,13 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QWidget,
 )
 
+from backend.application.action_clock import ClockPreset
+from backend.application.bankroll import GameAccount, TransactionType
 from backend.application.payouts import FAIR_MULTIPLIERS
 from backend.application.persistence import save_session
 from backend.application.tournament import Tournament
@@ -40,6 +44,20 @@ def ordinal(place: int) -> str:
     return f"{place}{suffix}"
 
 
+def confirm_leave(parent: QWidget) -> bool:
+    """Ask before leaving a running tournament (the buy-in is lost)."""
+    if not parent.isVisible():  # Nobody to ask: a window closed by code.
+        return True
+
+    answer = QMessageBox.question(
+        parent,
+        "Leave the tournament",
+        "Leave the tournament? You forfeit it: your buy-in is lost.",
+    )
+
+    return answer == QMessageBox.StandardButton.Yes
+
+
 def format_seconds(seconds: float) -> str:
     whole = max(0, int(seconds))
 
@@ -59,6 +77,9 @@ class TournamentScreen(GameScreen):
         self._announced = 0
         self._reveal_values: list[int] = []
         self._revealing = False
+        self.tournament_account: GameAccount | None = None
+        """The tournament's money in the bankroll (None: not paid for)."""
+        self.confirm_leave: Callable[[QWidget], bool] = confirm_leave
 
         self.status_label = QLabel()
         self.status_label.setObjectName("statusText")
@@ -70,11 +91,7 @@ class TournamentScreen(GameScreen):
         self._notice_timer.setSingleShot(True)
         self._notice_timer.timeout.connect(self.notice_label.hide)
 
-        self.pause_button = QPushButton("Pause")
-        self.pause_button.setObjectName("small")
-        self.pause_button.setToolTip("Freezes the level clock and the bots.")
-        self.pause_button.clicked.connect(self.toggle_pause)
-        self.paused = False
+        self.pause_button.setToolTip("Freezes the clocks and the bots.")
 
         self.reveal_label = QLabel()
         self.reveal_label.setObjectName("revealText")
@@ -161,7 +178,6 @@ class TournamentScreen(GameScreen):
         left = self.left_layout
         status_bar = QHBoxLayout()
         status_bar.addWidget(self.status_label, stretch=1)
-        status_bar.addWidget(self.pause_button)
         left.insertLayout(1, status_bar)
         left.insertWidget(2, self.notice_label)
         # While it shows, the reveal takes the table's place.
@@ -178,14 +194,21 @@ class TournamentScreen(GameScreen):
         return game
 
     def start_tournament(
-        self, tournament: Tournament, human_name: str, save_path: Path | None = None
+        self,
+        tournament: Tournament,
+        human_name: str,
+        save_path: Path | None = None,
+        clock: ClockPreset | None = None,
+        account: GameAccount | None = None,
     ) -> None:
-        """Start playing; a Spin & Go first reveals its prize multiplier."""
+        """Start playing; a Spin & Go first reveals its prize multiplier.
+
+        ``clock`` is the human's action clock (None: no clock). ``account``
+        pays the rebuys and the add-on, and receives the prize at the end.
+        """
         self.save_path = save_path
+        self.tournament_account = account
         self.spectating = False
-        self.paused = False
-        self.pause_button.setText("Pause")
-        self.pause_button.setVisible(tournament.clock is not None)
         self._announced = 0
         self.step_delay_ms = WATCH_SPEEDS["Normal"] + 200
         self._notice_timer.stop()
@@ -193,10 +216,11 @@ class TournamentScreen(GameScreen):
         self.status_label.clear()
 
         if tournament.multiplier is None:
-            self.start_game(tournament, human_name)
+            self.start_game(tournament, human_name, clock)
         else:
             self._game = tournament
             self._human_name = human_name
+            self._set_clock(clock)
             self.history_view.clear()
             self._start_reveal(tournament)
 
@@ -204,9 +228,60 @@ class TournamentScreen(GameScreen):
             self._clock_timer.start()
 
     def stop(self) -> None:
+        """Stop; an unfinished tournament is forfeited, a finished one paid."""
         self._clock_timer.stop()
         self._reveal_timer.stop()
+        account = self.tournament_account
+
+        if account is not None and not account.closed and self._game is not None:
+            if self.tournament.is_finished:
+                self._settle_account()
+            else:
+                account.forfeit()
+
+        self.tournament_account = None
         super().stop()
+
+    def _can_pay(self) -> bool:
+        """Whether the bankroll can pay one more buy-in (rebuy or add-on)."""
+        account = self.tournament_account
+
+        return account is None or account.can_pay(self.tournament.config.buy_in)
+
+    def _settle_account(self) -> None:
+        """Credit the prize once the tournament is over (only once)."""
+        account = self.tournament_account
+
+        if account is None or account.closed or not self.tournament.is_finished:
+            return
+
+        account.finish(self.tournament.result.finish_of(self._human_name).prize)
+
+    def prepare_to_leave(self) -> bool:
+        """Get ready to leave; False if the user chose to stay.
+
+        Once out, the rest of the tournament is played instantly, so the
+        prize is known; leaving while still in asks first, then forfeits.
+        """
+        game = self._game
+
+        if not isinstance(game, Tournament) or game.is_finished:
+            return True
+
+        name = self._human_name
+
+        if game.is_waiting_for_rebuy and game.can_rebuy(name):
+            game.decline_rebuy(name)
+
+        if self._human_player().is_eliminated:
+            self._play_out()
+            return True
+
+        return self.confirm_leave(self)
+
+    def _on_menu_clicked(self) -> None:
+        if self.prepare_to_leave():
+            super()._on_menu_clicked()
 
     def _start_next_hand(self) -> None:
         game = self._game
@@ -224,11 +299,13 @@ class TournamentScreen(GameScreen):
         self._log_new_eliminations()
         self._refresh_status()
 
-    def _after_step(self) -> None:
-        if self.paused:
-            self._refresh_status()
-            return
+    def _can_pause(self) -> bool:
+        game = self._game
+        level_clock = isinstance(game, Tournament) and game.clock is not None
 
+        return level_clock or super()._can_pause()
+
+    def _after_step(self) -> None:
         super()._after_step()
         self._refresh_status()
 
@@ -254,6 +331,11 @@ class TournamentScreen(GameScreen):
         name = self._human_name
 
         if tournament.is_waiting_for_rebuy and tournament.can_rebuy(name):
+            if not self._can_pay():
+                lines.append("Out of chips: your bankroll cannot pay a rebuy.")
+                self._show_page(lines, self.decline_button)
+                return
+
             lines.append("You are out of chips: rebuy or leave the tournament.")
             self._show_page(lines, self.tournament_rebuy_button, self.decline_button)
             self._label_rebuy()
@@ -265,13 +347,13 @@ class TournamentScreen(GameScreen):
 
         shown = [self.continue_button]
 
-        if tournament.can_add_on(name):
+        if tournament.can_add_on(name) and self._can_pay():
             shown.append(self.add_on_button)
             rules = tournament.config.rebuys
             assert rules is not None
             self.add_on_button.setText(f"Add-on +{rules.add_on_stack}")
 
-        if tournament.can_rebuy(name):
+        if tournament.can_rebuy(name) and self._can_pay():
             shown.append(self.tournament_rebuy_button)
             self._label_rebuy()
 
@@ -303,6 +385,7 @@ class TournamentScreen(GameScreen):
         self._clock_timer.stop()
         self._step_timer.stop()
         self._save()
+        self._settle_account()
         self._show_page(lines, self.results_button, self.leave_button)
 
     def _show_page(self, lines: list[str], *buttons: QPushButton) -> None:
@@ -327,6 +410,10 @@ class TournamentScreen(GameScreen):
 
     def _on_tournament_rebuy(self) -> None:
         tournament = self.tournament
+
+        if self.tournament_account is not None:
+            self.tournament_account.pay(TransactionType.REBUY, tournament.config.buy_in)
+
         tournament.rebuy(self._human_name)
         self._log(f"{self._human_name} rebuys")
         self._refresh_status()
@@ -348,6 +435,11 @@ class TournamentScreen(GameScreen):
             self._show_bust([])
 
     def _on_add_on(self) -> None:
+        if self.tournament_account is not None:
+            self.tournament_account.pay(
+                TransactionType.ADD_ON, self.tournament.config.buy_in
+            )
+
         self.tournament.add_on(self._human_name)
         self._log(f"{self._human_name} takes the add-on")
         self.add_on_button.hide()
@@ -382,6 +474,12 @@ class TournamentScreen(GameScreen):
         if not tournament.is_finished and not self._human_player().is_eliminated:
             raise RuntimeError("Skip to results is only possible once you are out.")
 
+        self._play_out()
+        self._open_results()
+
+    def _play_out(self) -> None:
+        """Play the rest of the tournament instantly (you are out)."""
+        tournament = self.tournament
         self._step_timer.stop()
 
         if tournament.is_hand_in_progress:
@@ -394,10 +492,11 @@ class TournamentScreen(GameScreen):
         tournament.play_to_end()
         self._log_new_eliminations()
         self._save()
-        self._open_results()
+        self._settle_account()
 
     def _open_results(self) -> None:
         self.stop_timers()
+        self._settle_account()
         self.finished.emit(self.tournament)
 
     def stop_timers(self) -> None:
@@ -409,11 +508,9 @@ class TournamentScreen(GameScreen):
         if self.spectating:
             self.step_delay_ms = self.watch_speed_combo.currentData()
 
-    def toggle_pause(self) -> None:
-        """Freeze (or restart) the level clock and the table."""
+    def _on_pause_changed(self) -> None:
+        """Also freeze the level clock; resume watching once restarted."""
         tournament = self.tournament
-        self.paused = not self.paused
-        self.pause_button.setText("Resume" if self.paused else "Pause")
 
         if tournament.clock is not None:
             if self.paused:
@@ -421,11 +518,9 @@ class TournamentScreen(GameScreen):
             else:
                 tournament.clock.resume()
 
-        if self.paused:
-            self._step_timer.stop()
-        elif tournament.is_hand_in_progress:
-            self._after_step()
-        elif self.spectating:
+        super()._on_pause_changed()
+
+        if not self.paused and not tournament.is_hand_in_progress:
             self._continue_watching()
 
         self._refresh_status()

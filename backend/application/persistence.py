@@ -9,8 +9,13 @@ File format versions:
   ``dead_money`` (big-blind ante), and ``post_ante`` actions can appear in
   the history. A tournament session also stores its results under
   ``tournament``.
+- **3** (V1.0.1): every hand records ``revealed_after_action``, the action
+  after which no more betting was possible and the cards were turned face
+  up (null if never), and ``timed_out_actions``, the actions decided by
+  the human's clock running out.
 
-``load_session_file`` reads both versions and returns version 2 data.
+``load_session_file`` reads every version and returns version 3 data; older
+hands get ``revealed_after_action`` null (not recorded) and no timeouts.
 """
 
 import json
@@ -25,8 +30,8 @@ from backend.poker_engine.session import GameSession
 
 SESSION_DIR = Path(__file__).resolve().parents[1] / "data" / "sessions"
 
-FORMAT_VERSION = 2
-SUPPORTED_FORMAT_VERSIONS = (1, 2)
+FORMAT_VERSION = 3
+SUPPORTED_FORMAT_VERSIONS = (1, 2, 3)
 
 
 class SessionFileError(ValueError):
@@ -88,6 +93,8 @@ def serialize_hand(hand: Hand, hand_number: int) -> dict[str, Any]:
         "dead_money": hand.dead_money,
         "payouts": dict(hand.payouts),
         "finished": hand.finished,
+        "revealed_after_action": hand.revealed_after_action,
+        "timed_out_actions": list(hand.timed_out_actions),
     }
 
 
@@ -159,9 +166,10 @@ def save_session(
 def load_session_file(file_path: Path) -> dict[str, Any]:
     """Read a saved session, of any supported format version.
 
-    Version 1 files are upgraded in memory to version 2: the blinds of the
-    configuration become the blind level of the session and of every hand,
-    with no ante. Raises ``SessionFileError`` with a clear message for an
+    Older files are upgraded in memory, one version at a time. Version 1:
+    the blinds of the configuration become the blind level of the session
+    and of every hand, with no ante. Version 2: the hands get no recorded
+    reveal and no timeouts. Raises ``SessionFileError`` with a clear message for an
     unknown version or a file that is not a session.
     """
     try:
@@ -186,6 +194,9 @@ def load_session_file(file_path: Path) -> dict[str, Any]:
     if version == 1:
         _upgrade_from_version_1(data)
 
+    if data["format_version"] == 2:
+        _upgrade_from_version_2(data)
+
     return data
 
 
@@ -194,9 +205,17 @@ def _upgrade_from_version_1(data: dict[str, Any]) -> None:
     level = serialize_blind_level(
         BlindLevel(small_blind=config["small_blind"], big_blind=config["big_blind"])
     )
-    data["format_version"] = FORMAT_VERSION
+    data["format_version"] = 2
     data["session"]["blind_level"] = level
 
     for hand in data["hands"]:
         hand["blind_level"] = dict(level)
         hand["dead_money"] = 0
+
+
+def _upgrade_from_version_2(data: dict[str, Any]) -> None:
+    data["format_version"] = 3
+
+    for hand in data["hands"]:
+        hand["revealed_after_action"] = None
+        hand["timed_out_actions"] = []

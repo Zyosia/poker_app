@@ -176,6 +176,13 @@ class Hand:
     actions: list[ActionEvent] = field(default_factory=list)
     streets: list[StreetEvent] = field(default_factory=list)
     finished: bool = False
+    revealed_after_action: int | None = None
+    """Sequence of the action after which no more betting was possible (an
+    all-in called): the players still in the hand turn their cards face up
+    then. None when the betting never closed before the end of the hand."""
+    timed_out_actions: list[int] = field(default_factory=list)
+    """Sequences of the actions a player's clock decided (time ran out).
+    Recorded by the application, which measures time; the engine never does."""
     legal_actions_cache: "LegalActionsCache | None" = field(
         default=None, repr=False, compare=False
     )

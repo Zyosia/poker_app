@@ -1,10 +1,59 @@
-"""Text shown to the user for cards, actions and results."""
+"""Text shown to the user for cards, amounts, actions and results."""
+
+import math
 
 from backend.poker_engine.constants import ActionType, Card
 from backend.poker_engine.models import ActionEvent, Hand
 
 SUIT_SYMBOLS = {"S": "♠", "H": "♥", "D": "♦", "C": "♣"}
 RANK_LABELS = {"T": "10"}
+
+
+def format_chips(chips: int) -> str:
+    """Return a chip amount with spaces between thousands: "12 500"."""
+    return f"{chips:,}".replace(",", " ")
+
+
+def format_big_blinds(chips: int, big_blind: int) -> str:
+    """Return a chip amount in big blinds, to one decimal place: "42.5 BB".
+
+    A trailing ".0" is dropped ("20 BB"). Rounding is exact (half up), in
+    integer arithmetic, so a big blind that does not divide the amount never
+    shows a floating-point artefact.
+    """
+    if big_blind <= 0:
+        raise ValueError("The big blind must be positive.")
+
+    tenths = (abs(chips) * 20 + big_blind) // (2 * big_blind)
+    whole, tenth = divmod(tenths, 10)
+    sign = "-" if chips < 0 and tenths else ""
+    text = format_chips(whole) + (f".{tenth}" if tenth else "")
+
+    return f"{sign}{text} BB"
+
+
+def format_amount(chips: int, big_blind: int | None = None) -> str:
+    """Return an amount in chips, or in big blinds when ``big_blind`` is set."""
+    if big_blind is None:
+        return format_chips(chips)
+
+    return format_big_blinds(chips, big_blind)
+
+
+def big_blinds_to_chips(
+    big_blinds: float, big_blind: int, minimum: int, maximum: int
+) -> int:
+    """Convert an amount typed in big blinds to chips, within a legal range.
+
+    The amount is rounded to the nearest chip, then kept between ``minimum``
+    and ``maximum`` (the legal "raise to" range).
+    """
+    if minimum > maximum:
+        raise ValueError("The minimum exceeds the maximum.")
+
+    chips = math.floor(big_blinds * big_blind + 0.5)  # Half up, like the display.
+
+    return max(minimum, min(maximum, chips))
 
 
 def format_card(card: Card) -> str:
