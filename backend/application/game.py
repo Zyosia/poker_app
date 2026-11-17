@@ -18,6 +18,7 @@ from .controllers import (
     PlayerController,
     build_decision_context,
 )
+from .game_modes import GameMode
 from .persistence import save_session
 
 
@@ -44,6 +45,11 @@ class PokerGame:
         self.controllers = dict(controllers)
         self.save_path = save_path
         self.hand: Hand | None = None
+
+    @property
+    def human_name(self) -> str | None:
+        """The player the user plays, if any."""
+        return next((name for name, c in self.controllers.items() if c.is_human), None)
 
     @property
     def is_hand_in_progress(self) -> bool:
@@ -144,4 +150,9 @@ class PokerGame:
                 self.session.eliminate_player(player)
 
         if self.save_path is not None:
-            save_session(session=self.session, file_path=self.save_path)
+            save_session(
+                session=self.session,
+                file_path=self.save_path,
+                human=self.human_name,
+                mode=GameMode.CASH,
+            )

@@ -2,7 +2,7 @@
 
 import math
 
-from backend.poker_engine.constants import ActionType, Card
+from backend.poker_engine.constants import RANKS, SUITS, ActionType, Card
 from backend.poker_engine.models import ActionEvent, Hand
 
 SUIT_SYMBOLS = {"S": "♠", "H": "♥", "D": "♦", "C": "♣"}
@@ -65,6 +65,36 @@ def format_card(card: Card) -> str:
 
 def format_cards(cards: list[Card] | tuple[Card, ...]) -> str:
     return " ".join(format_card(card) for card in cards)
+
+
+def parse_cards(text: str) -> tuple[Card, ...]:
+    """Read cards typed by the user: "AsKd", "As Kd", "A♠ K♦" or "10h 9h".
+
+    Raises ValueError with a message for the user when a card is not valid
+    or appears twice.
+    """
+    normalized = text.upper().replace("10", "T")
+
+    for suit, symbol in SUIT_SYMBOLS.items():
+        normalized = normalized.replace(symbol, suit)
+
+    letters = "".join(character for character in normalized if character not in " ,")
+
+    if len(letters) % 2:
+        raise ValueError(f"“{text.strip()}”: a card is a rank and a suit, like As.")
+
+    cards = tuple(letters[index : index + 2] for index in range(0, len(letters), 2))
+
+    for card in cards:
+        if card[0] not in RANKS or card[1] not in SUITS:
+            raise ValueError(
+                f"“{card}” is not a card (ranks 2-9 T J Q K A, suits s h d c)."
+            )
+
+    if len(set(cards)) != len(cards):
+        raise ValueError("A card appears twice.")
+
+    return cards
 
 
 def describe_action(event: ActionEvent) -> str:

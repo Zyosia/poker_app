@@ -15,10 +15,11 @@ from backend.application.game import PokerGame
 from backend.simulation.config import SeatSpec, SimulationConfig, StackPolicy
 from backend.simulation.runner import run_simulation
 from frontend.components.line_chart import LineChart, nice_step
-from frontend.modes import MODES
+from frontend.modes import MODES, Mode
 from frontend.ui.arena_results_screen import ArenaResultsScreen
 from frontend.ui.arena_setup_screen import ARENA_PRESETS, ArenaSetupScreen
 from frontend.ui.arena_watch_screen import ArenaWatchScreen
+from frontend.ui.main_menu_screen import MainMenuScreen
 from frontend.ui.main_window import MainWindow
 
 WAIT_TIMEOUT_SECONDS = 60
@@ -59,22 +60,27 @@ def open_arena(window: MainWindow, hands: int = 200) -> ArenaSetupScreen:
 # --- Main menu -----------------------------------------------------------------
 
 
-def test_menu_shows_the_enabled_and_coming_soon_modes(window: MainWindow) -> None:
+def test_menu_shows_every_mode_enabled(window: MainWindow) -> None:
     cards = {card.mode.key: card for card in window.main_menu.cards}
 
     assert list(cards) == [mode.key for mode in MODES]
 
-    for key in ("cash", "arena", "tournament", "spin"):
+    for key in ("cash", "arena", "tournament", "spin", "tools"):
         assert cards[key].isEnabled()
-
-    assert not cards["tools"].isEnabled()
-    assert cards["tools"].note_label.text() == "Coming later"
+        assert cards[key].note_label.isHidden()
 
 
-def test_disabled_modes_do_not_open_anything(window: MainWindow) -> None:
-    window.main_menu.card("tools").click()
+def test_a_mode_not_available_yet_does_not_open_anything(qapp: QApplication) -> None:
+    later = Mode("later", "Later", "Not yet.", "?", screen=None, note="Coming later")
+    menu = MainMenuScreen([later])
+    chosen: list[Mode] = []
+    menu.mode_selected.connect(chosen.append)
 
-    assert window.current_screen is window.main_menu
+    menu.card("later").click()
+
+    assert not menu.card("later").isEnabled()
+    assert menu.card("later").note_label.text() == "Coming later"
+    assert chosen == []
 
 
 def test_cash_game_still_starts_from_the_menu(window: MainWindow) -> None:

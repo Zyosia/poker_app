@@ -585,10 +585,13 @@ backend/
 │   ├── structures.py      Default blind structures
 │   ├── hand_summary.py    A player's stats from the hand history
 │   ├── action_clock.py    Action clock, time bank, clock presets (V1.0.1)
-│   ├── equity.py          Equity of hands face up (V1.0.1)
+│   ├── equity.py          Run-out equity (V1.0.1), equity calculator (V1.1)
+│   ├── game_modes.py      Cash game, tournament, Spin & Go
 │   ├── bankroll.py        Bankroll, ledger, game accounts (V1.0.1)
 │   ├── profile.py         User profile file: settings and bankroll
-│   └── persistence.py     Session saving and loading (JSON, format 3)
+│   ├── persistence.py     Session saving and loading (JSON, format 4)
+│   ├── hand_records.py    Saved sessions read back as records (V1.1)
+│   └── replay.py          A recorded hand dealt again, step by step (V1.1)
 ├── bots/                  Computer-controlled players
 │   ├── random_bot.py      Random legal actions
 │   ├── basic_bot.py       Hand strength and pot odds heuristics
@@ -610,6 +613,7 @@ backend/
     ├── bench.py           Single-core benchmark (Beta 1.1)
     ├── tournament_runner.py  Tournament and Spin & Go runs (V1.0)
     ├── tournament_stats.py   Finishes, ITM and ROI statistics
+    ├── my_stats.py        The human's stats from saved sessions (V1.1)
     └── cli.py             python -m backend.simulation …
 
 frontend/
@@ -625,8 +629,10 @@ frontend/
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
 │   │   tournament_results_screen.py         Tournament and Spin & Go
-│   └── arena_setup_screen.py, arena_progress_screen.py,
-│       arena_results_screen.py, arena_watch_screen.py  Bot Arena
+│   ├── arena_setup_screen.py, arena_progress_screen.py,
+│   │   arena_results_screen.py, arena_watch_screen.py  Bot Arena
+│   └── tools_screen.py, replayer_screen.py, equity_screen.py,
+│       my_stats_screen.py, session_browser_screen.py   Tools (V1.1)
 └── components/            Card, seat, table, action panel, line and bar charts,
                            clock choice, buy-in and bankroll line
 
@@ -700,9 +706,8 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 
 The application is a **PySide6 desktop application**. It opens on a **main
 menu** listing the modes: **Cash Game**, **Tournament**, **Spin & Go** and
-**Bot Arena**; a **Tools** slot is reserved. The menu also shows your
-**bankroll** and opens the **Bankroll** screen. Every screen has a Back
-button.
+**Bot Arena**, and **Tools**. The menu also shows your **bankroll** and
+opens the **Bankroll** screen. Every screen has a Back button.
 
 ```bash
 uv sync                        # install the dependencies
@@ -734,6 +739,9 @@ the action clock and the bankroll.
 
 **Bot Arena** — bots against bots (cash tables, tournaments and Spin & Go),
 see [Beta 1.0](#beta-10--simulation) and [V1.0](#v10--tournaments).
+
+**Tools** — the hand replayer, the equity calculator, your stats across
+sessions and the session browser, see [V1.1](#v11--tools).
 
 A minimal terminal front-end using the same application layer is also
 available:
@@ -940,7 +948,7 @@ Implemented features:
 - [x] Session persistence to `.dat`
 - [x] Persistence tests
 
-The saved session contains the information required to reconstruct the progression of a hand and provides the foundation for a future hand replayer.
+The saved session contains the information required to reconstruct the progression of a hand and provides the foundation for the hand replayer ([V1.1](#v11--tools)).
 
 [↑ Back to table of contents](#table-of-contents)
 
@@ -1608,8 +1616,8 @@ unchanged, and headless simulations never use any of it.
   evaluations, roughly 40 ms, so the table never stalls). The estimate uses
   an RNG of its own, seeded from the cards on the table: the game's and the
   deck's RNG are never touched. Only the cards face up are known; folded
-  cards count as unknown. The code (`backend/application/equity.py`) will
-  serve the V1.1 equity calculator.
+  cards count as unknown. The code (`backend/application/equity.py`) also
+  runs the V1.1 equity calculator.
 - The same in **Bot Arena Watch mode** (with "Show all cards" off) and when
   **watching a tournament after you bust**.
 - No information leaks: nothing is shown while any player can still act.
@@ -1779,10 +1787,136 @@ same; separate tests check that both are recorded at the right point.
 
 # V1.1 — Tools
 
-- [ ] Hand replayer (built on the Alpha 1.2 history)
-- [ ] Equity calculator (Monte Carlo, hands vs hands / vs random, any board)
-- [ ] "My stats": the human player's stats across sessions (reuses the Beta 1.0 stats collectors)
-- [ ] Session browser (saved sessions, results, chip graph)
+**V1.1** opens the **Tools** card of the main menu: four tools to study your
+games, a **hand replayer**, an **equity calculator**, **My stats** and a
+**session browser**. No poker rule changed: the golden results and every Bot
+Arena result are unchanged.
+
+## Features
+
+### ▶ Hand replayer
+
+- **Tools → Hand Replayer** opens the **last hand of your latest session**;
+  the session browser opens any other hand.
+- The hand is **dealt again through the engine**: the players sit down with
+  the stacks they had, the deck is stacked with the recorded cards, and every
+  recorded decision is played again with `apply_action`. The table shows
+  exactly what it showed during the game (your cards, the bets, the pot, the
+  cards turned face up after an all-in with each player's win %, the
+  showdown), and the engine checks the record: a replay that does not end
+  with the recorded payouts is refused (`backend/application/replay.py`).
+- **Steps**: one decision, or one street dealt, as at the table. Buttons
+  **|◀ ◀ Play ▶ ▶|** (keyboard: Home, Left, Space, Right, End), the table
+  speeds for Play, and **◀ Hand / Hand ▶** (Page Up / Page Down) to move
+  through the session. The hand history follows the step; timeouts are
+  marked "(ran out of time)".
+- **Show all cards** also shows the cards nobody saw; **Show in BB** is the
+  setting shared by every table.
+- Hands saved **before V1.1** cannot be replayed: their hole cards were not
+  recorded hand by hand (see [format 4](#saved-sessions-format-4)). Their
+  history is shown as text instead.
+
+### % Equity calculator
+
+- 2 to 6 hands, each of two cards (`AsKd`, `A♠ K♦`, `10h 9h`) or **empty for
+  a random hand**, on a board of 0 to 5 cards.
+- **Exact** when every hand is known and there are at most 50,000 possible
+  boards (always from the flop on: 990 boards heads-up). Otherwise **Monte
+  Carlo**: 60,000 random boards, with a **95% margin of error** on each
+  equity (about ±0.4%).
+- For each hand: its **equity** (a tie counts as a share of the pot), its
+  **win %** and its **tie %**.
+- The counting runs in small steps on a timer (about 40 ms each): the screen
+  stays responsive, the numbers refine as it goes, and **Stop** ends it. The
+  random boards come from an RNG of their own.
+- The run-out win % of V1.0.1 uses the same calculator now, with the same
+  numbers to the last bit (checked on 300 random situations before and
+  after the change).
+
+| Example | Equity |
+| --- | ---: |
+| A♥ A♦ against K♣ K♠ on 2♣ 7♦ 9♥ (exact, 990 boards) | 91.6% / 8.4% |
+| A♥ A♦ against K♣ K♠ before the flop (estimate) | about 82% / 18% |
+| A♠ A♦ against a random hand (estimate) | about 85% / 15% |
+
+### ≡ My stats
+
+- Your stats over **every saved session**, for every mode or one of them:
+  sessions, hands, and **VPIP, PFR, 3-bet, aggression factor and frequency,
+  flops seen, WTSD, W$SD, c-bet and fold to c-bet**, each with what was
+  counted ("22 / 107") and what it measures.
+- Computed by the **Bot Arena's own collectors** (`StatsCollector`, Beta
+  1.0): every saved hand is rebuilt from its record and fed to them
+  (`backend/simulation/my_stats.py`), so a VPIP means the same thing in My
+  stats and in the Bot Arena. A test plays seeded simulations and checks that
+  the stats rebuilt from the saved hands equal the live ones, field by field.
+- **Results**, kept apart by mode: cash games in chips and in **bb/100** with
+  its 95% confidence interval (each hand counts in its own big blinds, so
+  sessions at different stakes add up), and **by position**; tournaments and
+  Spin & Go: played, won, in the money, profit and ROI, with the unfinished
+  ones counted apart.
+- Files saved before V1.1 count too: these stats only need the actions, the
+  board and the payouts, which every format records.
+
+### ▤ Session browser
+
+- Every game you play is saved (`backend/data/sessions/`). The browser lists
+  the sessions, most recent first, for every mode or one of them: date,
+  mode, hands, result (net chips, or "2nd of 6 (+1 500)") and replayable
+  hands.
+- A session shows a summary, the **chip graph** (your net chips, hand after
+  hand) and **every hand**: blinds, your position and cards, the board, your
+  result and the pot, sortable. **Replay hand** (or a double click) opens the
+  replayer on that hand.
+- **Open file…** shows a session file from anywhere. A file that cannot be
+  read is reported, never fatal; files are read again only when they change.
+
+> 📸 *Screenshot placeholder: the Tools screen, the replayer during an all-in
+> run-out, and the session browser.*
+
+## Saved sessions: format 4
+
+A bug is fixed: the `Player` objects are reused from one hand to the next,
+and every save wrote all the hands again from them. So the `players` of
+every hand (hole cards, stacks, positions) and its `dealer` were in fact the
+latest hand's, and the cards of the earlier hands were lost.
+
+- The engine now records each hand's own **seats** when the hand starts
+  (`Hand.seats`: name, stack before the antes and blinds, position, hole
+  cards), and a hand's dealer is its Button.
+- Session files are **format version 4**: every hand records its `seats`,
+  the session the `human` player and the `mode` (cash, tournament or spin).
+  `load_session_file()` reads versions 1 to 4.
+- Older files work everywhere except in the replayer: the human is the first
+  seat (the application always seats the human first), the mode is guessed
+  (tournament results with a multiplier: Spin & Go; results or rising
+  blinds: tournament; otherwise a cash game), and each hand's dealer is read
+  from its Button position.
+- `seats` joins the golden tests' `ADDED_HISTORY_FIELDS`: the golden hashes
+  stay exactly the same.
+
+## Engine changes
+
+- `SeatRecord` and `Hand.seats`, recorded by `start_hand`.
+- `Deck.stacked(cards)`: a deck dealing the given cards first (replayer).
+- Nothing else changed in the engine. The benchmark is unchanged within
+  measurement noise: run back to back on the same machine, 1,654 / 1,217 /
+  5,139 hands per second against 1,747 / 1,212 / 4,641 for V1.0.1.
+
+## Objectives
+
+- [x] Hand replayer (built on the Alpha 1.2 history)
+- [x] Equity calculator (Monte Carlo, hands vs hands / vs random, any board)
+- [x] "My stats": the human player's stats across sessions (reuses the Beta 1.0 stats collectors)
+- [x] Session browser (saved sessions, results, chip graph)
+
+## Tests
+
+```text
+1516 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
@@ -1895,7 +2029,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1421 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1516 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

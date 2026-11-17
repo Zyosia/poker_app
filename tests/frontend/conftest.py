@@ -13,7 +13,9 @@ from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 
 from frontend.ui.arena_progress_screen import ArenaProgressScreen  # noqa: E402
 from frontend.ui.arena_watch_screen import ArenaWatchScreen  # noqa: E402
+from frontend.ui.equity_screen import EquityScreen  # noqa: E402
 from frontend.ui.game_screen import GameScreen  # noqa: E402
+from frontend.ui.replayer_screen import ReplayerScreen  # noqa: E402
 
 MAX_EVENT_LOOP_TURNS = 5000
 
@@ -31,7 +33,9 @@ def qapp() -> QApplication:
 
 def tear_down(widget: QWidget) -> None:
     """Stop a screen's timers and background work before it is destroyed."""
-    if isinstance(widget, GameScreen | ArenaWatchScreen):
+    if isinstance(
+        widget, GameScreen | ArenaWatchScreen | ReplayerScreen | EquityScreen
+    ):
         widget.stop()
     elif isinstance(widget, ArenaProgressScreen):
         widget.cancel()

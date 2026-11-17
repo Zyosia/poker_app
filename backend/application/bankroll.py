@@ -25,25 +25,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from .game_modes import MODE_LABELS, GameMode
+
 DEFAULT_BALANCE = 100_000
 RELOAD_THRESHOLD = 1_000
 """Below this balance, the main menu offers a reload to the default."""
 
 RECOMMENDED_BUY_INS = {"cash": 20, "tournament": 50, "spin": 50}
 """Rules of thumb: buy-ins a bankroll should hold for each mode."""
-
-
-class GameMode(StrEnum):
-    CASH = "cash"
-    TOURNAMENT = "tournament"
-    SPIN = "spin"
-
-
-MODE_LABELS = {
-    GameMode.CASH: "Cash game",
-    GameMode.TOURNAMENT: "Tournament",
-    GameMode.SPIN: "Spin & Go",
-}
 
 
 class TransactionType(StrEnum):

@@ -100,6 +100,11 @@ class TableWidget(QWidget):
         self._layout_children()
         self.update()
 
+    @property
+    def state(self) -> TableState:
+        """The state displayed."""
+        return self._state
+
     def bet_texts(self) -> list[str]:
         """The labels drawn for the bets in front of the seats (seat order)."""
         return [

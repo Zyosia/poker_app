@@ -50,6 +50,21 @@ class PotEvent:
 
 
 @dataclass(frozen=True)
+class SeatRecord:
+    """A player dealt into a hand, as the hand started.
+
+    ``Player`` objects are reused from one hand to the next, so their state
+    describes the latest hand only; this record keeps each hand's own.
+    """
+
+    name: str
+    stack: int
+    """Before the antes and the blinds."""
+    position: Position
+    hole_cards: tuple[Card, ...]
+
+
+@dataclass(frozen=True)
 class PotResult:
     """Outcome of one pot (main or side) at showdown."""
 
@@ -158,6 +173,8 @@ class Hand:
     blind_level: BlindLevel | None = None
     """The blinds and ante the hand was dealt with."""
 
+    seats: list[SeatRecord] = field(default_factory=list)
+    """The players dealt in, clockwise from the first seat (``start_hand``)."""
     community_cards: list[Card] = field(default_factory=list)
     pot: int = 0
     dead_money: int = 0

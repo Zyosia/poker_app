@@ -13,9 +13,16 @@ File format versions:
   after which no more betting was possible and the cards were turned face
   up (null if never), and ``timed_out_actions``, the actions decided by
   the human's clock running out.
+- **4** (V1.1): every hand records its ``seats``, the players dealt in as
+  the hand started (stack before the antes and blinds, position, hole
+  cards), so each hand can be replayed. Before, the ``players`` of every
+  hand were rewritten at each save with the latest hand's state. The
+  session records the ``human`` player's name and the ``mode`` (cash,
+  tournament or spin).
 
-``load_session_file`` reads every version and returns version 3 data; older
-hands get ``revealed_after_action`` null (not recorded) and no timeouts.
+``load_session_file`` reads every version and returns version 4 data; older
+hands get ``revealed_after_action`` null (not recorded), no timeouts and
+``seats`` null, and older sessions a null ``human`` and ``mode``.
 """
 
 import json
@@ -25,13 +32,16 @@ from pathlib import Path
 from typing import Any
 
 from backend.poker_engine.blinds import BlindLevel
-from backend.poker_engine.models import Hand, Player
+from backend.poker_engine.constants import Position
+from backend.poker_engine.models import Hand, Player, SeatRecord
 from backend.poker_engine.session import GameSession
+
+from .game_modes import GameMode
 
 SESSION_DIR = Path(__file__).resolve().parents[1] / "data" / "sessions"
 
-FORMAT_VERSION = 3
-SUPPORTED_FORMAT_VERSIONS = (1, 2, 3)
+FORMAT_VERSION = 4
+SUPPORTED_FORMAT_VERSIONS = (1, 2, 3, 4)
 
 
 class SessionFileError(ValueError):
@@ -51,8 +61,28 @@ def serialize_player(player: Player) -> dict[str, Any]:
     }
 
 
+def serialize_seat(seat: SeatRecord) -> dict[str, Any]:
+    return {
+        "name": seat.name,
+        "stack": seat.stack,
+        "position": seat.position,
+        "hole_cards": list(seat.hole_cards),
+    }
+
+
 def serialize_hand(hand: Hand, hand_number: int) -> dict[str, Any]:
-    """Serialize one poker hand."""
+    """Serialize one poker hand.
+
+    ``seats`` is the hand's own record; ``players`` is the state of the
+    ``Player`` objects, which is the hand's own only while it is the latest.
+    The dealer is the hand's Button (before format 4: the table's dealer at
+    the time of the save).
+    """
+    dealer = next(
+        (seat.name for seat in hand.seats if seat.position == Position.BTN),
+        hand.table.dealer.name,
+    )
+
     return {
         "hand_number": hand_number,
         "blind_level": (
@@ -60,8 +90,9 @@ def serialize_hand(hand: Hand, hand_number: int) -> dict[str, Any]:
             if hand.blind_level is not None
             else None
         ),
-        "dealer": hand.table.dealer.name,
-        "dealer_index": hand.table.dealer_index,
+        "dealer": dealer,
+        "dealer_index": [player.name for player in hand.table.players].index(dealer),
+        "seats": [serialize_seat(seat) for seat in hand.seats],
         "players": [
             {
                 "name": player.name,
@@ -99,16 +130,20 @@ def serialize_hand(hand: Hand, hand_number: int) -> dict[str, Any]:
 
 
 def serialize_session(
-    session: GameSession, tournament: dict[str, Any] | None = None
+    session: GameSession,
+    tournament: dict[str, Any] | None = None,
+    human: str | None = None,
+    mode: GameMode | None = None,
 ) -> dict[str, Any]:
     """Serialize the complete poker session.
 
-    Player state inside a hand reflects the latest hand only, because players
-    are reused from one hand to the next. ``tournament`` holds the results of
-    a tournament session.
+    ``tournament`` holds the results of a tournament session; ``human`` is
+    the name of the player the user played, ``mode`` the kind of game.
     """
     data: dict[str, Any] = {
         "format_version": FORMAT_VERSION,
+        "human": human,
+        "mode": mode,
         "session": {
             "hand_count": session.hand_number,
             "config": asdict(session.config),
@@ -138,6 +173,8 @@ def save_session(
     session: GameSession,
     file_path: Path | None = None,
     tournament: dict[str, Any] | None = None,
+    human: str | None = None,
+    mode: GameMode | None = None,
 ) -> Path:
     """Write the current state of a session, replacing any previous save.
 
@@ -152,7 +189,7 @@ def save_session(
 
     with temporary_path.open("w", encoding="utf-8") as file:
         json.dump(
-            serialize_session(session, tournament=tournament),
+            serialize_session(session, tournament=tournament, human=human, mode=mode),
             file,
             indent=4,
             ensure_ascii=False,
@@ -169,8 +206,9 @@ def load_session_file(file_path: Path) -> dict[str, Any]:
     Older files are upgraded in memory, one version at a time. Version 1:
     the blinds of the configuration become the blind level of the session
     and of every hand, with no ante. Version 2: the hands get no recorded
-    reveal and no timeouts. Raises ``SessionFileError`` with a clear message for an
-    unknown version or a file that is not a session.
+    reveal and no timeouts. Version 3: the hands get no seats, the session
+    no human and no mode. Raises ``SessionFileError`` with a clear message
+    for an unknown version or a file that is not a session.
     """
     try:
         data = json.loads(file_path.read_text(encoding="utf-8"))
@@ -197,6 +235,9 @@ def load_session_file(file_path: Path) -> dict[str, Any]:
     if data["format_version"] == 2:
         _upgrade_from_version_2(data)
 
+    if data["format_version"] == 3:
+        _upgrade_from_version_3(data)
+
     return data
 
 
@@ -219,3 +260,12 @@ def _upgrade_from_version_2(data: dict[str, Any]) -> None:
     for hand in data["hands"]:
         hand["revealed_after_action"] = None
         hand["timed_out_actions"] = []
+
+
+def _upgrade_from_version_3(data: dict[str, Any]) -> None:
+    data["format_version"] = 4
+    data["human"] = None
+    data["mode"] = None
+
+    for hand in data["hands"]:
+        hand["seats"] = None
