@@ -18,6 +18,8 @@ from backend.poker_engine.constants import ActionType
 from backend.poker_engine.session import GameConfig, create_session
 from frontend.ui.game_screen import GameScreen
 from frontend.ui.main_window import MainWindow
+from frontend.ui.tournament_setup_screen import TournamentSetupScreen
+from tests.frontend.windows import cash_setup, open_table
 
 HUMAN = "Hero"
 QUICK = ClockPreset("Quick", 10, 20, top_up=5, top_up_every_hands=1, max_time_bank=40)
@@ -226,10 +228,12 @@ def test_setup_screens_default_and_remember_the_clock(
 ) -> None:
     path = tmp_path / "profile.json"
     window = MainWindow(save_sessions=False, profile=ProfileStore(path))
-    tournament = window.tournament_setup_screen
+    tournament = open_table(window, "tournament").setup_screen
+    cash = cash_setup(open_table(window, "cash"))
+    assert isinstance(tournament, TournamentSetupScreen)
 
-    assert window.cash_setup_screen.clock_combo.choice() == "Standard"
-    assert window.spin_setup_screen.clock_combo.choice() == "Fast"
+    assert cash.clock_combo.choice() == "Standard"
+    assert open_table(window, "spin").setup_screen.clock_combo.choice() == "Fast"
     assert tournament.clock_combo.choice() == "Fast", "Turbo by default"
 
     tournament.structure_combo.setCurrentIndex(
@@ -237,20 +241,22 @@ def test_setup_screens_default_and_remember_the_clock(
     )
     assert tournament.clock_combo.choice() == "Standard"
 
-    combo = window.cash_setup_screen.clock_combo
+    combo = cash.clock_combo
     combo.activated.emit(combo.findData("Hyper"))  # The user picks Hyper.
     window.close()
 
     reopened = MainWindow(save_sessions=False, profile=ProfileStore(path))
-    assert reopened.cash_setup_screen.clock_combo.choice() == "Hyper"
-    assert reopened.cash_setup_screen.clock_combo.preset() == clock_preset("Hyper")
+    reopened_cash = cash_setup(open_table(reopened, "cash"))
+    assert reopened_cash.clock_combo.choice() == "Hyper"
+    assert reopened_cash.clock_combo.preset() == clock_preset("Hyper")
     reopened.close()
 
 
 def test_a_cash_game_starts_with_the_chosen_clock(qapp: QApplication) -> None:
     window = MainWindow(save_sessions=False)
-    window.start_game(window.cash_setup_screen.current_settings())
+    table = open_table(window, "cash")
+    cash_setup(table).play_button.click()
 
-    clock = window.game_screen.action_clock
+    clock = table.table_screen.action_clock
     assert clock is not None and clock.preset.name == "Standard"
     window.close()

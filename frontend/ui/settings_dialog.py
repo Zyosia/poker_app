@@ -102,12 +102,20 @@ class SettingsDialog(QDialog):
         self.big_blinds_check = QCheckBox("Show amounts in big blinds")
         self.four_colors_check = QCheckBox("Four-colour deck (♦ blue, ♣ green)")
         self.hints_check = QCheckBox("Bankroll-management hints on setup screens")
+        self.to_front_check = QCheckBox(
+            "Bring the table where it is your turn to the front"
+        )
+        self.to_front_check.setToolTip(
+            "With several tables open: once you act, the next table waiting "
+            "for you comes forward."
+        )
 
         for check, name in (
             (self.auto_next_check, "auto_next_hand"),
             (self.big_blinds_check, "show_in_big_blinds"),
             (self.four_colors_check, "four_color_deck"),
             (self.hints_check, "bankroll_hints"),
+            (self.to_front_check, "table_to_front"),
         ):
             check.toggled.connect(
                 lambda checked, name=name: self.setting_changed.emit(name, checked)
@@ -143,6 +151,7 @@ class SettingsDialog(QDialog):
         tables.addRow(self.big_blinds_check)
         tables.addRow(self.four_colors_check)
         tables.addRow(self.hints_check)
+        tables.addRow(self.to_front_check)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.defaults_button)
@@ -176,6 +185,7 @@ class SettingsDialog(QDialog):
             self.big_blinds_check,
             self.four_colors_check,
             self.hints_check,
+            self.to_front_check,
         ]
 
         for widget in widgets:
@@ -193,6 +203,7 @@ class SettingsDialog(QDialog):
         self.big_blinds_check.setChecked(settings.show_in_big_blinds)
         self.four_colors_check.setChecked(settings.four_color_deck)
         self.hints_check.setChecked(settings.bankroll_hints)
+        self.to_front_check.setChecked(settings.table_to_front)
 
         for widget in widgets:
             widget.blockSignals(False)

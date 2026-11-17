@@ -23,6 +23,7 @@ from frontend.ui.arena_watch_screen import ArenaWatchScreen
 from frontend.ui.game_screen import GameScreen
 from frontend.ui.main_window import MainWindow
 from frontend.ui.tournament_screen import TournamentScreen
+from tests.frontend.windows import open_table
 
 HUMAN = "Hero"
 
@@ -237,15 +238,17 @@ def test_the_toggle_is_shared_by_every_table_and_remembered(
 ) -> None:
     path = tmp_path / "profile.json"
     window = MainWindow(save_sessions=False, profile=ProfileStore(path))
+    cash = open_table(window, "cash")
+    tournament = open_table(window, "tournament")
 
-    window.game_screen.big_blinds_check.setChecked(True)
+    cash.table_screen.big_blinds_check.setChecked(True)
 
-    assert window.tournament_screen.show_in_big_blinds
+    assert tournament.table_screen.show_in_big_blinds
     assert window.arena_watch_screen.show_in_big_blinds
     window.close()
 
     reopened = MainWindow(save_sessions=False, profile=ProfileStore(path))
-    assert reopened.game_screen.show_in_big_blinds
+    assert open_table(reopened, "cash").table_screen.show_in_big_blinds
     assert reopened.arena_watch_screen.big_blinds_check.isChecked()
 
     reopened.arena_watch_screen.big_blinds_check.setChecked(False)

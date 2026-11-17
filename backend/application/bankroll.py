@@ -16,6 +16,9 @@ Rules:
   Leaving a tournament still running forfeits it (the buy-in is lost); so
   does closing the application during one.
 
+Several games can be open at once (multi-tabling): each has its own account
+and its own entry in ``Bankroll.open_games``.
+
 There is no real money anywhere in the application.
 """
 
@@ -143,11 +146,11 @@ class OpenGame:
 
 @dataclass
 class Bankroll:
-    """The balance, its ledger and the game being played, if any."""
+    """The balance, its ledger and the games being played."""
 
     balance: int = DEFAULT_BALANCE
     transactions: list[Transaction] = field(default_factory=list)
-    open_game: OpenGame | None = None
+    open_games: list[OpenGame] = field(default_factory=list)
     now: Callable[[], datetime] = field(default=datetime.now, repr=False, compare=False)
 
     def can_afford(self, amount: int) -> bool:
@@ -234,15 +237,16 @@ class Bankroll:
 
     # --- Crash recovery ---------------------------------------------------------
 
-    def recover_open_game(self) -> Transaction | None:
-        """Settle a game the application closed during (see the module rules)."""
-        game = self.open_game
+    def open_game(self, game_id: str) -> OpenGame | None:
+        return next((game for game in self.open_games if game.game_id == game_id), None)
 
-        if game is None:
-            return None
+    def recover_open_games(self) -> list[Transaction]:
+        """Settle the games the application closed during (see the module rules)."""
+        games, self.open_games = self.open_games, []
 
-        self.open_game = None
+        return [self._recover(game) for game in games]
 
+    def _recover(self, game: OpenGame) -> Transaction:
         if game.mode == GameMode.CASH:
             return self.record(
                 TransactionType.CASH_OUT,
@@ -267,7 +271,7 @@ class Bankroll:
         return {
             "balance": self.balance,
             "transactions": [t.to_dict() for t in self.transactions],
-            "open_game": self.open_game.to_dict() if self.open_game else None,
+            "open_games": [game.to_dict() for game in self.open_games],
         }
 
     @classmethod
@@ -278,17 +282,21 @@ class Bankroll:
         try:
             balance = _checked(data["balance"], int)
             transactions = data["transactions"]
-            open_game = data.get("open_game")
+            open_games = data.get("open_games", [])
+            single = data.get("open_game")  # Before multi-tabling (V1.3).
         except (KeyError, TypeError) as error:
             raise BankrollDataError(f"Invalid bankroll: {error}") from error
 
-        if not isinstance(transactions, list):
-            raise BankrollDataError("The bankroll's transactions are not a list.")
+        if not isinstance(transactions, list) or not isinstance(open_games, list):
+            raise BankrollDataError("The bankroll's transactions or games are invalid.")
+
+        if single:
+            open_games = [*open_games, single]
 
         return cls(
             balance=balance,
             transactions=[Transaction.from_dict(item) for item in transactions],
-            open_game=OpenGame.from_dict(open_game) if open_game else None,
+            open_games=[OpenGame.from_dict(item) for item in open_games],
         )
 
 
@@ -323,14 +331,14 @@ class GameAccount:
         self.mode = mode
         self.description = description
         self._save = save
-        self.game_id = bankroll.now().strftime(f"{mode.value}_%Y%m%d_%H%M%S_%f")
+        self.game_id = _new_game_id(bankroll, mode)
         self.closed = False
 
     def start(self, buy_in: int, stack: int = 0) -> None:
         """Pay the buy-in; ``stack`` is a cash game's starting stack."""
         self._record(TransactionType.BUY_IN, -buy_in, "buy-in")
-        self.bankroll.open_game = OpenGame(
-            self.game_id, self.mode, self.description, stack=stack
+        self.bankroll.open_games.append(
+            OpenGame(self.game_id, self.mode, self.description, stack=stack)
         )
         self._save()
 
@@ -345,9 +353,9 @@ class GameAccount:
 
     def update_stack(self, stack: int) -> None:
         """Keep a cash game's stack behind up to date (saved if it changed)."""
-        game = self.bankroll.open_game
+        game = self.bankroll.open_game(self.game_id)
 
-        if self.closed or game is None or game.game_id != self.game_id:
+        if self.closed or game is None:
             return
 
         if game.stack != stack:
@@ -384,14 +392,28 @@ class GameAccount:
         if kind is not None:
             self._record(kind, amount, what)
 
-        if (
-            self.bankroll.open_game is not None
-            and self.bankroll.open_game.game_id == self.game_id
-        ):
-            self.bankroll.open_game = None
+        game = self.bankroll.open_game(self.game_id)
+
+        if game is not None:
+            self.bankroll.open_games.remove(game)
 
         self.closed = True
         self._save()
+
+
+def _new_game_id(bankroll: Bankroll, mode: GameMode) -> str:
+    """The mode and the time, unique among the open games (several tables can
+    start within the same microsecond)."""
+    base = bankroll.now().strftime(f"{mode.value}_%Y%m%d_%H%M%S_%f")
+    taken = {game.game_id for game in bankroll.open_games}
+    game_id = base
+    copy = 1
+
+    while game_id in taken:
+        copy += 1
+        game_id = f"{base}_{copy}"
+
+    return game_id
 
 
 def _checked(value: Any, kind: type, optional: bool = False) -> Any:

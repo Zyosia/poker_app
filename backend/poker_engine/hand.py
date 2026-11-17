@@ -37,7 +37,7 @@ POSITIONS_BY_PLAYER_COUNT: dict[int, tuple[Position, ...]] = {
         Position.HJ,
         Position.CO,
     ),
-    # Seven to nine players: full-ring hands read from other sites' histories.
+    # Seven to nine players: full-ring tables.
     7: (*_FIRST_SEATS, Position.UTG, Position.LJ, Position.HJ, Position.CO),
     8: (
         *_FIRST_SEATS,

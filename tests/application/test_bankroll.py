@@ -63,7 +63,7 @@ def test_a_cash_game_pays_its_buy_in_and_rebuys_and_cashes_out(
     assert [t.balance_after for t in bankroll.transactions] == [99_000, 98_000, 100_350]
     assert all(t.mode == GameMode.CASH for t in bankroll.transactions)
     assert len({t.game_id for t in bankroll.transactions}) == 1
-    assert bankroll.open_game is None
+    assert bankroll.open_games == []
     assert bankroll.net_result(GameMode.CASH) == 350
 
     cash.cash_out(5000)  # A second cash-out is ignored.
@@ -96,7 +96,7 @@ def test_a_tournament_without_a_prize_records_no_payout(store: ProfileStore) -> 
     tournament.finish(prize=0)
 
     assert kinds(store.bankroll) == [(TransactionType.BUY_IN, -500)]
-    assert store.bankroll.open_game is None
+    assert store.bankroll.open_games == []
 
 
 @pytest.mark.parametrize("multiplier", [2, 1000])
@@ -126,7 +126,7 @@ def test_a_buy_in_larger_than_the_balance_is_refused(store: ProfileStore) -> Non
         cash.start(buy_in=1000, stack=1000)
 
     assert store.bankroll.balance == 800
-    assert store.bankroll.open_game is None
+    assert store.bankroll.open_games == []
     assert not cash.can_pay(1000)
     assert store.bankroll.can_afford(800)
 
@@ -137,7 +137,7 @@ def test_every_change_is_saved_at_once(store: ProfileStore) -> None:
 
     reloaded = ProfileStore(store.path)
     assert reloaded.bankroll.balance == 99_000
-    assert reloaded.bankroll.open_game is not None
+    assert [game.game_id for game in reloaded.bankroll.open_games] == [cash.game_id]
 
 
 # --- Adjustments ----------------------------------------------------------------
@@ -215,27 +215,103 @@ def test_a_crash_in_a_cash_game_cashes_out_the_last_saved_stack(
     # The application closes here, without cashing out.
 
     next_launch = ProfileStore(store.path)
-    recovered = next_launch.bankroll.recover_open_game()
+    [recovered] = next_launch.bankroll.recover_open_games()
 
-    assert recovered is not None
     assert recovered.type == TransactionType.CASH_OUT
     assert recovered.amount == 740
     assert "closed during the session" in recovered.description
     assert next_launch.bankroll.balance == 99_740
-    assert next_launch.bankroll.open_game is None
-    assert next_launch.bankroll.recover_open_game() is None
+    assert next_launch.bankroll.open_games == []
+    assert next_launch.bankroll.recover_open_games() == []
 
 
 def test_closing_during_a_tournament_forfeits_it(store: ProfileStore) -> None:
     account(store, GameMode.TOURNAMENT, "Tournament (Turbo)").start(buy_in=1000)
 
     next_launch = ProfileStore(store.path)
-    recovered = next_launch.bankroll.recover_open_game()
+    [recovered] = next_launch.bankroll.recover_open_games()
 
-    assert recovered is not None
     assert recovered.type == TransactionType.FORFEIT
     assert recovered.amount == 0
     assert next_launch.bankroll.balance == 99_000
+
+
+# --- Several tables at once ----------------------------------------------------
+
+
+def test_several_games_are_open_at_once_each_with_its_own_account(
+    store: ProfileStore,
+) -> None:
+    first = account(store, GameMode.CASH, "Cash game 5/10")
+    first.start(buy_in=1000, stack=1000)
+    second = account(store, GameMode.CASH, "Cash game 25/50")
+    second.start(buy_in=5000, stack=5000)
+    spin = account(store, GameMode.SPIN, "Spin & Go")
+    spin.start(buy_in=500)
+
+    assert len({first.game_id, second.game_id, spin.game_id}) == 3
+    assert store.bankroll.balance == 93_500
+
+    second.update_stack(6200)
+    first.cash_out(800)
+
+    assert [game.game_id for game in store.bankroll.open_games] == [
+        second.game_id,
+        spin.game_id,
+    ]
+    open_second = store.bankroll.open_game(second.game_id)
+    assert open_second is not None and open_second.stack == 6200
+    assert store.bankroll.balance == 94_300
+
+
+def test_a_crash_with_several_tables_open_settles_each_of_them(
+    store: ProfileStore,
+) -> None:
+    cash = account(store, GameMode.CASH, "Cash game 5/10")
+    cash.start(buy_in=1000, stack=1000)
+    cash.update_stack(1300)
+    account(store, GameMode.TOURNAMENT, "Tournament (Turbo)").start(buy_in=2000)
+
+    next_launch = ProfileStore(store.path)
+    recovered = next_launch.bankroll.recover_open_games()
+
+    assert [(t.type, t.amount) for t in recovered] == [
+        (TransactionType.CASH_OUT, 1300),
+        (TransactionType.FORFEIT, 0),
+    ]
+    assert next_launch.bankroll.balance == 100_000 - 1000 - 2000 + 1300
+    assert next_launch.bankroll.open_games == []
+
+
+def test_tables_opened_at_the_same_instant_get_distinct_ids(
+    store: ProfileStore,
+) -> None:
+    store.bankroll.now = lambda: datetime(2026, 11, 17, 12, 0, 0)
+    ids = []
+
+    for _ in range(3):
+        cash = account(store, GameMode.CASH)
+        cash.start(buy_in=100, stack=100)
+        ids.append(cash.game_id)
+
+    assert len(set(ids)) == 3
+
+
+def test_a_profile_saved_before_multi_tabling_keeps_its_open_game() -> None:
+    data = Bankroll().to_dict()
+    del data["open_games"]
+    data["open_game"] = {
+        "game_id": "cash_1",
+        "mode": "cash",
+        "description": "Cash game 5/10",
+        "stack": 900,
+    }
+
+    bankroll = Bankroll.from_dict(data)
+
+    assert [(game.game_id, game.stack) for game in bankroll.open_games] == [
+        ("cash_1", 900)
+    ]
 
 
 def test_leaving_a_running_tournament_forfeits_it(store: ProfileStore) -> None:
@@ -248,7 +324,7 @@ def test_leaving_a_running_tournament_forfeits_it(store: ProfileStore) -> None:
         (TransactionType.BUY_IN, -1000),
         (TransactionType.FORFEIT, 0),
     ]
-    assert store.bankroll.open_game is None
+    assert store.bankroll.open_games == []
 
 
 def test_the_simulations_never_touch_the_bankroll() -> None:

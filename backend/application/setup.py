@@ -3,13 +3,9 @@
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
-from backend.bots.basic_bot import BasicBot
-from backend.bots.factory import create_bot as create_bot_of_type
-from backend.bots.factory import get_bot_type
-from backend.bots.random_bot import RandomBot
+from backend.bots.factory import create_bot, get_bot_type
 from backend.poker_engine.constants import MAX_TABLE_SEATS
 from backend.poker_engine.session import GameConfig, create_session
 
@@ -26,7 +22,18 @@ from .tournament import (
     create_spin,
 )
 
-BOT_NAMES = ("Alex", "Bella", "Carlos", "Dana", "Elio", "Fiona")
+BOT_NAMES = (
+    "Alex",
+    "Bella",
+    "Carlos",
+    "Dana",
+    "Elio",
+    "Fiona",
+    "Gus",
+    "Hana",
+    "Ivo",
+)
+"""One more than a full table needs: a bot never takes the human's name."""
 DEFAULT_PLAYER_NAME = "Hero"
 MAX_PLAYER_NAME_LENGTH = 12
 
@@ -37,39 +44,23 @@ DEFAULT_TOURNAMENT_BUY_IN = 1_000
 DEFAULT_SPIN_BUY_IN = 1_000
 
 
-class BotLevel(StrEnum):
-    EASY = "easy"
-    NORMAL = "normal"
-
-
 @dataclass(frozen=True)
 class GameSettings:
-    """Choices made by the user before starting a game."""
+    """Choices made by the user before starting a cash game.
+
+    ``opponents`` lists the play style key of every bot (see
+    ``backend.bots.factory``): 1 to 8 bots, up to a full-ring table.
+    """
 
     player_name: str = DEFAULT_PLAYER_NAME
-    opponent_count: int = 3
-    bot_level: BotLevel = BotLevel.NORMAL
+    opponents: tuple[str, ...] = ("tag", "lag", "station")
     starting_stack: int = 1000
     small_blind: int = 5
     big_blind: int = 10
 
     def __post_init__(self) -> None:
         check_player_name(self.player_name)
-
-        if not 1 <= self.opponent_count <= MAX_TABLE_SEATS - 1:
-            raise ValueError(
-                f"The number of opponents must be 1 to {MAX_TABLE_SEATS - 1}."
-            )
-
-
-def create_bot(level: BotLevel, rng: random.Random) -> PlayerController:
-    """Create a bot of the given level with its own random generator."""
-    bot_rng = random.Random(rng.random())
-
-    if level == BotLevel.EASY:
-        return RandomBot(bot_rng)
-
-    return BasicBot(bot_rng)
+        check_opponents(self.opponents)
 
 
 def create_game(
@@ -83,9 +74,7 @@ def create_game(
     The human takes the first seat and the first dealer is drawn at random.
     """
     rng = rng or random.Random()
-
-    bot_names = [name for name in BOT_NAMES if name != settings.player_name]
-    bot_names = bot_names[: settings.opponent_count]
+    bot_names, controllers = _seat_bots(settings.player_name, settings.opponents, rng)
 
     session = create_session(
         player_names=[settings.player_name, *bot_names],
@@ -97,10 +86,6 @@ def create_game(
         ),
     )
     session.table.dealer_index = rng.randrange(len(session.players))
-
-    controllers: dict[str, PlayerController] = {
-        name: create_bot(settings.bot_level, rng) for name in bot_names
-    }
     controllers[settings.player_name] = human_controller
 
     return PokerGame(session=session, controllers=controllers, save_path=save_path)
@@ -114,7 +99,7 @@ LEVELS_BY_TIME = "time"
 
 @dataclass(frozen=True)
 class TournamentSettings:
-    """Choices made before a tournament: you against 1 to 5 bots.
+    """Choices made before a tournament: you against 1 to 8 bots.
 
     ``opponents`` lists the play style key of every bot (see
     ``backend.bots.factory``). Levels go up by hands or by playing time.
@@ -131,20 +116,13 @@ class TournamentSettings:
 
     def __post_init__(self) -> None:
         check_player_name(self.player_name)
-
-        if not 1 <= len(self.opponents) <= MAX_TABLE_SEATS - 1:
-            raise ValueError(
-                f"The number of opponents must be 1 to {MAX_TABLE_SEATS - 1}."
-            )
+        check_opponents(self.opponents)
 
         if self.levels_by not in (LEVELS_BY_HANDS, LEVELS_BY_TIME):
             raise ValueError("Levels go up by hands or by time.")
 
         if self.starting_stack <= 0 or self.buy_in < 0:
             raise ValueError("Invalid starting stack or buy-in.")
-
-        for bot in self.opponents:
-            get_bot_type(bot)
 
         structure_by_name(self.structure)
 
@@ -205,13 +183,22 @@ def check_player_name(name: str) -> None:
         )
 
 
+def check_opponents(opponents: tuple[str, ...]) -> None:
+    """1 bot (heads-up) to a full-ring table, each of a known play style."""
+    if not 1 <= len(opponents) <= MAX_TABLE_SEATS - 1:
+        raise ValueError(f"The number of opponents must be 1 to {MAX_TABLE_SEATS - 1}.")
+
+    for bot in opponents:
+        get_bot_type(bot)
+
+
 def _seat_bots(
     player_name: str, opponents: tuple[str, ...], rng: random.Random
 ) -> tuple[list[str], dict[str, PlayerController]]:
     """Name the bots, each with its own random generator."""
     names = [name for name in BOT_NAMES if name != player_name][: len(opponents)]
-    controllers = {
-        name: create_bot_of_type(bot, random.Random(rng.getrandbits(64)))
+    controllers: dict[str, PlayerController] = {
+        name: create_bot(bot, random.Random(rng.getrandbits(64)))
         for name, bot in zip(names, opponents, strict=True)
     }
 

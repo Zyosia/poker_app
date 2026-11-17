@@ -10,6 +10,7 @@ from collections.abc import Collection, Mapping
 from typing import Protocol
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -61,6 +62,8 @@ from frontend.sounds import Sound, SoundPlayer, action_sound
 CLOCK_TICK_MS = 100
 CLOCK_BAR_STEPS = 1000
 CLOCK_COLORS = {"normal": "#3ddc84", "warning": "#f2a33a", "bank": "#5aa9f2"}
+HISTORY_MIN_WIDTH = 1060
+"""Narrower (several tables side by side), the hand history is hidden."""
 
 
 class TableGame(Protocol):
@@ -197,6 +200,9 @@ class GameScreen(QWidget):
     speed_changed = Signal(str)
     """Emitted with the speed the user picked (see ``frontend.pacing``)."""
     auto_next_hand_changed = Signal(bool)
+    your_turn_changed = Signal(bool)
+    """True when the table starts waiting for your decision, False once it
+    no longer does (you acted, the table paused or stopped)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -227,6 +233,8 @@ class GameScreen(QWidget):
         self._alerted_turn: tuple[Hand, int] | None = None
         self.bot_cards = BotCards.SHOWDOWN
         """When you see the bots' cards (the display only)."""
+        self.your_turn = False
+        """The table waits for your decision (see ``your_turn_changed``)."""
 
         self._step_timer = QTimer(self)
         self._step_timer.setSingleShot(True)
@@ -340,7 +348,9 @@ class GameScreen(QWidget):
 
         history_title = QLabel("HAND HISTORY")
         history_title.setObjectName("sectionTitle")
-        right_layout = QVBoxLayout()
+        self.history_panel = QWidget()
+        right_layout = QVBoxLayout(self.history_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(history_title)
         right_layout.addWidget(self.history_view, stretch=1)
 
@@ -348,7 +358,11 @@ class GameScreen(QWidget):
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(14)
         layout.addLayout(left_layout, stretch=1)
-        layout.addLayout(right_layout)
+        layout.addWidget(self.history_panel)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self.history_panel.setVisible(self.width() >= HISTORY_MIN_WIDTH)
 
     # ------------------------------------------------------------------
     # Game flow
@@ -493,6 +507,7 @@ class GameScreen(QWidget):
 
         self.account = None
         self._game = None
+        self._update_your_turn()
 
     def _set_clock(self, preset: ClockPreset | None) -> None:
         """Give the human a fresh action clock (or none), and reset Pause."""
@@ -531,6 +546,8 @@ class GameScreen(QWidget):
                 self.action_panel.set_legal_actions(
                     (), pot=0, current_bet=0, player_bet=0
                 )
+
+            self._update_your_turn()
             return
 
         if clock is not None:
@@ -658,17 +675,31 @@ class GameScreen(QWidget):
         if self.account is not None:
             self.account.update_stack(self._human_player().stack)
 
-        if self.paused:
-            return
+        if not self.paused:
+            if hand.finished:
+                self._count_hand_for_clock(hand)
+                self._show_hand_result(hand)
+            elif game.is_waiting_for_human:
+                self._enable_human_actions(hand)
+            else:
+                self._disable_human_actions()
+                self._step_timer.start(self._next_step_delay(hand))
 
-        if hand.finished:
-            self._count_hand_for_clock(hand)
-            self._show_hand_result(hand)
-        elif game.is_waiting_for_human:
-            self._enable_human_actions(hand)
-        else:
-            self._disable_human_actions()
-            self._step_timer.start(self._next_step_delay(hand))
+        self._update_your_turn()
+
+    def _update_your_turn(self) -> None:
+        """Tell whether the table now waits for you, when that changes."""
+        game = self._game
+        waiting = (
+            game is not None
+            and not self.paused
+            and game.is_hand_in_progress
+            and game.is_waiting_for_human
+        )
+
+        if waiting != self.your_turn:
+            self.your_turn = waiting
+            self.your_turn_changed.emit(waiting)
 
     def _next_step_delay(self, hand: Hand) -> int:
         """Each street of a run-out is dealt a little slower than an action."""

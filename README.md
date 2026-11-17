@@ -54,6 +54,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V1.2 — Settings and Sound](#v12--settings-and-sound)
 
+- [V1.3 — Multi-tabling and Full Ring](#v13--multi-tabling-and-full-ring)
+
 - [V2.x — AI and Strategies](#v2x--ai-and-strategies)
 
 - [V3.x — Cash Game Extras](#v3x--cash-game-extras)
@@ -633,7 +635,9 @@ frontend/
 ├── sound_synthesis.py     Makes the sound files (python -m frontend.sound_synthesis)
 ├── assets/sounds/         The sound effects (WAV)
 ├── ui/
-│   ├── main_window.py     Navigation stack (Back works everywhere), settings
+│   ├── navigation_window.py  Navigation stack (Back works everywhere), ⚙ button
+│   ├── main_window.py     The lobby: menu, tools, Bot Arena, settings, tables
+│   ├── game_window.py     One game in its own window (V1.3)
 │   ├── settings_dialog.py The settings window (V1.2)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
@@ -645,7 +649,8 @@ frontend/
 │       my_stats_screen.py, session_browser_screen.py   Tools (V1.1)
 └── components/            Card, seat, table, action panel, line and bar charts,
                            clock choice, buy-in and bankroll line, card picker,
-                           range grid, bankroll bar and settings button
+                           range grid, bankroll bar, settings button and
+                           bot picker
 
 tests/                     Engine, application, bots, simulation and UI tests
 ```
@@ -717,22 +722,25 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 
 The application is a **PySide6 desktop application**. It opens on a **main
 menu** listing the modes: **Cash Game**, **Tournament**, **Spin & Go** and
-**Bot Arena**, and **Tools**. The menu and the setup screens of the paid
-modes show your **bankroll** and open the **Bankroll** screen. Every screen
-has a Back button, and the **⚙** button at the top left opens the
-**settings** (your name, sounds, table options) from anywhere, see
-[V1.2](#v12--settings-and-sound).
+**Bot Arena**, and **Tools**. The Cash Game, the Tournament and the Spin &
+Go each open in a **window of their own**, so several games are played at
+once (multi-tabling, see [V1.3](#v13--multi-tabling-and-full-ring)). The
+menu and the setup screens of the paid modes show your **bankroll** and open
+the **Bankroll** screen. Every screen has a Back button, and the **⚙**
+button at the top left opens the **settings** (your name, sounds, table
+options) from any window, see [V1.2](#v12--settings-and-sound).
 
 ```bash
 uv sync                        # install the dependencies
 uv run python -m frontend.main # start the desktop application
 ```
 
-**Cash Game** — one human player against 1 to 5 bots:
+**Cash Game** — one human player against 1 to 8 bots, from heads-up to a
+full-ring table:
 
-- **Setup**: number of opponents, bot level, starting stack (the buy-in,
-  paid from the bankroll), blinds and action clock; you play under the name
-  chosen in the settings.
+- **Setup**: number of opponents and the play style of each bot, starting
+  stack (the buy-in, paid from the bankroll), blinds and action clock; you
+  play under the name chosen in the settings.
 - **Table**: seats, hole cards, community cards, bets, pot and dealer button;
   **Show in BB** switches every amount to big blinds. Once an all-in is
   called, the cards are turned face up with each player's chance of winning.
@@ -2161,6 +2169,121 @@ results and every Bot Arena result are unchanged.
 
 ---
 
+# V1.3 — Multi-tabling and Full Ring
+
+**V1.3** plays **several games at once**, each in its own window, as in the
+online rooms (multi-tabling). It seats up to **nine players** at the Cash
+Game and Tournament tables, and gives the Cash Game the same **choice of
+opponents** as the Tournament. In the engine only the table size changed (6
+to 9 seats): the golden results and every Bot Arena result of 2 to 6 seats
+are unchanged.
+
+## Features
+
+### 🪟 Multi-tabling
+
+- **Cash Game**, **Tournament** and **Spin & Go** open their setup in a
+  **new window**; the main menu stays as it is and becomes the lobby. Open
+  as many games as you like, of any mode: two cash games, a tournament and a
+  Spin & Go at the same time, for example.
+- Each window plays its game from the setup to the table (and to the results
+  for a tournament: Play again, or back to the setup). **Back** on the setup
+  screen closes the window. Closing a table's window cashes a cash game out;
+  a running tournament asks first (it is forfeited).
+- **Your turn**, as on Winamax:
+  - the window's title starts with **"Your turn"**, its table gets a **gold
+    frame**, and its taskbar button flashes;
+  - the table waiting for you **comes to the front**, unless you are
+    deciding at another table; once you act, the **next table waiting** for
+    you (the one waiting longest) comes forward;
+  - the setting **"Bring the table where it is your turn to the front"**
+    (Tables) turns this off; the highlights stay.
+- **Your tables** on the main menu (shown once a table is open): one button
+  per table, gold while it waits for you, brings it to the front. **Tile**
+  arranges the tables side by side to fill the screen; **Cascade** stacks
+  them, each a little lower.
+- A table's window can be **made small**: four tables fit side by side on a
+  full HD screen. The table, its seats and its cards **shrink** with the
+  window, the hand history hides when the window is narrow, and the setup
+  forms scroll.
+- **Shared by every window:**
+  - **The bankroll.** Each game has its own account (buy-in, rebuys,
+    cash-out or prize), and every window shows the new balance at once.
+  - **The settings.** There is one settings window, and every running table
+    waits while it is open.
+  - **The sounds.**
+  - **The table switches.** Speed, Auto next hand and Show in BB changed at
+    one table apply to all of them.
+- **Quitting** closes every table. A running tournament asks first, and
+  staying at it cancels the quit. If the application closes during several
+  games, each one is settled at the next launch: cash games are cashed out,
+  tournaments forfeited.
+
+### 👥 Full-ring tables (9 seats)
+
+- **Cash Game** and **Tournament**: **1 to 8 opponents**, from heads-up to
+  6-max to full ring. The Spin & Go stays a three-player game.
+- **Positions** from 7 players: UTG, UTG+1, UTG+2, LJ, HJ, CO, BTN, SB, BB.
+  The engine already dealt them for hands imported from other sites.
+- **Seat layout**: the seats are spaced evenly along the rim, so a wide
+  table puts more seats on its long sides than at its ends. From 7 seats
+  they are a little smaller, so nine seats never overlap, even in a small
+  window.
+- **Short stacks**: at a full ring, the early seats (UTG+1, UTG+2, LJ) shove
+  the tightest range, UTG's.
+- **Tournament payout** by default:
+
+| Players | Payout |
+| --- | --- |
+| 2 to 3 | Winner takes all |
+| 4 to 6 | 65 / 35 |
+| 7 to 9 | 50 / 30 / 20 (new) |
+
+- The **Bot Arena** (cash tables and tournaments) and the **equity
+  calculator** also go up to 9 seats or hands.
+- Three more bot names (Gus, Hana, Ivo): a bot never takes your name.
+
+### 🤖 Cash Game opponents
+
+- The Cash Game setup works like the Tournament's: the **number of
+  opponents** (1 to 8) and **a play style for each bot**: Nit, TAG, LAG,
+  Calling Station, Maniac, Basic or Random. Each style's description shows as
+  a tooltip, or tick **Same style for every bot**.
+- This replaces the old **Bot level** choice. Normal was the Basic bot and
+  Easy the Random bot; both are still in the list.
+- Default: three bots, TAG, LAG and Calling Station.
+
+> 📸 *Screenshot placeholder: four tables tiled, one of them waiting for
+> you (gold frame), with the lobby's "Your tables".*
+
+## Engine changes
+
+- `MAX_TABLE_SEATS`: 6 → 9. It replaces `MAX_HAND_PLAYERS`, which allowed 9
+  players only for imported hands; there is now a single limit.
+
+## Bankroll and profile
+
+- The bankroll keeps a list of **open games** (`open_games`) instead of a
+  single one. Profiles saved by an older version are read as before.
+- New setting: `table_to_front` (default on).
+
+## Objectives
+
+- [x] Cash Game opponents chosen like the Tournament's: number of bots, a play style for each
+- [x] Tables of up to 9 seats in the Cash Game and the Tournament (and the Bot Arena)
+- [x] Multi-tabling: every Cash Game, Tournament and Spin & Go in its own window, several at once
+- [x] Winamax-like mechanics: your turn highlighted, the waiting table brought to the front, the next one after you act, Tile and Cascade, the tables listed in the lobby
+
+## Tests
+
+```text
+1667 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
 # V2.x — AI and Strategies
 
 Already available: random bot, basic bot (hand strength + pot odds), play-style profiles (Beta 1.0).
@@ -2272,7 +2395,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1631 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1667 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

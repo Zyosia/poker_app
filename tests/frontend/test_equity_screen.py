@@ -189,15 +189,15 @@ def test_players_can_be_added_and_removed(qapp: QApplication) -> None:
     assert len(screen.rows) == 2
     assert not screen.rows[0].remove_button.isEnabled()
 
-    for _ in range(6):
+    for _ in range(9):
         screen.add_button.click()
 
-    assert len(screen.rows) == 6
+    assert len(screen.rows) == 9
     assert not screen.add_button.isEnabled()
 
     screen.rows[2].remove_button.click()
-    assert len(screen.rows) == 5
-    assert screen.rows[-1].label.text() == "Player 5"
+    assert len(screen.rows) == 8
+    assert screen.rows[-1].label.text() == "Player 8"
 
 
 def test_a_change_makes_the_results_stale(qapp: QApplication) -> None:

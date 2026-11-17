@@ -56,6 +56,13 @@ QLabel#title {
 
 QLabel#subtitle { font-size: 16px; color: #9aa4b2; }
 QLabel#sectionTitle { font-size: 13px; font-weight: 600; color: #9aa4b2; }
+QPushButton#tableButton { padding: 6px 12px; font-size: 13px; }
+QPushButton#tableButton[yourTurn="true"] {
+    background-color: #f2c14e;
+    color: #14181f;
+    font-weight: 700;
+}
+QStackedWidget#tableFrame[yourTurn="true"] { border: 3px solid #f2c14e; }
 QLabel#resultText { font-size: 16px; font-weight: 600; }
 
 QFrame#panel {
@@ -223,4 +230,16 @@ QProgressBar {
 QProgressBar::chunk { background-color: #2f8f5b; border-radius: 7px; }
 
 QScrollArea { border: none; background: transparent; }
+QScrollArea QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+QScrollArea QScrollBar::handle:vertical {
+    background: #3a4456;
+    border-radius: 3px;
+    min-height: 30px;
+}
+QScrollArea QScrollBar::add-line:vertical,
+QScrollArea QScrollBar::sub-line:vertical { height: 0; }
 """

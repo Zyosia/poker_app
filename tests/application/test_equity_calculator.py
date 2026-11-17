@@ -104,8 +104,8 @@ def test_the_same_seed_gives_the_same_numbers_and_keeps_the_global_rng() -> None
 @pytest.mark.parametrize(
     ("hands", "board", "message"),
     [
-        ([ACES], (), "2 to 6 hands"),
-        ([ACES, KINGS, None, None, None, None, None], (), "2 to 6 hands"),
+        ([ACES], (), "2 to 9 hands"),
+        ([ACES, KINGS, *[None] * 8], (), "2 to 9 hands"),
         ([("AH", "AD", "AC"), KINGS], (), "two cards"),
         ([ACES, ("AH", "KS")], (), "twice"),
         ([ACES, KINGS], ("AD",), "twice"),

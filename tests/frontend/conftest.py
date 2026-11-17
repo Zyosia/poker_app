@@ -11,10 +11,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QEvent  # noqa: E402
 from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 
+from frontend.ui import tournament_screen  # noqa: E402
 from frontend.ui.arena_progress_screen import ArenaProgressScreen  # noqa: E402
 from frontend.ui.arena_watch_screen import ArenaWatchScreen  # noqa: E402
 from frontend.ui.equity_screen import EquityScreen  # noqa: E402
 from frontend.ui.game_screen import GameScreen  # noqa: E402
+from frontend.ui.game_window import GameWindow  # noqa: E402
 from frontend.ui.replayer_screen import ReplayerScreen  # noqa: E402
 
 MAX_EVENT_LOOP_TURNS = 5000
@@ -37,6 +39,8 @@ def tear_down(widget: QWidget) -> None:
         widget, GameScreen | ArenaWatchScreen | ReplayerScreen | EquityScreen
     ):
         widget.stop()
+    elif isinstance(widget, GameWindow):
+        widget.table_screen.stop()  # Closing it then asks nothing.
     elif isinstance(widget, ArenaProgressScreen):
         widget.cancel()
         widget.wait()
@@ -60,6 +64,13 @@ def destroy_top_level_widgets() -> None:
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()
     gc.collect()
+
+
+@pytest.fixture(autouse=True)
+def never_ask_to_leave(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Leaving a running tournament (closing its window) never waits for a
+    click on a message box; the tests about that question set their own."""
+    monkeypatch.setattr(tournament_screen, "confirm_leave", lambda parent: True)
 
 
 @pytest.fixture(autouse=True)

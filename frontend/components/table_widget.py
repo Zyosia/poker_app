@@ -2,6 +2,7 @@
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import (
@@ -20,7 +21,7 @@ from frontend import theme
 from frontend.formatting import format_amount
 
 from .card_widget import CardWidget
-from .seat_widget import SEAT_SIZE, SeatState, SeatWidget
+from .seat_widget import SeatState, SeatWidget, scaled
 
 BOARD_CARD_SIZE = QSize(62, 88)
 BOARD_CARD_COUNT = 5
@@ -33,6 +34,69 @@ BET_DISTANCE_RATIO = 0.58
 DEALER_DISTANCE_RATIO = 0.54
 DEALER_BUTTON_RADIUS = 11
 CHIP_RADIUS = 8
+BET_FONT_PX = 13
+
+FULL_SIZE = QSize(940, 600)
+"""From this size on, the table is drawn at full scale."""
+MIN_SCALE = 0.55
+FULL_RING_SEATS = 7
+FULL_RING_SCALE = 0.86
+"""Seven to nine seats: smaller seats, so neighbours never overlap."""
+MIN_SIZE = QSize(480, 240)
+ARC_STEPS = 720
+"""Steps measuring the rim, to space the seats evenly along it."""
+
+
+def table_scale(width: int, height: int, seats: int) -> float:
+    """How much the seats and cards shrink: in a small window (several
+    tables side by side) and at a full-ring table."""
+    scale = min(1.0, width / FULL_SIZE.width(), height / FULL_SIZE.height())
+
+    if seats >= FULL_RING_SEATS:
+        scale *= FULL_RING_SCALE
+
+    return max(MIN_SCALE, scale)
+
+
+@lru_cache(maxsize=64)
+def seat_angles(count: int, radius_x: int, radius_y: int) -> tuple[float, ...]:
+    """Where the seats sit on the rim (as angles), the first at the bottom.
+
+    They are evenly spaced along the rim rather than by angle: on a wide
+    table, the long sides get more seats than the ends, so a full ring
+    leaves room between neighbours even when the table is short.
+    """
+    if count <= 0:
+        return ()
+
+    start = math.pi / 2
+    angles = [start + 2 * math.pi * step / ARC_STEPS for step in range(ARC_STEPS + 1)]
+    lengths = [0.0]
+
+    for before, after in zip(angles, angles[1:], strict=False):
+        lengths.append(
+            lengths[-1]
+            + math.hypot(
+                radius_x * (math.cos(after) - math.cos(before)),
+                radius_y * (math.sin(after) - math.sin(before)),
+            )
+        )
+
+    perimeter = lengths[-1]
+    seats = []
+    step = 0
+
+    for seat in range(count):
+        target = perimeter * seat / count
+
+        while lengths[step + 1] < target:
+            step += 1
+
+        span = lengths[step + 1] - lengths[step]
+        share = (target - lengths[step]) / span if span else 0.0
+        seats.append(angles[step] + share * (angles[step + 1] - angles[step]))
+
+    return tuple(seats)
 
 
 @dataclass(frozen=True)
@@ -57,7 +121,8 @@ class TableWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(760, 480)
+        self.setMinimumSize(MIN_SIZE)
+        self.scale = 1.0
 
         self._state = TableState(
             seats=(), bets=(), dealer_seat=None, community_cards=(), pot=0
@@ -128,46 +193,65 @@ class TableWidget(QWidget):
         self._layout_children()
 
     def _table_rect(self) -> QRectF:
+        horizontal = HORIZONTAL_MARGIN * self.scale
+
         return QRectF(self.rect()).adjusted(
-            HORIZONTAL_MARGIN, TOP_MARGIN, -HORIZONTAL_MARGIN, -BOTTOM_MARGIN
+            horizontal,
+            TOP_MARGIN * self.scale,
+            -horizontal,
+            -BOTTOM_MARGIN * self.scale,
         )
 
     def _seat_center(self, seat_index: int) -> QPointF:
         """Return the center of a seat, the first seat being at the bottom."""
         table = self._table_rect()
-        angle = math.pi / 2 + seat_index * 2 * math.pi / max(1, len(self.seat_widgets))
+        radius_x = table.width() / 2
+        radius_y = table.height() / 2
+        angles = seat_angles(len(self.seat_widgets), round(radius_x), round(radius_y))
+        angle = angles[seat_index]
 
         return QPointF(
-            table.center().x() + table.width() / 2 * math.cos(angle),
-            table.center().y() + table.height() / 2 * math.sin(angle),
+            table.center().x() + radius_x * math.cos(angle),
+            table.center().y() + radius_y * math.sin(angle),
         )
 
+    def _apply_scale(self) -> None:
+        self.scale = table_scale(self.width(), self.height(), len(self.seat_widgets))
+        card_size = scaled(BOARD_CARD_SIZE, self.scale)
+
+        for seat_widget in self.seat_widgets:
+            seat_widget.set_scale(self.scale)
+
+        for card_widget in self.board_widgets:
+            card_widget.setFixedSize(card_size)
+
     def _layout_children(self) -> None:
+        self._apply_scale()
         center = self._table_rect().center()
+        card_size = scaled(BOARD_CARD_SIZE, self.scale)
+        spacing = BOARD_SPACING * self.scale
 
         for index, seat_widget in enumerate(self.seat_widgets):
             seat_center = self._seat_center(index)
             seat_widget.move(
-                int(seat_center.x() - SEAT_SIZE.width() / 2),
-                int(seat_center.y() - SEAT_SIZE.height() / 2),
+                int(seat_center.x() - seat_widget.width() / 2),
+                int(seat_center.y() - seat_widget.height() / 2),
             )
 
         board_width = (
-            BOARD_CARD_COUNT * BOARD_CARD_SIZE.width()
-            + (BOARD_CARD_COUNT - 1) * BOARD_SPACING
+            BOARD_CARD_COUNT * card_size.width() + (BOARD_CARD_COUNT - 1) * spacing
         )
         left = center.x() - board_width / 2
-        top = center.y() - BOARD_CARD_SIZE.height() / 2 + 6
+        top = center.y() - card_size.height() / 2 + 6 * self.scale
 
         for index, card_widget in enumerate(self.board_widgets):
             card_widget.move(
-                int(left + index * (BOARD_CARD_SIZE.width() + BOARD_SPACING)),
-                int(top),
+                int(left + index * (card_size.width() + spacing)), int(top)
             )
 
         self.pot_label.move(
             int(center.x() - self.pot_label.width() / 2),
-            int(top - self.pot_label.height() - 12),
+            int(top - self.pot_label.height() - 12 * self.scale),
         )
 
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -217,26 +301,30 @@ class TableWidget(QWidget):
         text = format_amount(bet, self._state.big_blind)
 
         font = QFont(self.font())
-        font.setPixelSize(13)
+        font.setPixelSize(max(10, round(BET_FONT_PX * self.scale)))
         font.setBold(True)
         painter.setFont(font)
 
+        chip = CHIP_RADIUS * max(0.75, self.scale)
+        height = 24 * max(0.8, self.scale)
         text_width = painter.fontMetrics().horizontalAdvance(text)
-        width = 2 * CHIP_RADIUS + text_width + 18
-        pill = QRectF(position.x() - width / 2, position.y() - 12, width, 24)
+        width = 2 * chip + text_width + 18
+        pill = QRectF(
+            position.x() - width / 2, position.y() - height / 2, width, height
+        )
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 120))
-        painter.drawRoundedRect(pill, 12, 12)
+        painter.drawRoundedRect(pill, height / 2, height / 2)
 
-        chip_center = QPointF(pill.left() + CHIP_RADIUS + 5, pill.center().y())
+        chip_center = QPointF(pill.left() + chip + 5, pill.center().y())
         painter.setPen(QPen(QColor("#ffffff"), 1.5, Qt.PenStyle.DashLine))
         painter.setBrush(theme.CHIP)
-        painter.drawEllipse(chip_center, CHIP_RADIUS, CHIP_RADIUS)
+        painter.drawEllipse(chip_center, chip, chip)
 
         painter.setPen(theme.TEXT)
         painter.drawText(
-            pill.adjusted(2 * CHIP_RADIUS + 10, 0, -6, 0),
+            pill.adjusted(2 * chip + 10, 0, -6, 0),
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
             text,
         )
@@ -247,26 +335,26 @@ class TableWidget(QWidget):
         length = math.hypot(toward_seat.x(), toward_seat.y()) or 1.0
 
         # Shift the button sideways so it does not overlap the bet.
-        sideways = QPointF(-toward_seat.y() / length, toward_seat.x() / length) * 52
+        sideways = QPointF(-toward_seat.y() / length, toward_seat.x() / length) * (
+            52 * self.scale
+        )
         position = (
             self._point_toward_center(seat_index, DEALER_DISTANCE_RATIO) + sideways
         )
+        radius = DEALER_BUTTON_RADIUS * max(0.8, self.scale)
 
         painter.setPen(QPen(QColor("#8a8a8a"), 1.5))
         painter.setBrush(QColor("#f7f7f2"))
-        painter.drawEllipse(position, DEALER_BUTTON_RADIUS, DEALER_BUTTON_RADIUS)
+        painter.drawEllipse(position, radius, radius)
 
         font = QFont(self.font())
-        font.setPixelSize(12)
+        font.setPixelSize(max(9, round(12 * self.scale)))
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(theme.CARD_BLACK)
         painter.drawText(
             QRectF(
-                position.x() - DEALER_BUTTON_RADIUS,
-                position.y() - DEALER_BUTTON_RADIUS,
-                2 * DEALER_BUTTON_RADIUS,
-                2 * DEALER_BUTTON_RADIUS,
+                position.x() - radius, position.y() - radius, 2 * radius, 2 * radius
             ),
             Qt.AlignmentFlag.AlignCenter,
             "D",

@@ -21,6 +21,7 @@ from frontend.ui.arena_setup_screen import ARENA_PRESETS, ArenaSetupScreen
 from frontend.ui.arena_watch_screen import ArenaWatchScreen
 from frontend.ui.main_menu_screen import MainMenuScreen
 from frontend.ui.main_window import MainWindow
+from tests.frontend.windows import cash_setup, open_table
 
 WAIT_TIMEOUT_SECONDS = 60
 
@@ -84,12 +85,12 @@ def test_a_mode_not_available_yet_does_not_open_anything(qapp: QApplication) -> 
 
 
 def test_cash_game_still_starts_from_the_menu(window: MainWindow) -> None:
-    window.game_screen.step_delay_ms = 0
-    window.main_menu.card("cash").click()
-    window.cash_setup_screen.play_button.click()
+    table = open_table(window, "cash")
+    cash_setup(table).play_button.click()
 
-    game = window.game_screen.game
-    assert window.current_screen is window.game_screen
+    game = table.table_screen.game
+    assert window.current_screen is window.main_menu, "the table has its window"
+    assert table.current_screen is table.table_screen
     assert isinstance(game, PokerGame) and game.hand is not None
     assert game.save_path is None
 
@@ -142,10 +143,10 @@ def test_presets_fill_the_seats(qapp: QApplication) -> None:
         tuple(row.bot for row in setup.seat_rows)
         == ARENA_PRESETS["Full styles table (6-max)"]
     )
-    assert not setup.add_seat_button.isEnabled()
+    assert setup.add_seat_button.isEnabled(), "up to a full-ring table"
 
 
-def test_seats_stay_between_two_and_six(qapp: QApplication) -> None:
+def test_seats_stay_between_two_and_nine(qapp: QApplication) -> None:
     setup = ArenaSetupScreen()
     setup.set_seats(("tag", "lag"))
 
@@ -153,10 +154,11 @@ def test_seats_stay_between_two_and_six(qapp: QApplication) -> None:
     assert len(setup.seat_rows) == 2
     assert not setup.seat_rows[0].remove_button.isEnabled()
 
-    for _ in range(6):
+    for _ in range(9):
         setup.add_seat("nit")
 
-    assert len(setup.seat_rows) == 6
+    assert len(setup.seat_rows) == 9
+    assert not setup.add_seat_button.isEnabled()
 
 
 def test_duplicate_toggle_is_disabled_outside_the_reset_policy(

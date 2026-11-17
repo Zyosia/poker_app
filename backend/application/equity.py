@@ -76,7 +76,7 @@ class EquityResult:
 
 
 class EquityCalculator:
-    """Equity of 2 to 6 hands or ranges, on a board of 0 to 5 cards."""
+    """Equity of 2 to 9 hands or ranges, on a board of 0 to 5 cards."""
 
     def __init__(
         self,

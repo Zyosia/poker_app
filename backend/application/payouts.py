@@ -63,8 +63,12 @@ PAYOUT_PRESETS: tuple[PayoutStructure, ...] = (WINNER_TAKES_ALL, TOP_TWO, TOP_TH
 
 
 def default_payout(entrants: int) -> PayoutStructure:
-    """Winner takes all up to 3 players, 65 / 35 from 4 players."""
-    return WINNER_TAKES_ALL if entrants <= 3 else TOP_TWO
+    """Winner takes all up to 3 players, 65 / 35 from 4 to 6 players, then
+    50 / 30 / 20 at a full-ring table (7 to 9 players)."""
+    if entrants <= 3:
+        return WINNER_TAKES_ALL
+
+    return TOP_TWO if entrants <= 6 else TOP_THREE
 
 
 def split_prizes(prizes: list[int], shares: int) -> list[int]:

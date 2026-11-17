@@ -1,10 +1,16 @@
-"""First screen of the application: one card per game mode."""
+"""First screen of the application: one card per game mode.
+
+Once tables are open (each game plays in its own window), they are listed
+below the cards, with the commands that arrange them.
+"""
 
 from collections.abc import Sequence
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
@@ -15,6 +21,7 @@ from frontend.components.bankroll_bar import BankrollBar
 from frontend.modes import Mode
 
 CARD_COLUMNS = 3
+TABLE_COLUMNS = 3
 CARD_WIDTH = 250
 CARD_HEIGHT = 156
 
@@ -62,6 +69,68 @@ class ModeCard(QPushButton):
             label.setEnabled(mode.enabled)
 
 
+class TablesPanel(QFrame):
+    """The open tables: a click brings one to the front; Tile and Cascade
+    arrange them all. The tables waiting for you are highlighted."""
+
+    table_selected = Signal(int)
+    """Emitted with the index of the table, in the order they opened."""
+    tile_requested = Signal()
+    cascade_requested = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("panel")
+        title = QLabel("YOUR TABLES")
+        title.setObjectName("sectionTitle")
+        self.tile_button = QPushButton("Tile")
+        self.tile_button.setObjectName("small")
+        self.tile_button.setToolTip("Side by side, filling the screen.")
+        self.tile_button.clicked.connect(self.tile_requested)
+        self.cascade_button = QPushButton("Cascade")
+        self.cascade_button.setObjectName("small")
+        self.cascade_button.setToolTip("Stacked, each a little lower.")
+        self.cascade_button.clicked.connect(self.cascade_requested)
+        self.table_buttons: list[QPushButton] = []
+        self._buttons_layout = QGridLayout()
+        self._buttons_layout.setSpacing(8)
+
+        header = QHBoxLayout()
+        header.addWidget(title, stretch=1)
+        header.addWidget(self.tile_button)
+        header.addWidget(self.cascade_button)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 10, 16, 12)
+        layout.addLayout(header)
+        layout.addLayout(self._buttons_layout)
+        self.hide()
+
+    def show_tables(self, tables: Sequence[tuple[str, bool]]) -> None:
+        """List the tables, each as (name, waiting for you)."""
+        for button in self.table_buttons:
+            button.hide()
+            button.deleteLater()
+
+        self.table_buttons = []
+
+        for index, (name, waiting) in enumerate(tables):
+            text = name.replace("&", "&&")  # Not a keyboard shortcut.
+            button = QPushButton(f"● {text}" if waiting else text)
+            button.setObjectName("tableButton")
+            button.setProperty("yourTurn", waiting)
+            button.setToolTip("Your turn: click to play." if waiting else "Show it.")
+            button.clicked.connect(
+                lambda _=False, index=index: self.table_selected.emit(index)
+            )
+            self._buttons_layout.addWidget(
+                button, index // TABLE_COLUMNS, index % TABLE_COLUMNS
+            )
+            self.table_buttons.append(button)
+
+        self.setVisible(bool(tables))
+
+
 class MainMenuScreen(QWidget):
     """Lets the user pick a mode or quit."""
 
@@ -96,6 +165,8 @@ class MainMenuScreen(QWidget):
         self.quit_button.clicked.connect(self.quit_requested)
 
         self.bankroll_bar = BankrollBar()
+        self.tables_panel = TablesPanel()
+        self.tables_panel.setFixedWidth(CARD_COLUMNS * CARD_WIDTH + 2 * 18)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -105,7 +176,9 @@ class MainMenuScreen(QWidget):
         layout.addWidget(subtitle)
         layout.addSpacing(30)
         layout.addWidget(cards_panel, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(24)
+        layout.addSpacing(18)
+        layout.addWidget(self.tables_panel, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addSpacing(18)
         layout.addWidget(self.quit_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()
 

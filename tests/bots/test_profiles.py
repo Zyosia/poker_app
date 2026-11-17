@@ -4,9 +4,8 @@ import random
 
 import pytest
 
-from backend.application.setup import BotLevel, create_bot
 from backend.bots.basic_bot import BasicBot
-from backend.bots.factory import BOT_TYPES, get_bot_type
+from backend.bots.factory import BOT_TYPES, create_bot, get_bot_type
 from backend.bots.profiles import BASIC_PROFILE, BotProfile
 from backend.bots.random_bot import RandomBot
 from backend.simulation.config import SeatSpec, SimulationConfig
@@ -38,14 +37,15 @@ def test_the_default_profile_reproduces_the_original_basic_bot() -> None:
     }
 
 
-def test_cash_game_bot_levels_keep_their_bots() -> None:
+def test_the_basic_and_random_styles_keep_their_bots() -> None:
+    """The former cash game levels: Normal was the basic bot, Easy the random."""
     rng = random.Random(0)
 
-    normal = create_bot(BotLevel.NORMAL, rng)
-    easy = create_bot(BotLevel.EASY, rng)
+    basic = create_bot("basic", rng)
+    random_bot = create_bot("random", rng)
 
-    assert isinstance(normal, BasicBot) and normal.profile == BASIC_PROFILE
-    assert isinstance(easy, RandomBot)
+    assert isinstance(basic, BasicBot) and basic.profile == BASIC_PROFILE
+    assert isinstance(random_bot, RandomBot)
 
 
 def test_every_preset_has_a_label_and_a_description() -> None:
