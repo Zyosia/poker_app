@@ -99,6 +99,13 @@ class TournamentScreen(GameScreen):
         self.reveal_label.hide()
         self._reveal_timer = QTimer(self)
         self._reveal_timer.timeout.connect(self._reveal_tick)
+        self._reveal_hold_timer = QTimer(self)
+        self._reveal_hold_timer.setSingleShot(True)
+        self._reveal_hold_timer.timeout.connect(self.finish_reveal)
+        self._watch_timer = QTimer(self)
+        """The pause between two hands while you watch the rest."""
+        self._watch_timer.setSingleShot(True)
+        self._watch_timer.timeout.connect(self._continue_watching)
 
         self._clock_timer = QTimer(self)
         self._clock_timer.setInterval(1000)
@@ -228,9 +235,10 @@ class TournamentScreen(GameScreen):
             self._clock_timer.start()
 
     def stop(self) -> None:
-        """Stop; an unfinished tournament is forfeited, a finished one paid."""
-        self._clock_timer.stop()
-        self._reveal_timer.stop()
+        """Stop every timer; an unfinished tournament is forfeited, a finished
+        one paid. Called when leaving the screen and when the window closes."""
+        self.stop_timers()
+        self._notice_timer.stop()
         account = self.tournament_account
 
         if account is not None and not account.closed and self._game is not None:
@@ -324,7 +332,7 @@ class TournamentScreen(GameScreen):
             self.outcome_label.setText("   ·   ".join(lines))
             self.bottom_stack.setCurrentWidget(self.tournament_page)
             self._step_timer.stop()
-            QTimer.singleShot(self.step_delay_ms, self._continue_watching)
+            self._watch_timer.start(self.step_delay_ms)
             return
 
         human = self._human_player()
@@ -503,6 +511,8 @@ class TournamentScreen(GameScreen):
         self._step_timer.stop()
         self._clock_timer.stop()
         self._reveal_timer.stop()
+        self._reveal_hold_timer.stop()
+        self._watch_timer.stop()
 
     def _on_watch_speed(self) -> None:
         if self.spectating:
@@ -625,7 +635,7 @@ class TournamentScreen(GameScreen):
                 f"× {value}   —   PRIZE POOL {tournament.prize_pool}"
             )
             self.outcome_label.setText(f"Prize pool: {tournament.prize_pool}")
-            QTimer.singleShot(REVEAL_HOLD_MS, self.finish_reveal)
+            self._reveal_hold_timer.start(REVEAL_HOLD_MS)
 
     @property
     def is_revealing(self) -> bool:
