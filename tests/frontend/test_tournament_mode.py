@@ -333,7 +333,8 @@ def test_a_finished_tournament_is_saved_with_its_results(
     play(screen, until=lambda: tournament.is_finished, decide=keep_playing)
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["format_version"] == 3
+    assert data["format_version"] == 4
+    assert (data["human"], data["mode"]) == ("Hero", "spin")
     assert data["tournament"]["multiplier"] == tournament.result.multiplier
     assert len(data["tournament"]["finishes"]) == 3
     assert data["hands"]

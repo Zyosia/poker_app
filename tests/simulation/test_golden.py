@@ -30,9 +30,10 @@ ADDED_HISTORY_FIELDS = (
     "dead_money",
     "revealed_after_action",
     "timed_out_actions",
+    "seats",
 )
-"""Hand history fields added in V1.0 (session file format version 2) and
-V1.0.1 (format version 3)."""
+"""Hand history fields added in V1.0 (session file format version 2),
+V1.0.1 (format version 3) and V1.1 (format version 4)."""
 
 
 class HandFingerprint(HandObserver):

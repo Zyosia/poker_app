@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from backend.application.action_clock import ClockPreset
 from backend.application.bankroll import GameAccount, TransactionType
+from backend.application.game_modes import GameMode
 from backend.application.payouts import FAIR_MULTIPLIERS
 from backend.application.persistence import save_session
 from backend.application.tournament import Tournament
@@ -588,7 +589,14 @@ class TournamentScreen(GameScreen):
 
         tournament = self.tournament
         result = tournament.result.to_dict() if tournament.is_finished else None
-        save_session(tournament.session, self.save_path, tournament=result)
+        mode = GameMode.SPIN if tournament.multiplier else GameMode.TOURNAMENT
+        save_session(
+            tournament.session,
+            self.save_path,
+            tournament=result,
+            human=self._human_name,
+            mode=mode,
+        )
 
     # --- Spin & Go reveal ---------------------------------------------------
 

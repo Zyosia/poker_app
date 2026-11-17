@@ -629,10 +629,13 @@ backend/
 │   ├── structures.py      Structures de blinds par défaut
 │   ├── hand_summary.py    Statistiques d'un joueur depuis l'historique
 │   ├── action_clock.py    Horloge d'action, time bank, préréglages (V1.0.1)
-│   ├── equity.py          Équité des mains retournées (V1.0.1)
+│   ├── equity.py          Équité après un all-in (V1.0.1), calculateur (V1.1)
+│   ├── game_modes.py      Cash game, tournoi, Spin & Go
 │   ├── bankroll.py        Bankroll, journal, comptes de partie (V1.0.1)
 │   ├── profile.py         Fichier de profil : réglages et bankroll
-│   └── persistence.py     Sauvegarde et chargement des sessions (JSON, format 3)
+│   ├── persistence.py     Sauvegarde et chargement des sessions (JSON, format 4)
+│   ├── hand_records.py    Sessions sauvegardées relues en enregistrements (V1.1)
+│   └── replay.py          Une main enregistrée redistribuée pas à pas (V1.1)
 ├── bots/                  Joueurs contrôlés par l'ordinateur
 │   ├── random_bot.py      Actions légales aléatoires
 │   ├── basic_bot.py       Heuristiques : force de main et cotes du pot
@@ -654,6 +657,7 @@ backend/
     ├── bench.py           Benchmark mono-cœur (Beta 1.1)
     ├── tournament_runner.py  Séries de tournois et de Spin & Go (V1.0)
     ├── tournament_stats.py   Places, ITM et ROI
+    ├── my_stats.py        Statistiques du joueur depuis ses sessions (V1.1)
     └── cli.py             python -m backend.simulation …
 
 frontend/
@@ -669,8 +673,10 @@ frontend/
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
 │   │   tournament_results_screen.py         Tournoi et Spin & Go
-│   └── arena_setup_screen.py, arena_progress_screen.py,
-│       arena_results_screen.py, arena_watch_screen.py  Bot Arena
+│   ├── arena_setup_screen.py, arena_progress_screen.py,
+│   │   arena_results_screen.py, arena_watch_screen.py  Bot Arena
+│   └── tools_screen.py, replayer_screen.py, equity_screen.py,
+│       my_stats_screen.py, session_browser_screen.py   Outils (V1.1)
 └── components/            Carte, siège, table, panneau d'actions, graphiques,
                            choix de l'horloge, ligne buy-in et bankroll
 
@@ -744,8 +750,8 @@ La rotation du dealer s'effectue ensuite dans le sens horaire en ignorant les jo
 
 L'application est une **application de bureau PySide6**. Elle s'ouvre sur un
 **menu principal** qui liste les modes : **Cash Game**, **Tournoi**,
-**Spin & Go** et **Bot Arena** ; un emplacement **Outils** est réservé.
-Le menu affiche aussi votre **bankroll** et ouvre l'écran **Bankroll**.
+**Spin & Go**, **Bot Arena** et **Tools** (les outils). Le menu affiche
+aussi votre **bankroll** et ouvre l'écran **Bankroll**.
 Chaque écran a un bouton Retour.
 
 ```bash
@@ -874,10 +880,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V1.0.1](#v101--confort-de-jeu)) :
+[V1.1](#v11--outils)) :
 
 ```text
-1421 passed
+1516 passed
 ```
 
 ### État actuel
@@ -1001,7 +1007,7 @@ Fonctionnalités implémentées :
 
 * [x] Tests de persistence
 
-Les données sauvegardées contiennent les informations nécessaires pour reconstruire le déroulement d'une main et constituent la base d'un futur replayer.
+Les données sauvegardées contiennent les informations nécessaires pour reconstruire le déroulement d'une main et constituent la base du relecteur de mains ([V1.1](#v11--outils)).
 
 [↑ Retour au sommaire](#sommaire)
 
@@ -1714,8 +1720,8 @@ de tout cela.
   propre générateur aléatoire, initialisé à partir des cartes sur la table :
   le générateur de la partie et du paquet n'est jamais touché. Seules les
   cartes visibles sont connues ; les cartes couchées comptent comme
-  inconnues. Le code (`backend/application/equity.py`) servira au
-  calculateur d'équité de la V1.1.
+  inconnues. Le code (`backend/application/equity.py`) fait aussi
+  tourner le calculateur d'équité de la V1.1.
 - Pareil en **mode Watch de la Bot Arena** (avec « Show all cards »
   décoché) et quand vous **regardez la suite d'un tournoi après avoir été
   éliminé**.
@@ -1902,10 +1908,150 @@ qu'ils sont enregistrés au bon moment.
 
 # V1.1 — Outils
 
-* [ ] Relecteur de mains (basé sur l'historique de l'Alpha 1.2)
-* [ ] Calculateur d'équité (Monte Carlo, mains contre mains / contre aléatoire, n'importe quel board)
-* [ ] « Mes stats » : les statistiques du joueur humain sur toutes ses sessions (réutilise les collecteurs de la Beta 1.0)
-* [ ] Navigateur de sessions (sessions sauvegardées, résultats, graphique des jetons)
+La **V1.1** ouvre la carte **Tools** du menu principal : quatre outils pour
+étudier vos parties, un **relecteur de mains**, un **calculateur
+d'équité**, **Mes stats** et un **navigateur de sessions**. Aucune règle de
+poker n'a changé : les résultats de référence (golden tests) et tous les
+résultats de la Bot Arena sont identiques.
+
+## Fonctionnalités
+
+### ▶ Relecteur de mains
+
+- **Tools → Hand Replayer** ouvre la **dernière main de votre dernière
+  session** ; le navigateur de sessions ouvre n'importe quelle autre main.
+- La main est **redistribuée par le moteur** : les joueurs s'assoient avec
+  les tapis qu'ils avaient, le paquet est préparé avec les cartes
+  enregistrées, et chaque décision enregistrée est rejouée avec
+  `apply_action`. La table montre exactement ce qu'elle montrait pendant la
+  partie (vos cartes, les mises, le pot, les cartes retournées après un
+  all-in avec le % de gain de chacun, le showdown), et le moteur vérifie
+  l'enregistrement : une relecture qui ne se termine pas avec les gains
+  enregistrés est refusée (`backend/application/replay.py`).
+- **Pas à pas** : une décision, ou une street distribuée, comme à la table.
+  Boutons **|◀ ◀ Play ▶ ▶|** (clavier : Début, Gauche, Espace, Droite, Fin),
+  les vitesses de la table pour Play, et **◀ Hand / Hand ▶** (Page précédente
+  / Page suivante) pour parcourir la session. L'historique suit le pas ; les
+  délais dépassés sont signalés « (ran out of time) ».
+- **Show all cards** montre aussi les cartes que personne n'a vues ; **Show
+  in BB** est le réglage commun à toutes les tables.
+- Les mains sauvegardées **avant la V1.1** ne peuvent pas être relues :
+  leurs cartes privées n'étaient pas enregistrées main par main (voir le
+  [format 4](#sessions-sauvegardées--format-4)). Leur historique est affiché
+  en texte à la place.
+
+### % Calculateur d'équité
+
+- 2 à 6 mains, chacune de deux cartes (`AsKd`, `A♠ K♦`, `10h 9h`) ou **vide
+  pour une main aléatoire**, sur un board de 0 à 5 cartes.
+- **Exact** quand toutes les mains sont connues et qu'il y a au plus 50 000
+  boards possibles (toujours à partir du flop : 990 boards en heads-up).
+  Sinon **Monte Carlo** : 60 000 boards aléatoires, avec une **marge
+  d'erreur à 95 %** sur chaque équité (environ ±0,4 %).
+- Pour chaque main : son **équité** (une égalité compte comme une part du
+  pot), son **% de victoire** et son **% d'égalité**.
+- Le calcul avance par petites étapes sur un minuteur (environ 40 ms
+  chacune) : l'écran reste réactif, les chiffres s'affinent au fil du
+  calcul, et **Stop** l'arrête. Les boards aléatoires viennent d'un
+  générateur aléatoire qui lui est propre.
+- Le % de gain après un all-in de la V1.0.1 utilise désormais le même
+  calculateur, avec exactement les mêmes chiffres (vérifié sur 300
+  situations aléatoires avant et après le changement).
+
+| Exemple | Équité |
+| --- | ---: |
+| A♥ A♦ contre K♣ K♠ sur 2♣ 7♦ 9♥ (exact, 990 boards) | 91,6 % / 8,4 % |
+| A♥ A♦ contre K♣ K♠ avant le flop (estimation) | environ 82 % / 18 % |
+| A♠ A♦ contre une main aléatoire (estimation) | environ 85 % / 15 % |
+
+### ≡ Mes stats
+
+- Vos statistiques sur **toutes les sessions sauvegardées**, pour tous les
+  modes ou un seul : sessions, mains, et **VPIP, PFR, 3-bet, facteur et
+  fréquence d'agression, flops vus, WTSD, W$SD, c-bet et fold to c-bet**,
+  chacune avec ce qui a été compté (« 22 / 107 ») et ce qu'elle mesure.
+- Calculées par les **collecteurs de la Bot Arena** (`StatsCollector`, Beta
+  1.0) : chaque main sauvegardée est reconstruite depuis son enregistrement
+  et leur est transmise (`backend/simulation/my_stats.py`), donc un VPIP veut
+  dire la même chose dans Mes stats et dans la Bot Arena. Un test joue des
+  simulations à graine fixe et vérifie que les statistiques reconstruites
+  depuis les mains sauvegardées sont égales à celles du jeu en direct, champ
+  par champ.
+- **Résultats**, séparés par mode : cash games en jetons et en **bb/100**
+  avec son intervalle de confiance à 95 % (chaque main compte dans ses
+  propres big blinds, donc des sessions à des enjeux différents
+  s'additionnent), et **par position** ; tournois et Spin & Go : joués,
+  gagnés, dans l'argent, bénéfice et ROI, les tournois non terminés étant
+  comptés à part.
+- Les fichiers sauvegardés avant la V1.1 comptent aussi : ces statistiques
+  n'ont besoin que des actions, du board et des gains, que tous les formats
+  enregistrent.
+
+### ▤ Navigateur de sessions
+
+- Chaque partie jouée est sauvegardée (`backend/data/sessions/`). Le
+  navigateur liste les sessions, la plus récente en premier, pour tous les
+  modes ou un seul : date, mode, mains, résultat (jetons gagnés ou perdus,
+  ou « 2nd of 6 (+1 500) ») et mains relisibles.
+- Une session affiche un résumé, le **graphique des jetons** (vos gains main
+  après main) et **toutes les mains** : blinds, votre position et vos
+  cartes, le board, votre résultat et le pot, triables. **Replay hand** (ou
+  un double-clic) ouvre le relecteur sur cette main.
+- **Open file…** affiche un fichier de session placé n'importe où. Un
+  fichier illisible est signalé, jamais bloquant ; un fichier n'est relu que
+  s'il a changé.
+
+> 📸 *Emplacement de capture d'écran : l'écran Tools, le relecteur pendant
+> la distribution après un all-in, et le navigateur de sessions.*
+
+## Sessions sauvegardées : format 4
+
+Un bug est corrigé : les objets `Player` sont réutilisés d'une main à
+l'autre, et chaque sauvegarde réécrivait toutes les mains à partir d'eux.
+Les `players` de chaque main (cartes privées, tapis, positions) et son
+`dealer` étaient donc en réalité ceux de la dernière main, et les cartes des
+mains précédentes étaient perdues.
+
+- Le moteur enregistre maintenant les **sièges** propres à chaque main au
+  début de la main (`Hand.seats` : nom, tapis avant les antes et les
+  blinds, position, cartes privées), et le dealer d'une main est son
+  Bouton.
+- Les fichiers de session sont au **format 4** : chaque main enregistre ses
+  `seats`, la session le joueur humain (`human`) et le mode (`mode` : cash,
+  tournament ou spin). `load_session_file()` lit les versions 1 à 4.
+- Les anciens fichiers fonctionnent partout sauf dans le relecteur :
+  l'humain est le premier siège (l'application place toujours l'humain en
+  premier), le mode est déduit (résultats de tournoi avec un
+  multiplicateur : Spin & Go ; résultats ou blinds qui montent : tournoi ;
+  sinon un cash game), et le dealer de chaque main est lu à sa position de
+  Bouton.
+- `seats` rejoint les `ADDED_HISTORY_FIELDS` des golden tests : les
+  empreintes de référence restent exactement les mêmes.
+
+## Changements du moteur
+
+- `SeatRecord` et `Hand.seats`, enregistrés par `start_hand`.
+- `Deck.stacked(cards)` : un paquet qui distribue d'abord les cartes données
+  (relecteur).
+- Rien d'autre n'a changé dans le moteur. Le benchmark est inchangé, aux
+  variations de mesure près : lancés l'un après l'autre sur la même machine,
+  1 654 / 1 217 / 5 139 mains par seconde contre 1 747 / 1 212 / 4 641 pour
+  la V1.0.1.
+
+## Objectifs
+
+* [x] Relecteur de mains (basé sur l'historique de l'Alpha 1.2)
+* [x] Calculateur d'équité (Monte Carlo, mains contre mains / contre aléatoire, n'importe quel board)
+* [x] « Mes stats » : les statistiques du joueur humain sur toutes ses sessions (réutilise les collecteurs de la Beta 1.0)
+* [x] Navigateur de sessions (sessions sauvegardées, résultats, graphique des jetons)
+
+## Tests
+
+```text
+1516 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
 
 ---
 

@@ -11,6 +11,11 @@ class ScreenKey(StrEnum):
     ARENA_SETUP = "arena_setup"
     TOURNAMENT_SETUP = "tournament_setup"
     SPIN_SETUP = "spin_setup"
+    TOOLS = "tools"
+    REPLAYER = "replayer"
+    EQUITY = "equity"
+    MY_STATS = "my_stats"
+    SESSIONS = "sessions"
 
 
 @dataclass(frozen=True)
@@ -63,9 +68,39 @@ MODES: tuple[Mode, ...] = (
     Mode(
         key="tools",
         name="Tools",
-        description="Hand replayer and equity calculator.",
+        description="Hand replayer, equity calculator, your stats and sessions.",
         symbol="◈",
-        screen=None,
-        note="Coming later",
+        screen=ScreenKey.TOOLS,
+    ),
+)
+
+TOOLS: tuple[Mode, ...] = (
+    Mode(
+        key="replayer",
+        name="Hand Replayer",
+        description="Your last hand, step by step; any saved hand from Sessions.",
+        symbol="▶",
+        screen=ScreenKey.REPLAYER,
+    ),
+    Mode(
+        key="equity",
+        name="Equity Calculator",
+        description="Win chances of any hands, or random ones, on any board.",
+        symbol="%",
+        screen=ScreenKey.EQUITY,
+    ),
+    Mode(
+        key="my_stats",
+        name="My Stats",
+        description="Your VPIP, PFR, aggression and results across sessions.",
+        symbol="≡",
+        screen=ScreenKey.MY_STATS,
+    ),
+    Mode(
+        key="sessions",
+        name="Sessions",
+        description="Your saved games: results, chip graph and every hand.",
+        symbol="▤",
+        screen=ScreenKey.SESSIONS,
     ),
 )

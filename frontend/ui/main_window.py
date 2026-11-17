@@ -5,6 +5,7 @@ always returns to the previous screen.
 """
 
 import random
+from pathlib import Path
 
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
@@ -15,7 +16,8 @@ from backend.application.bankroll import (
     InsufficientFundsError,
 )
 from backend.application.controllers import HumanController
-from backend.application.persistence import new_session_file_path
+from backend.application.hand_records import SessionLibrary, SessionRecord
+from backend.application.persistence import SESSION_DIR, new_session_file_path
 from backend.application.profile import ProfileStore
 from backend.application.setup import (
     GameSettings,
@@ -32,7 +34,7 @@ from backend.simulation.tournament_runner import (
     TournamentRunConfig,
     TournamentRunResult,
 )
-from frontend.modes import MODES, Mode, ScreenKey
+from frontend.modes import MODES, TOOLS, Mode, ScreenKey
 
 from .arena_progress_screen import ArenaProgressScreen
 from .arena_results_screen import ArenaResultsScreen
@@ -40,8 +42,13 @@ from .arena_setup_screen import ArenaSetupScreen
 from .arena_watch_screen import ArenaWatchScreen
 from .bankroll_screen import BankrollScreen
 from .cash_setup_screen import CashSetupScreen
+from .equity_screen import EquityScreen
 from .game_screen import GameScreen
 from .main_menu_screen import MainMenuScreen
+from .my_stats_screen import MyStatsScreen
+from .replayer_screen import ReplayerScreen
+from .session_browser_screen import SessionBrowserScreen
+from .tools_screen import ToolsScreen
 from .tournament_results_screen import TournamentResultsScreen
 from .tournament_screen import TournamentScreen
 from .tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
@@ -60,11 +67,13 @@ class MainWindow(QMainWindow):
         parent: QWidget | None = None,
         rng: random.Random | None = None,
         profile: ProfileStore | None = None,
+        session_dir: Path = SESSION_DIR,
     ) -> None:
         """``rng`` draws the tournaments' cards and bots (seeded in tests).
 
         ``profile`` holds the user's settings; without one they are kept in
-        memory only, so tests never touch the user's real profile.
+        memory only, so tests never touch the user's real profile. Games are
+        saved in ``session_dir``, where the tools read them back.
         """
         super().__init__(parent)
         self.setWindowTitle("Poker — No Limit Texas Hold'em")
@@ -72,6 +81,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 700)
 
         self._save_sessions = save_sessions
+        self.session_dir = session_dir
+        self.library = SessionLibrary(session_dir)
         self._rng = rng or random.Random()
         self.profile = profile or ProfileStore()
 
@@ -87,6 +98,11 @@ class MainWindow(QMainWindow):
         self.tournament_screen = TournamentScreen()
         self.tournament_results_screen = TournamentResultsScreen()
         self.bankroll_screen = BankrollScreen()
+        self.tools_screen = ToolsScreen(TOOLS)
+        self.replayer_screen = ReplayerScreen()
+        self.equity_screen = EquityScreen()
+        self.my_stats_screen = MyStatsScreen()
+        self.session_browser_screen = SessionBrowserScreen(self.library)
         self._played_settings: PlayedSettings | None = None
 
         recovered = self.profile.bankroll.recover_open_game()
@@ -104,6 +120,7 @@ class MainWindow(QMainWindow):
             ScreenKey.ARENA_SETUP: self.arena_setup_screen,
             ScreenKey.TOURNAMENT_SETUP: self.tournament_setup_screen,
             ScreenKey.SPIN_SETUP: self.spin_setup_screen,
+            ScreenKey.TOOLS: self.tools_screen,
         }
 
         self.screens = QStackedWidget()
@@ -121,6 +138,11 @@ class MainWindow(QMainWindow):
             self.tournament_screen,
             self.tournament_results_screen,
             self.bankroll_screen,
+            self.tools_screen,
+            self.replayer_screen,
+            self.equity_screen,
+            self.my_stats_screen,
+            self.session_browser_screen,
         ):
             self.screens.addWidget(screen)
 
@@ -131,6 +153,7 @@ class MainWindow(QMainWindow):
             self.game_screen,
             self.tournament_screen,
             self.arena_watch_screen,
+            self.replayer_screen,
         )
 
         for screen in self.table_screens:
@@ -194,6 +217,15 @@ class MainWindow(QMainWindow):
         self.tournament_results_screen.play_again_requested.connect(self.play_again)
         self.tournament_results_screen.menu_requested.connect(self.back_to_menu)
 
+        self.tools_screen.tool_selected.connect(self.open_tool)
+        self.tools_screen.back_requested.connect(self.back)
+        self.replayer_screen.back_requested.connect(self.back)
+        self.equity_screen.back_requested.connect(self.back)
+        self.my_stats_screen.back_requested.connect(self.back)
+        self.my_stats_screen.refresh_requested.connect(self._show_my_stats)
+        self.session_browser_screen.back_requested.connect(self.back)
+        self.session_browser_screen.replay_requested.connect(self.replay_hand)
+
     # --- Settings ------------------------------------------------------------
 
     def set_show_in_big_blinds(self, enabled: bool) -> None:
@@ -214,6 +246,12 @@ class MainWindow(QMainWindow):
             played.set_auto_next_hand(enabled)
 
         self._save_setting("auto_next_hand", enabled)
+
+    def _new_save_path(self) -> Path | None:
+        if not self._save_sessions:
+            return None
+
+        return new_session_file_path(self.session_dir)
 
     def _save_setting(self, name: str, value: object) -> None:
         setattr(self.profile.settings, name, value)
@@ -301,10 +339,52 @@ class MainWindow(QMainWindow):
             self.arena_watch_screen.stop()
         elif screen is self.tournament_screen:
             self.tournament_screen.stop()
+        elif screen is self.replayer_screen:
+            self.replayer_screen.stop()
+        elif screen is self.equity_screen:
+            self.equity_screen.stop()
 
     def open_mode(self, mode: Mode) -> None:
         if mode.screen is not None:
             self.push(self.mode_screens[mode.screen])
+
+    # --- Tools ----------------------------------------------------------------
+
+    def open_tool(self, tool: Mode) -> None:
+        self.tools_screen.message_label.setText("")
+
+        if tool.screen == ScreenKey.REPLAYER:
+            self.replay_last_hand()
+        elif tool.screen == ScreenKey.EQUITY:
+            self.push(self.equity_screen)
+        elif tool.screen == ScreenKey.MY_STATS:
+            self._show_my_stats()
+            self.push(self.my_stats_screen)
+        elif tool.screen == ScreenKey.SESSIONS:
+            self.session_browser_screen.refresh()
+            self.push(self.session_browser_screen)
+
+    def replay_last_hand(self) -> None:
+        """Open the replayer on the last hand of the latest session."""
+        latest = next(
+            (session for session in self.library.scan().sessions if session.hands),
+            None,
+        )
+
+        if latest is None:
+            self.tools_screen.message_label.setText(
+                "No saved hand yet: play a game first, then replay it here."
+            )
+            return
+
+        self.replay_hand(latest, len(latest.hands) - 1)
+
+    def replay_hand(self, session: SessionRecord, index: int) -> None:
+        self.replayer_screen.show_hand(session, index)
+        self.push(self.replayer_screen)
+
+    def _show_my_stats(self) -> None:
+        self.my_stats_screen.show_scan(self.library.scan())
 
     # --- Cash game -----------------------------------------------------------
 
@@ -324,7 +404,7 @@ class MainWindow(QMainWindow):
         game = create_game(
             settings=settings,
             human_controller=HumanController(),
-            save_path=new_session_file_path() if self._save_sessions else None,
+            save_path=self._new_save_path(),
         )
 
         self.push(self.game_screen)
@@ -395,7 +475,7 @@ class MainWindow(QMainWindow):
         self.tournament_screen.start_tournament(
             tournament,
             human_name=settings.player_name,
-            save_path=new_session_file_path() if self._save_sessions else None,
+            save_path=self._new_save_path(),
             clock=clock,
             account=account,
         )
@@ -443,4 +523,6 @@ class MainWindow(QMainWindow):
         self.arena_watch_screen.stop()
         self.game_screen.stop()
         self.tournament_screen.stop()
+        self.replayer_screen.stop()
+        self.equity_screen.stop()
         super().closeEvent(event)

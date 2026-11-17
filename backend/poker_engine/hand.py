@@ -3,8 +3,8 @@
 A hand is driven step by step, so the caller (application, tests, UI) keeps
 control between two steps:
 
-1. ``start_hand`` posts the antes and blinds, deals the hole cards and opens
-   the pre-flop betting round.
+1. ``start_hand`` posts the antes and blinds, deals the hole cards, records
+   the players dealt in (``Hand.seats``) and opens the pre-flop betting round.
 2. While ``hand.current_player`` is set, that player's decision is executed
    with ``betting.apply_action``.
 3. When the betting round is over (``hand.current_player`` is ``None``),
@@ -19,7 +19,7 @@ from .blinds import AnteType
 from .constants import Position, Street
 from .deck import Deck
 from .history import record_action, record_street
-from .models import Hand, Player
+from .models import Hand, Player, SeatRecord
 from .session import GameSession
 from .showdown import resolve_hand
 
@@ -58,8 +58,14 @@ def start_hand(session: GameSession, deck: Deck | None = None) -> Hand:
     session.hands.append(hand)
 
     assign_positions(session=session, hand=hand)
+    stacks = [(player, player.stack) for player in session.table.players]
     post_blinds(session=session, hand=hand)
     deal_hole_cards(session=session, hand=hand)
+    hand.seats = [
+        SeatRecord(player.name, stack, player.position, tuple(player.hand))
+        for player, stack in stacks
+        if player.position is not None
+    ]
 
     record_street(hand)
     begin_betting_round(hand)
