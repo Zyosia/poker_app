@@ -182,8 +182,10 @@ class ArenaProgressScreen(QWidget):
         )
 
     def _finish_thread(self) -> None:
+        """Release a finished run's thread (it has stopped: wait returns)."""
         if self.simulation_thread is not None:
             self.simulation_thread.wait()
+            self.simulation_thread.deleteLater()
             self.simulation_thread = None
 
     def _on_succeeded(self, result: ArenaResult) -> None:

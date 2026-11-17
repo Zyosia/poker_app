@@ -7,7 +7,7 @@ import multiprocessing
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths
+from PySide6.QtCore import QStandardPaths, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from backend.application.profile import PROFILE_FILE_NAME, ProfileStore
@@ -31,6 +31,9 @@ def main() -> int:
 
     profile = ProfileStore(profile_path())
     window = MainWindow(profile=profile)
+    # Destroyed by Qt when closed, while the application still exists, rather
+    # than by Python at exit in no particular order.
+    window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
     window.show()
 
     if profile.warning is not None:
