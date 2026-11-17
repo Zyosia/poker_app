@@ -7,6 +7,7 @@ import pytest
 
 from backend.application.profile import (
     PROFILE_FORMAT_VERSION,
+    BotCards,
     ProfileError,
     ProfileStore,
     UserProfile,
@@ -105,3 +106,47 @@ def test_settings_ignore_unknown_keys_and_reject_wrong_types() -> None:
 
     with pytest.raises(ProfileError):
         UserSettings.from_dict({"show_in_big_blinds": "yes"})
+
+
+def test_the_v1_2_settings_are_saved_and_read_back(path: Path) -> None:
+    store = ProfileStore(path)
+    store.settings.player_name = "Nael"
+    store.settings.sound_effects = False
+    store.settings.sound_volume = 35
+    store.settings.turn_alert = False
+    store.settings.bot_cards = BotCards.ALWAYS.value
+    store.settings.four_color_deck = True
+    store.save()
+
+    settings = ProfileStore(path).settings
+
+    assert settings.player_name == "Nael"
+    assert settings.sound_effects is False
+    assert settings.sound_volume == 35
+    assert settings.turn_alert is False
+    assert settings.bot_cards == BotCards.ALWAYS
+    assert settings.four_color_deck is True
+
+
+def test_a_profile_from_an_older_version_gets_the_new_defaults() -> None:
+    settings = UserSettings.from_dict({"show_in_big_blinds": True})
+
+    assert settings.player_name == "Hero"
+    assert settings.sound_effects is True
+    assert settings.sound_volume == 70
+    assert settings.bot_cards == BotCards.SHOWDOWN
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"player_name": "   "},
+        {"player_name": "A name far too long"},
+        {"sound_volume": 101},
+        {"sound_volume": -1},
+        {"bot_cards": "sometimes"},
+    ],
+)
+def test_settings_reject_invalid_values(data: dict[str, object]) -> None:
+    with pytest.raises(ProfileError):
+        UserSettings.from_dict(data)

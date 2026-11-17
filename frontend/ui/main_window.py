@@ -1,13 +1,14 @@
 """Main window: a stack of screens, starting with the main menu.
 
 Opening a screen pushes it on the navigation stack; Back pops it, so Back
-always returns to the previous screen.
+always returns to the previous screen. The settings open from every screen,
+in their own small window, with the ⚙ button at the top left.
 """
 
 import random
 from pathlib import Path
 
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
 
 from backend.application.bankroll import (
@@ -18,7 +19,12 @@ from backend.application.bankroll import (
 from backend.application.controllers import HumanController
 from backend.application.hand_records import SessionLibrary, SessionRecord
 from backend.application.persistence import SESSION_DIR, new_session_file_path
-from backend.application.profile import ProfileStore
+from backend.application.profile import (
+    MAX_VOLUME,
+    BotCards,
+    ProfileStore,
+    UserSettings,
+)
 from backend.application.setup import (
     GameSettings,
     SpinSettings,
@@ -34,7 +40,12 @@ from backend.simulation.tournament_runner import (
     TournamentRunConfig,
     TournamentRunResult,
 )
+from frontend import theme
+from frontend.components.card_widget import CardWidget
+from frontend.components.settings_button import SettingsButton
 from frontend.modes import MODES, TOOLS, Mode, ScreenKey
+from frontend.pacing import DEFAULT_TABLE_SPEED
+from frontend.sounds import SoundPlayer
 
 from .arena_progress_screen import ArenaProgressScreen
 from .arena_results_screen import ArenaResultsScreen
@@ -48,6 +59,7 @@ from .main_menu_screen import MainMenuScreen
 from .my_stats_screen import MyStatsScreen
 from .replayer_screen import ReplayerScreen
 from .session_browser_screen import SessionBrowserScreen
+from .settings_dialog import SettingsDialog
 from .tools_screen import ToolsScreen
 from .tournament_results_screen import TournamentResultsScreen
 from .tournament_screen import TournamentScreen
@@ -56,6 +68,19 @@ from .tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
 PlayedSettings = TournamentSettings | SpinSettings
 CLOCK_SETTINGS = ("cash_clock", "tournament_clock", "spin_clock")
 """The user's clock choice for each setup screen, in the same order."""
+DIALOG_SETTINGS = (
+    "sound_effects",
+    "sound_volume",
+    "turn_alert",
+    "bot_cards",
+    "table_speed",
+    "auto_next_hand",
+    "show_in_big_blinds",
+    "four_color_deck",
+    "bankroll_hints",
+)
+"""What Restore defaults resets: the settings window, but not your name."""
+SETTINGS_SHORTCUT = "Ctrl+,"
 
 
 class MainWindow(QMainWindow):
@@ -68,12 +93,14 @@ class MainWindow(QMainWindow):
         rng: random.Random | None = None,
         profile: ProfileStore | None = None,
         session_dir: Path = SESSION_DIR,
+        sounds: SoundPlayer | None = None,
     ) -> None:
         """``rng`` draws the tournaments' cards and bots (seeded in tests).
 
         ``profile`` holds the user's settings; without one they are kept in
         memory only, so tests never touch the user's real profile. Games are
-        saved in ``session_dir``, where the tools read them back.
+        saved in ``session_dir``, where the tools read them back. ``sounds``
+        plays the sound effects; without one nothing is heard (tests).
         """
         super().__init__(parent)
         self.setWindowTitle("Poker — No Limit Texas Hold'em")
@@ -85,6 +112,11 @@ class MainWindow(QMainWindow):
         self.library = SessionLibrary(session_dir)
         self._rng = rng or random.Random()
         self.profile = profile or ProfileStore()
+        self.sounds = sounds or SoundPlayer()
+        self.sounds.setParent(self)
+        self.settings_dialog: SettingsDialog | None = None
+        self._paused_for_settings: GameScreen | None = None
+        """The table paused while the settings are open, to restart after."""
 
         self.main_menu = MainMenuScreen(MODES)
         self.cash_setup_screen = CashSetupScreen()
@@ -149,6 +181,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.screens)
         self.history: list[QWidget] = [self.main_menu]
 
+        # Above every screen; the tables leave room for it in their top bar.
+        self.settings_button = SettingsButton(self)
+        self.settings_button.setToolTip(f"Settings ({SETTINGS_SHORTCUT})")
+        self.settings_button.setFixedSize(
+            theme.SETTINGS_BUTTON_SIZE, theme.SETTINGS_BUTTON_SIZE
+        )
+        self.settings_button.move(
+            theme.SETTINGS_BUTTON_MARGIN, theme.SETTINGS_BUTTON_MARGIN
+        )
+        self.settings_button.raise_()
+        self.settings_button.clicked.connect(self.open_settings)
+        QShortcut(QKeySequence(SETTINGS_SHORTCUT), self, self.open_settings)
+
         self.table_screens = (
             self.game_screen,
             self.tournament_screen,
@@ -157,19 +202,27 @@ class MainWindow(QMainWindow):
         )
 
         for screen in self.table_screens:
-            screen.set_show_in_big_blinds(self.profile.settings.show_in_big_blinds)
             screen.show_in_big_blinds_changed.connect(self.set_show_in_big_blinds)
 
         self.played_screens = (self.game_screen, self.tournament_screen)
-        """The tables you play at: they share the speed and auto next hand."""
+        """The tables you play at: they share the speed, auto next hand, the
+        sounds and how the bots' cards are shown."""
 
         for played in self.played_screens:
-            if self.profile.settings.table_speed:
-                played.set_speed(self.profile.settings.table_speed)
-
-            played.set_auto_next_hand(self.profile.settings.auto_next_hand)
+            played.sounds = self.sounds
             played.speed_changed.connect(self.set_table_speed)
             played.auto_next_hand_changed.connect(self.set_auto_next_hand)
+
+        self.setup_screens = (
+            self.cash_setup_screen,
+            self.tournament_setup_screen,
+            self.spin_setup_screen,
+        )
+        self.bankroll_bars = (
+            self.main_menu.bankroll_bar,
+            *(setup.bankroll_bar for setup in self.setup_screens),
+        )
+        """Back from the Bankroll screen returns to the screen it was opened on."""
 
         self.clock_combos = (
             self.cash_setup_screen.clock_combo,
@@ -189,11 +242,13 @@ class MainWindow(QMainWindow):
 
         self.main_menu.mode_selected.connect(self.open_mode)
         self.main_menu.quit_requested.connect(self.close)
-        self.main_menu.bankroll_requested.connect(self.open_bankroll)
-        self.main_menu.reload_requested.connect(self.reload_bankroll)
+        for bar in self.bankroll_bars:
+            bar.bankroll_requested.connect(self.open_bankroll)
+            bar.reload_requested.connect(self.reload_bankroll)
+
         self.bankroll_screen.back_requested.connect(self.back)
         self.bankroll_screen.changed.connect(self._on_bankroll_screen_changed)
-        self.refresh_bankroll()
+        self.apply_settings()
 
         self.cash_setup_screen.start_requested.connect(self.start_game)
         self.cash_setup_screen.back_requested.connect(self.back)
@@ -227,6 +282,97 @@ class MainWindow(QMainWindow):
         self.session_browser_screen.replay_requested.connect(self.replay_hand)
 
     # --- Settings ------------------------------------------------------------
+
+    def apply_settings(self) -> None:
+        """Show every screen as the user's settings say."""
+        settings = self.profile.settings
+        self.sounds.enabled = settings.sound_effects
+        self.sounds.set_volume(settings.sound_volume / MAX_VOLUME)
+
+        for screen in self.table_screens:
+            screen.set_show_in_big_blinds(settings.show_in_big_blinds)
+
+        for played in self.played_screens:
+            played.set_speed(settings.table_speed or DEFAULT_TABLE_SPEED)
+            played.set_auto_next_hand(settings.auto_next_hand)
+            played.turn_alert = settings.turn_alert
+            played.set_bot_cards(BotCards(settings.bot_cards))
+
+        for setup in self.setup_screens:
+            setup.set_player_name(settings.player_name)
+
+        if CardWidget.four_colors != settings.four_color_deck:
+            CardWidget.four_colors = settings.four_color_deck
+            self.update()  # Every card is painted again.
+
+        self.refresh_bankroll()
+
+    def open_settings(self) -> SettingsDialog:
+        """Open the settings over the current screen; a table you play at is
+        paused meanwhile, and goes on once they are closed."""
+        if self.settings_dialog is not None:
+            self.settings_dialog.raise_()
+            return self.settings_dialog
+
+        table = self._table_to_pause()
+
+        if table is not None:
+            table.toggle_pause()
+            self._paused_for_settings = table
+
+        dialog = SettingsDialog(self.profile.settings, self.sounds, self)
+        dialog.setting_changed.connect(self._on_setting_changed)
+        dialog.defaults_requested.connect(self.restore_default_settings)
+        dialog.finished.connect(self._on_settings_closed)
+        self.settings_dialog = dialog
+        dialog.open()
+
+        return dialog
+
+    def _table_to_pause(self) -> GameScreen | None:
+        """The table you are playing at, if it is running."""
+        tournament = self.tournament_screen
+
+        if self.current_screen is tournament and tournament.is_revealing:
+            return None  # The Spin & Go draw goes on: it deals the first hand.
+
+        for played in self.played_screens:
+            if (
+                played is self.current_screen
+                and played.game is not None
+                and not played.paused
+            ):
+                return played
+
+        return None
+
+    def _on_setting_changed(self, name: str, value: object) -> None:
+        self._save_setting(name, value)
+        self.apply_settings()
+
+    def restore_default_settings(self) -> None:
+        defaults = UserSettings()
+
+        for name in DIALOG_SETTINGS:
+            setattr(self.profile.settings, name, getattr(defaults, name))
+
+        self.profile.save()
+        self.apply_settings()
+
+        if self.settings_dialog is not None:
+            self.settings_dialog.show_settings(self.profile.settings)
+
+    def _on_settings_closed(self) -> None:
+        dialog = self.settings_dialog
+        self.settings_dialog = None
+        paused = self._paused_for_settings
+        self._paused_for_settings = None
+
+        if dialog is not None:
+            dialog.deleteLater()
+
+        if paused is not None and paused.game is not None and paused.paused:
+            paused.toggle_pause()
 
     def set_show_in_big_blinds(self, enabled: bool) -> None:
         """Show amounts in big blinds on every table, and remember it."""
@@ -263,13 +409,11 @@ class MainWindow(QMainWindow):
         """Show the balance on the menu and the setup screens."""
         bankroll = self.profile.bankroll
         hints = self.profile.settings.bankroll_hints
-        self.main_menu.set_balance(bankroll.balance, bankroll.can_reload)
 
-        for screen in (
-            self.cash_setup_screen,
-            self.tournament_setup_screen,
-            self.spin_setup_screen,
-        ):
+        for bar in self.bankroll_bars:
+            bar.set_balance(bankroll.balance, bankroll.can_reload)
+
+        for screen in self.setup_screens:
             screen.set_bankroll(bankroll.balance, hints)
 
     def _save_bankroll(self) -> None:

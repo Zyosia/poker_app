@@ -84,18 +84,50 @@ def play_to_the_end(screen: TournamentScreen) -> None:
 
 
 def test_the_menu_shows_the_balance(window: MainWindow, store: ProfileStore) -> None:
-    assert window.main_menu.balance_label.text() == "Bankroll  100 000"
-    assert window.main_menu.reload_button.isHidden()
+    assert window.main_menu.bankroll_bar.balance_label.text() == "Bankroll  100 000"
+    assert window.main_menu.bankroll_bar.reload_button.isHidden()
 
     store.bankroll.set_balance(500)
     window.refresh_bankroll()
-    assert window.main_menu.balance_label.text() == "Bankroll  500"
-    assert not window.main_menu.reload_button.isHidden()
+    assert window.main_menu.bankroll_bar.balance_label.text() == "Bankroll  500"
+    assert not window.main_menu.bankroll_bar.reload_button.isHidden()
 
-    window.main_menu.reload_button.click()
+    window.main_menu.bankroll_bar.reload_button.click()
     assert store.bankroll.balance == DEFAULT_BALANCE
-    assert window.main_menu.reload_button.isHidden()
+    assert window.main_menu.bankroll_bar.reload_button.isHidden()
     assert ProfileStore(store.path).bankroll.balance == DEFAULT_BALANCE, "saved"
+
+
+@pytest.mark.parametrize("mode", ["cash", "tournament", "spin"])
+def test_the_bankroll_opens_from_a_setup_screen_and_back_returns_there(
+    window: MainWindow, store: ProfileStore, mode: str
+) -> None:
+    setup, bar = {
+        "cash": (window.cash_setup_screen, window.cash_setup_screen.bankroll_bar),
+        "tournament": (
+            window.tournament_setup_screen,
+            window.tournament_setup_screen.bankroll_bar,
+        ),
+        "spin": (window.spin_setup_screen, window.spin_setup_screen.bankroll_bar),
+    }[mode]
+    window.main_menu.card(mode).click()
+    assert window.current_screen is setup
+    assert bar.balance_label.text() == "Bankroll  100 000"
+
+    bar.bankroll_button.click()
+    assert window.current_screen is window.bankroll_screen
+
+    window.bankroll_screen.ask_balance = lambda parent, current: 400
+    window.bankroll_screen.set_button.click()
+    window.bankroll_screen.back_button.click()
+
+    assert window.current_screen is setup
+    assert bar.balance_label.text() == "Bankroll  400"
+    assert not bar.reload_button.isHidden()
+
+    bar.reload_button.click()
+    assert store.bankroll.balance == DEFAULT_BALANCE
+    assert window.main_menu.bankroll_bar.balance_label.text() == "Bankroll  100 000"
 
 
 def test_the_buy_in_presets_and_defaults(window: MainWindow) -> None:
@@ -158,7 +190,7 @@ def test_a_cash_session_pays_its_buy_in_and_cashes_out(
     assert store.bankroll.balance == 99_000 + stack_behind
     assert store.bankroll.transactions[-1].type == TransactionType.CASH_OUT
     assert store.bankroll.open_game is None
-    assert window.main_menu.balance_label.text().endswith(
+    assert window.main_menu.bankroll_bar.balance_label.text().endswith(
         f"{99_000 + stack_behind:,}".replace(",", " ")
     )
 
@@ -261,7 +293,7 @@ def test_the_bankroll_screen_shows_the_graph_and_the_ledger(
     window.game_screen.menu_button.click()
     window.back()  # Back to the menu.
 
-    window.main_menu.bankroll_button.click()
+    window.main_menu.bankroll_bar.bankroll_button.click()
     screen = window.bankroll_screen
 
     assert window.current_screen is screen
@@ -282,7 +314,7 @@ def test_set_and_reset_are_recorded(window: MainWindow, store: ProfileStore) -> 
     screen.ask_balance = lambda parent, current: 250_000
     screen.set_button.click()
     assert store.bankroll.balance == 250_000
-    assert window.main_menu.balance_label.text() == "Bankroll  250 000"
+    assert window.main_menu.bankroll_bar.balance_label.text() == "Bankroll  250 000"
 
     screen.confirm_reset = lambda parent: False
     screen.reset_button.click()

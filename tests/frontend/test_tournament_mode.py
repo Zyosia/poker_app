@@ -146,7 +146,7 @@ def test_the_setup_builds_the_settings(window: MainWindow) -> None:
     assert settings.rebuys
     assert settings.tournament_config().rebuys is not None
 
-    setup.name_edit.setText(" ")
+    setup.set_player_name(" ")
     setup.start_button.click()
     assert "name" in setup.error_label.text()
 

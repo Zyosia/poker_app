@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -33,9 +32,12 @@ from backend.application.setup import (
 from backend.application.structures import TOURNAMENT_STRUCTURES
 from backend.bots.factory import BOT_TYPES
 from backend.poker_engine.constants import MAX_TABLE_SEATS
+from frontend.components.bankroll_bar import BankrollBar
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
 from frontend.formatting import format_chips
+
+from .cash_setup_screen import player_name_label
 
 DEFAULT_TOURNAMENT = TournamentSettings()
 DEFAULT_SPIN = SpinSettings()
@@ -109,9 +111,13 @@ class BuyInChoice(QWidget):
 
 
 def setup_page(
-    title_text: str, subtitle_text: str, form: QFormLayout, buttons: list[QWidget]
+    title_text: str,
+    subtitle_text: str,
+    form: QFormLayout,
+    buttons: list[QWidget],
+    bankroll_bar: BankrollBar,
 ) -> QVBoxLayout:
-    """The common look of a setup screen: title, panel, buttons."""
+    """The common look of a setup screen: bankroll, title, panel, buttons."""
     title = QLabel(title_text)
     title.setObjectName("title")
     title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -132,6 +138,7 @@ def setup_page(
 
     layout = QVBoxLayout()
     layout.setSpacing(10)
+    layout.addWidget(bankroll_bar, alignment=Qt.AlignmentFlag.AlignRight)
     layout.addStretch()
     layout.addWidget(title)
     layout.addWidget(subtitle)
@@ -160,8 +167,8 @@ class TournamentSetupScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.name_edit = QLineEdit(DEFAULT_TOURNAMENT.player_name)
-        self.name_edit.setMaxLength(12)
+        self.bankroll_bar = BankrollBar()
+        self.name_label = player_name_label(DEFAULT_TOURNAMENT.player_name)
         self.opponents_spin = QSpinBox()
         self.opponents_spin.setRange(1, MAX_TABLE_SEATS - 1)
         self.opponents_spin.setValue(len(DEFAULT_TOURNAMENT.opponents))
@@ -230,7 +237,7 @@ class TournamentSetupScreen(QWidget):
         form = QFormLayout()
         form.setVerticalSpacing(10)
         form.setHorizontalSpacing(18)
-        form.addRow("Your name", self.name_edit)
+        form.addRow("Your name", self.name_label)
         form.addRow("Opponents", self.opponents_spin)
         form.addRow("", self.same_style_check)
         form.addRow("Bots", self.bots_row)
@@ -253,6 +260,7 @@ class TournamentSetupScreen(QWidget):
                     self.start_button,
                     self.back_button,
                 ],
+                self.bankroll_bar,
             )
         )
         self._update_bots()
@@ -281,6 +289,9 @@ class TournamentSetupScreen(QWidget):
         self._hints = hints
         self.refresh_cost()
 
+    def set_player_name(self, name: str) -> None:
+        self.name_label.setText(name)
+
     def refresh_cost(self) -> None:
         affordable = self.buy_in_info.refresh(self.cost(), self._balance, self._hints)
         self.start_button.setEnabled(affordable)
@@ -289,7 +300,7 @@ class TournamentSetupScreen(QWidget):
         payout: PayoutStructure | None = self.payout_combo.currentData()
 
         return TournamentSettings(
-            player_name=self.name_edit.text().strip(),
+            player_name=self.name_label.text(),
             opponents=self.opponents(),
             starting_stack=self.stack_spin.value(),
             structure=self.structure_combo.currentData(),
@@ -319,8 +330,8 @@ class SpinSetupScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.name_edit = QLineEdit(DEFAULT_SPIN.player_name)
-        self.name_edit.setMaxLength(12)
+        self.bankroll_bar = BankrollBar()
+        self.name_label = player_name_label(DEFAULT_SPIN.player_name)
         self.bot_combos = [bot_combo(bot) for bot in DEFAULT_SPIN.opponents]
         bots = QHBoxLayout()
 
@@ -351,7 +362,7 @@ class SpinSetupScreen(QWidget):
         form = QFormLayout()
         form.setVerticalSpacing(10)
         form.setHorizontalSpacing(18)
-        form.addRow("Your name", self.name_edit)
+        form.addRow("Your name", self.name_label)
         form.addRow("Opponents", bots)
         form.addRow("Buy-in", self.buy_in_choice)
         form.addRow("Level speed", self.speed_combo)
@@ -369,6 +380,7 @@ class SpinSetupScreen(QWidget):
                     self.start_button,
                     self.back_button,
                 ],
+                self.bankroll_bar,
             )
         )
         self.buy_in_spin.valueChanged.connect(self.refresh_cost)
@@ -382,6 +394,9 @@ class SpinSetupScreen(QWidget):
         self._hints = hints
         self.refresh_cost()
 
+    def set_player_name(self, name: str) -> None:
+        self.name_label.setText(name)
+
     def refresh_cost(self) -> None:
         affordable = self.buy_in_info.refresh(self.cost(), self._balance, self._hints)
         self.start_button.setEnabled(affordable)
@@ -390,7 +405,7 @@ class SpinSetupScreen(QWidget):
         first, second = (combo.currentData() for combo in self.bot_combos)
 
         return SpinSettings(
-            player_name=self.name_edit.text().strip(),
+            player_name=self.name_label.text(),
             opponents=(first, second),
             buy_in=self.buy_in_spin.value(),
             levels_by=self.speed_combo.currentData(),

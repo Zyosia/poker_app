@@ -27,6 +27,8 @@ from .tournament import (
 )
 
 BOT_NAMES = ("Alex", "Bella", "Carlos", "Dana", "Elio", "Fiona")
+DEFAULT_PLAYER_NAME = "Hero"
+MAX_PLAYER_NAME_LENGTH = 12
 
 TOURNAMENT_BUY_INS = (100, 500, 1_000, 5_000, 10_000)
 SPIN_BUY_INS = (100, 500, 1_000, 5_000)
@@ -44,7 +46,7 @@ class BotLevel(StrEnum):
 class GameSettings:
     """Choices made by the user before starting a game."""
 
-    player_name: str = "Hero"
+    player_name: str = DEFAULT_PLAYER_NAME
     opponent_count: int = 3
     bot_level: BotLevel = BotLevel.NORMAL
     starting_stack: int = 1000
@@ -52,8 +54,7 @@ class GameSettings:
     big_blind: int = 10
 
     def __post_init__(self) -> None:
-        if not self.player_name.strip():
-            raise ValueError("The player name cannot be empty.")
+        check_player_name(self.player_name)
 
         if not 1 <= self.opponent_count <= MAX_TABLE_SEATS - 1:
             raise ValueError(
@@ -119,7 +120,7 @@ class TournamentSettings:
     ``backend.bots.factory``). Levels go up by hands or by playing time.
     """
 
-    player_name: str = "Hero"
+    player_name: str = DEFAULT_PLAYER_NAME
     opponents: tuple[str, ...] = ("tag", "lag", "station", "maniac", "nit")
     starting_stack: int = TOURNAMENT_STARTING_STACK
     structure: str = "Turbo"
@@ -129,7 +130,7 @@ class TournamentSettings:
     rebuys: bool = False
 
     def __post_init__(self) -> None:
-        _check_player_name(self.player_name)
+        check_player_name(self.player_name)
 
         if not 1 <= len(self.opponents) <= MAX_TABLE_SEATS - 1:
             raise ValueError(
@@ -171,14 +172,14 @@ class TournamentSettings:
 class SpinSettings:
     """Choices made before a Spin & Go: you against two bots."""
 
-    player_name: str = "Hero"
+    player_name: str = DEFAULT_PLAYER_NAME
     opponents: tuple[str, str] = ("tag", "lag")
     buy_in: int = DEFAULT_SPIN_BUY_IN
     levels_by: str = LEVELS_BY_HANDS
     multipliers: MultiplierTable = FAIR_MULTIPLIERS
 
     def __post_init__(self) -> None:
-        _check_player_name(self.player_name)
+        check_player_name(self.player_name)
 
         if len(self.opponents) != SPIN_PLAYERS - 1:
             raise ValueError(f"A Spin & Go has {SPIN_PLAYERS - 1} opponents.")
@@ -193,9 +194,15 @@ class SpinSettings:
             get_bot_type(bot)
 
 
-def _check_player_name(name: str) -> None:
+def check_player_name(name: str) -> None:
+    """The human's name: not empty, at most ``MAX_PLAYER_NAME_LENGTH`` long."""
     if not name.strip():
         raise ValueError("The player name cannot be empty.")
+
+    if len(name) > MAX_PLAYER_NAME_LENGTH:
+        raise ValueError(
+            f"The player name is at most {MAX_PLAYER_NAME_LENGTH} characters long."
+        )
 
 
 def _seat_bots(

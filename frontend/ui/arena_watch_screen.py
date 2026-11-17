@@ -20,6 +20,7 @@ from backend.poker_engine.models import Hand
 from backend.simulation.config import SimulationConfig
 from backend.simulation.result import SimulationTotals
 from backend.simulation.runner import Batch, BatchSchedule, plan_batches
+from frontend import theme
 from frontend.components.table_widget import TableWidget
 from frontend.formatting import describe_action, describe_result, format_cards
 from frontend.runout import RunoutEquity, is_running_out, runout_delay_ms
@@ -89,6 +90,7 @@ class ArenaWatchScreen(QWidget):
         self.history_view.setMaximumBlockCount(3000)
 
         controls = QHBoxLayout()
+        controls.addSpacing(theme.SETTINGS_BUTTON_ROOM)
         controls.addWidget(self.info_label, stretch=1)
         controls.addWidget(QLabel("Speed"))
         controls.addWidget(self.speed_combo)

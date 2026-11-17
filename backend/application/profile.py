@@ -14,10 +14,12 @@ import json
 import shutil
 from dataclasses import dataclass, field, fields
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from .bankroll import Bankroll, BankrollDataError
+from .setup import DEFAULT_PLAYER_NAME, check_player_name
 
 PROFILE_FORMAT_VERSION = 1
 PROFILE_FILE_NAME = "profile.json"
@@ -25,6 +27,23 @@ PROFILE_FILE_NAME = "profile.json"
 
 class ProfileError(ValueError):
     """The profile file cannot be read: invalid JSON or content."""
+
+
+class BotCards(StrEnum):
+    """When the user sees the bots' cards at the tables they play.
+
+    Only the display changes: the bots never see anybody else's cards.
+    """
+
+    SHOWDOWN = "showdown"
+    """Only the cards shown at showdown (or turned up after an all-in)."""
+    HAND_END = "hand_end"
+    """Every bot's cards once the hand is over, folded hands included."""
+    ALWAYS = "always"
+    """Face up during the whole hand (to study or tune the bots)."""
+
+
+MAX_VOLUME = 100
 
 
 @dataclass
@@ -38,10 +57,21 @@ class UserSettings:
     tournament_clock: str = ""
     spin_clock: str = ""
     bankroll_hints: bool = True
+    """Warn (without blocking) when a buy-in is a large share of the bankroll."""
     table_speed: str = ""
     """The table speed the user picked ("": the default)."""
     auto_next_hand: bool = True
-    """Warn (without blocking) when a buy-in is a large share of the bankroll."""
+    player_name: str = DEFAULT_PLAYER_NAME
+    """Your name at the tables you play."""
+    sound_effects: bool = True
+    sound_volume: int = 70
+    """0 to ``MAX_VOLUME``."""
+    turn_alert: bool = True
+    """A sound when it is your turn to act."""
+    bot_cards: str = BotCards.SHOWDOWN.value
+    """A ``BotCards`` value."""
+    four_color_deck: bool = False
+    """Diamonds blue and clubs green, so the four suits never look alike."""
 
     def to_dict(self) -> dict[str, Any]:
         return {item.name: getattr(self, item.name) for item in fields(self)}
@@ -66,7 +96,22 @@ class UserSettings:
 
             setattr(settings, item.name, value)
 
+        settings._check_values()
+
         return settings
+
+    def _check_values(self) -> None:
+        """The settings whose type alone does not make them valid."""
+        try:
+            check_player_name(self.player_name)
+        except ValueError as error:
+            raise ProfileError(str(error)) from error
+
+        if not 0 <= self.sound_volume <= MAX_VOLUME:
+            raise ProfileError("The setting sound_volume has an invalid value.")
+
+        if self.bot_cards not in tuple(BotCards):
+            raise ProfileError("The setting bot_cards has an invalid value.")
 
 
 @dataclass

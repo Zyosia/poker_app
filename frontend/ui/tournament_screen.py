@@ -26,6 +26,7 @@ from backend.application.payouts import FAIR_MULTIPLIERS
 from backend.application.persistence import save_session
 from backend.application.tournament import Tournament
 from backend.poker_engine.models import Hand
+from frontend.sounds import Sound, spin_prize_sound
 
 from .game_screen import GameScreen
 
@@ -622,7 +623,10 @@ class TournamentScreen(GameScreen):
         value = self._reveal_values.pop(0)
         self.reveal_label.setText(f"× {value}")
 
-        if not self._reveal_values:
+        if self._reveal_values:
+            self.sounds.play(Sound.SPIN_TICK)
+        else:
+            self.sounds.play(spin_prize_sound(value))
             self._reveal_timer.stop()
             tournament = self.tournament
             self.reveal_label.setText(

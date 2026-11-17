@@ -15,10 +15,17 @@ CARD_BACK = QColor("#28508f")
 CARD_BACK_PATTERN = QColor("#3f6fb8")
 CARD_RED = QColor("#c8102e")
 CARD_BLACK = QColor("#16181d")
+CARD_BLUE = QColor("#1f5fc4")
+CARD_GREEN = QColor("#1d8a3c")
 CHIP = QColor("#d9534f")
 GRID = QColor("#2c3442")
 POSITIVE = QColor("#3ddc84")
 NEGATIVE = QColor("#ff7b7b")
+
+SETTINGS_BUTTON_SIZE = 34
+SETTINGS_BUTTON_MARGIN = 10
+SETTINGS_BUTTON_ROOM = SETTINGS_BUTTON_SIZE + SETTINGS_BUTTON_MARGIN
+"""Left free at the start of a top bar for the settings button above it."""
 
 SERIES_COLORS = (
     QColor("#f2c14e"),
@@ -135,6 +142,7 @@ QLabel#modeDescription { font-size: 12px; color: #9aa4b2; }
 QLabel#modeNote { font-size: 11px; font-weight: 600; color: #b9861d; }
 QLabel#errorText { color: #ff7b7b; }
 QLabel#summaryText { font-size: 15px; }
+QLabel#playerName { font-weight: 700; color: #f2c14e; }
 QLabel#statusText { font-size: 13px; font-weight: 600; color: #c9d1dc; }
 QLabel#noticeText {
     font-size: 14px;
@@ -150,6 +158,30 @@ QLabel#revealText {
     color: #f2c14e;
     padding: 10px;
 }
+
+QDialog#settingsDialog { background-color: #14181f; }
+QGroupBox {
+    background-color: #1c222c;
+    border: 1px solid #2c3442;
+    border-radius: 10px;
+    margin-top: 14px;
+    padding: 14px 12px 10px 12px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 4px;
+    color: #f2c14e;
+}
+QLabel#hintText { font-size: 12px; color: #9aa4b2; }
+QPushButton#settingsButton {
+    background-color: #1c222c;
+    border: 1px solid #2c3442;
+    border-radius: 17px;
+    padding: 0;
+}
+QPushButton#settingsButton:hover { border-color: #b9861d; }
 
 QCheckBox { spacing: 8px; }
 QCheckBox:disabled { color: #5d6675; }

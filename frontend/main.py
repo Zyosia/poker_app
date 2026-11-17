@@ -11,6 +11,7 @@ from PySide6.QtCore import QStandardPaths, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from backend.application.profile import PROFILE_FILE_NAME, ProfileStore
+from frontend.sounds import SoundPlayer
 from frontend.theme import STYLESHEET
 from frontend.ui.main_window import MainWindow
 
@@ -30,7 +31,7 @@ def main() -> int:
     app.setStyleSheet(STYLESHEET)
 
     profile = ProfileStore(profile_path())
-    window = MainWindow(profile=profile)
+    window = MainWindow(profile=profile, sounds=SoundPlayer(audio=True))
     # Destroyed by Qt when closed, while the application still exists, rather
     # than by Python at exit in no particular order.
     window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)

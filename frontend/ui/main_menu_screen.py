@@ -5,14 +5,13 @@ from collections.abc import Sequence
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from frontend.formatting import format_chips
+from frontend.components.bankroll_bar import BankrollBar
 from frontend.modes import Mode
 
 CARD_COLUMNS = 3
@@ -69,8 +68,6 @@ class MainMenuScreen(QWidget):
     mode_selected = Signal(object)
     """Emitted with the chosen ``Mode``."""
     quit_requested = Signal()
-    bankroll_requested = Signal()
-    reload_requested = Signal()
 
     def __init__(self, modes: Sequence[Mode], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -98,26 +95,11 @@ class MainMenuScreen(QWidget):
         self.quit_button.setFixedWidth(200)
         self.quit_button.clicked.connect(self.quit_requested)
 
-        self.balance_label = QLabel()
-        self.balance_label.setObjectName("statusText")
-        self.bankroll_button = QPushButton("Bankroll")
-        self.bankroll_button.setObjectName("small")
-        self.bankroll_button.clicked.connect(self.bankroll_requested)
-        self.reload_button = QPushButton("Reload")
-        self.reload_button.setObjectName("accent")
-        self.reload_button.setToolTip("Back to the default bankroll.")
-        self.reload_button.clicked.connect(self.reload_requested)
-        self.reload_button.hide()
-
-        header = QHBoxLayout()
-        header.addStretch()
-        header.addWidget(self.balance_label)
-        header.addWidget(self.reload_button)
-        header.addWidget(self.bankroll_button)
+        self.bankroll_bar = BankrollBar()
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        layout.addLayout(header)
+        layout.addWidget(self.bankroll_bar, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addStretch()
         layout.addWidget(title)
         layout.addWidget(subtitle)
@@ -126,11 +108,6 @@ class MainMenuScreen(QWidget):
         layout.addSpacing(24)
         layout.addWidget(self.quit_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()
-
-    def set_balance(self, balance: int, can_reload: bool) -> None:
-        """Show the bankroll, and the reload offer when nearly broke."""
-        self.balance_label.setText(f"Bankroll  {format_chips(balance)}")
-        self.reload_button.setVisible(can_reload)
 
     def card(self, key: str) -> ModeCard:
         """Return the card of the mode registered under ``key``."""

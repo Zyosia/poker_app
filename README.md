@@ -52,9 +52,11 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V1.1.1 — Tools Improvements](#v111--tools-improvements)
 
-- [V1.2 — Cash Game Extras](#v12--cash-game-extras)
+- [V1.2 — Settings and Sound](#v12--settings-and-sound)
 
 - [V2.x — AI and Strategies](#v2x--ai-and-strategies)
+
+- [V3.x — Cash Game Extras](#v3x--cash-game-extras)
 
 - [Later / Maybe](#later--maybe)
 
@@ -627,8 +629,12 @@ frontend/
 ├── formatting.py          Texts for cards, amounts (chips or BB), actions
 ├── runout.py              Cards face up and equity after an all-in is called
 ├── modes.py               Modes listed by the main menu
+├── sounds.py              Sound effects and the player (V1.2)
+├── sound_synthesis.py     Makes the sound files (python -m frontend.sound_synthesis)
+├── assets/sounds/         The sound effects (WAV)
 ├── ui/
-│   ├── main_window.py     Navigation stack (Back works everywhere)
+│   ├── main_window.py     Navigation stack (Back works everywhere), settings
+│   ├── settings_dialog.py The settings window (V1.2)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -638,8 +644,8 @@ frontend/
 │   └── tools_screen.py, replayer_screen.py, equity_screen.py,
 │       my_stats_screen.py, session_browser_screen.py   Tools (V1.1)
 └── components/            Card, seat, table, action panel, line and bar charts,
-                           clock choice, buy-in and bankroll line, card picker
-                           and range grid
+                           clock choice, buy-in and bankroll line, card picker,
+                           range grid, bankroll bar and settings button
 
 tests/                     Engine, application, bots, simulation and UI tests
 ```
@@ -711,8 +717,11 @@ The dealer then rotates clockwise, skipping players who can no longer participat
 
 The application is a **PySide6 desktop application**. It opens on a **main
 menu** listing the modes: **Cash Game**, **Tournament**, **Spin & Go** and
-**Bot Arena**, and **Tools**. The menu also shows your **bankroll** and
-opens the **Bankroll** screen. Every screen has a Back button.
+**Bot Arena**, and **Tools**. The menu and the setup screens of the paid
+modes show your **bankroll** and open the **Bankroll** screen. Every screen
+has a Back button, and the **⚙** button at the top left opens the
+**settings** (your name, sounds, table options) from anywhere, see
+[V1.2](#v12--settings-and-sound).
 
 ```bash
 uv sync                        # install the dependencies
@@ -721,8 +730,9 @@ uv run python -m frontend.main # start the desktop application
 
 **Cash Game** — one human player against 1 to 5 bots:
 
-- **Setup**: player name, number of opponents, bot level, starting stack
-  (the buy-in, paid from the bankroll), blinds and action clock.
+- **Setup**: number of opponents, bot level, starting stack (the buy-in,
+  paid from the bankroll), blinds and action clock; you play under the name
+  chosen in the settings.
 - **Table**: seats, hole cards, community cards, bets, pot and dealer button;
   **Show in BB** switches every amount to big blinds. Once an all-in is
   called, the cards are turned face up with each player's chance of winning.
@@ -730,6 +740,9 @@ uv run python -m frontend.main # start the desktop application
   with a slider and presets (Min, 1/2 Pot, Pot, Max) to size a bet or raise,
   and the **action clock** with its time bank; **Pause** freezes it.
 - **Hand history**: every action, street and result of the session.
+- **Sound effects** for the cards, the chips and every action, and the
+  **bots' cards** shown at showdown, at the end of each hand or always, as
+  chosen in the settings.
 - **Between hands**: the next hand starts on its own after the result is
   shown (**Auto next hand**, can be switched off), or rebuy when the player
   is out of chips. A **Speed** choice (Slow, Normal, Fast, Turbo) sets how
@@ -2039,10 +2052,112 @@ rule changed: the golden results and every Bot Arena result are unchanged.
 
 ---
 
-# V1.2 — Cash Game Extras
+# V1.2 — Settings and Sound
 
-- [ ] Full rebuy / top-up rules (human and bots, min/max buy-in)
-- [ ] Straddle
+**V1.2** adds a **settings window** reachable from every screen, **sound
+effects**, the **bots' cards** on demand, and the **bankroll on the setup
+screens**. No poker rule changed: the engine is untouched, and the golden
+results and every Bot Arena result are unchanged.
+
+## Features
+
+### ⚙️ Settings
+
+- The **⚙ button** at the top left of every screen (or **Ctrl+,**) opens the
+  settings in a small window over the current screen; closing it returns to
+  that screen. At a table you are playing, the game **waits** while the
+  window is open (as with Pause: the action clock and the level clock stop)
+  and goes on when it closes; a table you paused yourself stays paused.
+- Every change applies at once and is **saved in the profile**, like the
+  bankroll.
+
+| Section | Setting |
+| --- | --- |
+| Player | **Your name** (1 to 12 characters), used by the Cash Game, the Tournament and the Spin & Go from your next game; the setup screens show it |
+| Sound | **Sound effects** on or off, **volume** (a chip sound lets you hear it), a **sound when it is your turn** |
+| Tables | **Bots' cards** (below), **table speed**, **auto next hand**, **amounts in big blinds**, **four-colour deck** (♦ blue, ♣ green, on every card), **bankroll-management hints** |
+
+- **Restore defaults** resets every setting of the window except your name.
+- Speed, Auto next hand and Show in BB stay on the tables as quick switches:
+  they are the same settings, so the window and the tables always agree.
+
+### 🃏 The bots' cards
+
+| Choice | The bots' cards are face up |
+| --- | --- |
+| At showdown only (default) | at showdown, or once an all-in is called, as in a real game |
+| At the end of every hand | once the hand is over, folded hands included (dimmed) |
+| Always | during the whole hand, to study or tune the bots |
+
+- **Only what you see changes.** The bots still decide from their own two
+  cards and the public information (`DecisionContext`): a test plays hands
+  with every card face up on the screen and checks that each bot was never
+  given another player's card.
+- With the last two choices, the hand history lists the cards nobody showed
+  at the end of the hand ("Alex had K♠ Q♦ (folded)").
+- The replayer keeps its own "Show all cards" switch.
+
+### 🔊 Sound effects
+
+| Moment | Sound |
+| --- | --- |
+| The hole cards are dealt | two cards sliding |
+| Flop, turn, river | a card turned over |
+| Check | two knocks on the table |
+| Fold | cards pushed away |
+| Call / bet or raise / all-in | chips, more of them for a raise, a pile for an all-in |
+| The pot goes to the winner | chips swept across the table |
+| Your turn | a soft chime (can be switched off) |
+| Spin & Go draw | a tick for every value flashed, then a chime for the prize, a fanfare from × 10 up |
+
+- The sounds are **made by the project** (`frontend/sound_synthesis.py`:
+  filtered noise for the cards, short ringing tones for the chips, a damped
+  low tone for the knocks, bell tones for the alerts): no recorded or
+  downloaded asset. `python -m frontend.sound_synthesis` writes them again in
+  `frontend/assets/sounds/` (fixed seed, same sounds every time).
+- They play with Qt's `QSoundEffect` (several can overlap: a call while the
+  flop is dealt). The tests never open an audio device: they check what a
+  silent player was asked to play.
+- Nothing plays while the rest of a tournament is played instantly (skip to
+  the results).
+
+### 💰 The bankroll on the setup screens
+
+- The **Cash Game**, **Tournament** and **Spin & Go** setup screens show the
+  bankroll at the top right, with the **Bankroll** button (and **Reload**
+  when it is nearly empty), as the main menu does.
+- **Back** from the Bankroll screen returns to the screen it was opened from
+  (the setup screen, or the menu), with the balance up to date.
+
+> 📸 *Screenshot placeholder: the settings window over a table, with the
+> bots' cards face up and the four-colour deck.*
+
+## New dependency
+
+- **PySide6-Addons** (the same Qt version as PySide6-Essentials) for Qt's
+  multimedia module; `uv sync` installs it.
+- For a PyInstaller build, the sounds folder must be copied next to the
+  code: `datas=[("frontend/assets/sounds", "frontend/assets/sounds")]` in
+  the `.spec` file.
+
+## Engine changes
+
+- None.
+
+## Objectives
+
+- [x] The bankroll and its button on the Cash Game, Tournament and Spin & Go setup screens; Back returns to the screen it was opened from
+- [x] The bots' cards: at showdown, at the end of the hand or always (display only, the bots see nothing more)
+- [x] Sound effects: cards, chips, every action, your turn, the Spin & Go draw
+- [x] A settings window from every screen, even at a table: your name, sound and volume, table options
+
+## Tests
+
+```text
+1631 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
 
 ---
 
@@ -2058,6 +2173,15 @@ Already available: random bot, basic bot (hand strength + pot odds), play-style 
 - [ ] Poker AI (e.g. CFR or self-play), evaluated in Bot Arena
 - [ ] M ratio (stack / cost of an orbit) in short-stack decisions: moved from
       V1.0, the push/fold ranges by effective big blinds did not need it
+
+---
+
+# V3.x — Cash Game Extras
+
+Moved from V1.2, not a priority.
+
+- [ ] Full rebuy / top-up rules (human and bots, min/max buy-in)
+- [ ] Straddle
 
 ---
 
@@ -2148,7 +2272,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1575 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1631 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 
