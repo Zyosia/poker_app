@@ -2,7 +2,11 @@
 
 from collections.abc import Mapping, Sequence
 
-from backend.application.controllers import PlayerController, build_decision_context
+from backend.application.controllers import (
+    PlayerController,
+    build_decision_context,
+    notify_hand_end,
+)
 from backend.poker_engine.betting import apply_action
 from backend.poker_engine.deck import Deck
 from backend.poker_engine.hand import advance_hand, start_hand
@@ -105,5 +109,7 @@ class ArenaTable:
 
     def _notify_if_finished(self, hand: Hand) -> None:
         if hand.finished:
+            notify_hand_end(self.controllers.values(), hand.actions)
+
             for observer in self.observers:
                 observer.on_hand_end(hand, self.stacks_before)

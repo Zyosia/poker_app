@@ -63,6 +63,33 @@ QPushButton#tableButton[yourTurn="true"] {
     font-weight: 700;
 }
 QStackedWidget#tableFrame[yourTurn="true"] { border: 3px solid #f2c14e; }
+
+QScrollArea#handHistory {
+    background-color: #10141a;
+    border: 1px solid #2c3442;
+    border-radius: 10px;
+}
+QWidget#handHistoryContent { background: transparent; }
+QFrame#historyHand { background-color: #1b212b; border-radius: 8px; }
+QLabel#historyHandTitle { font-size: 13px; font-weight: 700; color: #f2c14e; }
+QLabel#historyBlinds { font-size: 11px; color: #9aa4b2; }
+QLabel#historySection {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9aa4b2;
+    letter-spacing: 1px;
+}
+QLabel#historyName { font-size: 12px; color: #9aa4b2; }
+QLabel#historyName[hero="true"] { color: #eef1f5; font-weight: 700; }
+QLabel#historyAction, QLabel#historyNote { font-size: 12px; }
+QLabel[tone="post"] { color: #7d8794; }
+QLabel[tone="fold"] { color: #7d8794; }
+QLabel[tone="passive"] { color: #eef1f5; }
+QLabel[tone="aggressive"] { color: #f2a33a; font-weight: 600; }
+QLabel[tone="allIn"] { color: #ff7b7b; font-weight: 700; }
+QLabel[tone="result"] { color: #3ddc84; font-weight: 600; }
+QLabel[tone="note"] { color: #9aa4b2; font-style: italic; }
+QLabel[tone="alert"] { color: #f2a33a; }
 QLabel#resultText { font-size: 16px; font-weight: 600; }
 
 QFrame#panel {
@@ -100,6 +127,48 @@ QPushButton#accent:hover { background-color: #cf9722; }
 QPushButton#accent:disabled { background-color: #40331a; border-color: #4d3d1f; }
 
 QPushButton#small { padding: 6px 10px; font-size: 12px; }
+QPushButton#help {
+    min-width: 26px;
+    max-width: 26px;
+    padding: 4px 0;
+    border-radius: 13px;
+    font-weight: 700;
+    color: #f2c14e;
+}
+
+QWidget#guideWindow, QScrollArea#guidePage, QWidget#guidePageContent {
+    background-color: #14181f;
+}
+QListWidget#guideNavigation {
+    background-color: #101319;
+    border: none;
+    border-right: 1px solid #2c3442;
+    padding-top: 12px;
+    font-size: 14px;
+}
+QListWidget#guideNavigation::item { padding: 9px 16px; }
+QListWidget#guideNavigation::item:selected {
+    background-color: #222a36;
+    color: #f2c14e;
+    border-left: 3px solid #f2c14e;
+}
+QLabel#guideTitle { font-size: 26px; font-weight: 700; color: #f2c14e; }
+QLabel#guideHeading { font-size: 16px; font-weight: 600; color: #eef1f5; }
+QLabel#guideText { font-size: 14px; color: #d4d9e1; }
+QFrame#guideCard {
+    background-color: #1b212b;
+    border: 1px solid #2c3442;
+    border-radius: 10px;
+}
+QLabel#guideCardName { font-size: 18px; font-weight: 700; color: #f2c14e; }
+QLabel#guideMeter { color: #f2c14e; font-size: 13px; letter-spacing: 2px; }
+QPushButton#toggle { padding: 6px 10px; font-size: 12px; }
+QPushButton#toggle:checked {
+    background-color: #f2c14e;
+    color: #14181f;
+    font-weight: 700;
+}
+QPushButton#toggle:checked:disabled { background-color: #3a4456; color: #9aa4b2; }
 
 QLineEdit, QSpinBox, QComboBox {
     background-color: #232a36;

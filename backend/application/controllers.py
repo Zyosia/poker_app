@@ -5,6 +5,7 @@ validating and executing it.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -125,6 +126,21 @@ class PlayerController(ABC):
     @abstractmethod
     def choose_action(self, context: DecisionContext) -> Action:
         """Return the action selected by the player."""
+
+    def observe_hand(self, actions: tuple[ActionEvent, ...]) -> None:  # noqa: B027
+        """Called at the end of every hand played at the table with its
+        public actions (folds after the player's last decision included),
+        for bots that learn their opponents. Does nothing by default."""
+
+
+def notify_hand_end(
+    controllers: Iterable[PlayerController], actions: Sequence[ActionEvent]
+) -> None:
+    """Show a finished hand's public actions to every controller."""
+    public = tuple(actions)
+
+    for controller in controllers:
+        controller.observe_hand(public)
 
 
 class HumanController(PlayerController):

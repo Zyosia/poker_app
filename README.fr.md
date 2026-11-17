@@ -57,7 +57,10 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [V1.3 — Multi-tabling et tables pleines](#v13--multi-tabling-et-tables-pleines)
 
-* [V2.x — IA et stratégies](#v2x--ia-et-stratégies)
+* [V1.4 — Historique et mosaïque](#v14--historique-et-mosaïque)
+
+* [V2.0 — IA, stratégies et guide](#v20--ia-stratégies-et-guide)
+* [V2.x — Suite](#v2x--suite)
 
 * [V3.x — Extras cash game](#v3x--extras-cash-game)
 
@@ -650,6 +653,12 @@ backend/
 │   ├── profiles.py        BotProfile et les styles de jeu
 │   ├── short_stack.py     Jeu en tournoi selon le tapis
 │   ├── push_fold.py       Ranges push/fold par profondeur et position
+│   ├── preflop_charts.py  Ranges d'ouverture et de réponse par position (V2.0)
+│   ├── opponent_model.py  Stats en direct et ranges des adversaires (V2.0)
+│   ├── monte_carlo.py     Showdowns aléatoires contre ces ranges (V2.0)
+│   ├── strategy_bot.py    Shark et Adaptive : tableaux, ratio M, EV (V2.0)
+│   ├── push_fold_solver.py  Push/fold heads-up résolu par CFR+ (V2.0)
+│   ├── heads_up_push_fold.py  Sa solution, générée (V2.0)
 │   └── factory.py         Création d'un bot depuis son nom (nit, tag, lag…)
 └── simulation/            Simulations de bots sans interface (Beta 1.0)
     ├── config.py          SimulationConfig, SeatSpec, StackPolicy, seeds
@@ -675,6 +684,7 @@ frontend/
 ├── formatting.py          Textes des cartes, montants (jetons ou BB), actions
 ├── runout.py              Cartes retournées et équité après un all-in payé
 ├── modes.py               Modes affichés par le menu principal
+├── guide.py               Le contenu du Guide (V2.0)
 ├── sounds.py              Effets sonores et leur lecteur (V1.2)
 ├── sound_synthesis.py     Fabrique les fichiers son (python -m frontend.sound_synthesis)
 ├── assets/sounds/         Les effets sonores (WAV)
@@ -683,6 +693,7 @@ frontend/
 │   ├── main_window.py     Le lobby : menu, outils, Bot Arena, réglages, tables
 │   ├── game_window.py     Une partie dans sa propre fenêtre (V1.3)
 │   ├── settings_dialog.py La fenêtre des réglages (V1.2)
+│   ├── guide_window.py    Le Guide : application, styles de bots, vocabulaire (V2.0)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -694,7 +705,8 @@ frontend/
 └── components/            Carte, siège, table, panneau d'actions, graphiques,
                            choix de l'horloge, ligne buy-in et bankroll,
                            sélecteur de cartes, grille des ranges, barre de
-                           bankroll, bouton des réglages et choix des bots
+                           bankroll, bouton des réglages, choix des bots et
+                           historique des mains (V1.4)
 
 tests/                     Tests moteur, application, bots, simulation et UI
 ```
@@ -793,7 +805,9 @@ pleine :
   actives, avec un curseur et des raccourcis (Min, 1/2 Pot, Pot, Max) pour
   choisir le montant d'une mise ou d'une relance, et l'**horloge d'action**
   avec sa time bank ; **Pause** la fige.
-- **Historique** : chaque action, street et résultat de la session.
+- **Historique** : chaque main de la session dans son propre bloc, les
+  cartes dessinées et les actions colorées par type ; le bouton **History**
+  l'affiche ou le masque, voir [V1.4](#v14--historique-et-mosaïque).
 - **Effets sonores** pour les cartes, les jetons et chaque action, et les
   **cartes des bots** montrées au showdown, à la fin de chaque main ou
   toujours, selon les réglages.
@@ -811,6 +825,11 @@ montent, voir [V1.0](#v10--tournois).
 
 **Bot Arena** — des bots contre des bots (tables cash, tournois et Spin & Go),
 voir [Beta 1.0](#beta-10--simulation) et [V1.0](#v10--tournois).
+
+**Guide** — le bouton **Guide** du menu principal explique l'application,
+chaque style de bot (et comment le battre) et le vocabulaire du poker ; le
+**?** à côté des styles de jeu l'ouvre sur les bots, voir
+[V2.0](#v20--ia-stratégies-et-guide).
 
 **Tools** (outils) — le relecteur de mains, le calculateur d'équité, vos
 statistiques et le navigateur de sessions, voir [V1.1](#v11--outils) ; les
@@ -911,10 +930,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V1.3](#v13--multi-tabling-et-tables-pleines)) :
+[V2.0](#v20--ia-stratégies-et-guide)) :
 
 ```text
-1667 passed
+1722 passed
 ```
 
 ### État actuel
@@ -2442,20 +2461,294 @@ tous les résultats de la Bot Arena de 2 à 6 sièges sont inchangés.
 
 ---
 
-# V2.x — IA et stratégies
+# V1.4 — Historique et mosaïque
 
-Déjà disponibles : bot aléatoire, bot basique (force de main + cotes du pot),
-profils de style (Beta 1.0), jeu en tapis court (V1.0).
+La **V1.4** redessine l'**historique des mains** à côté des tables où vous
+jouez, pour qu'il se lise d'un coup d'œil (comme sur Winamax), permet de
+l'**afficher ou le masquer**, et fait garder à **Tile** la forme de chaque
+table. Elle ajoute aussi un bouton **Tile** sur les tables. Aucune règle de
+poker ne change.
 
-* [ ] Équité Monte Carlo dans les décisions des bots (réutilise le calculateur de la V1.1)
-* [ ] Bot basé sur des ranges (ranges préflop par position)
-* [ ] Modélisation des ranges (réduire les ranges adverses selon leurs actions)
-* [ ] Décisions fondées sur l'espérance de gain
-* [ ] Bot adaptatif / exploitant (utilise les stats en direct des adversaires : VPIP, AF…)
-* [ ] IA de poker (par exemple CFR ou self-play), évaluée dans la Bot Arena
-* [ ] Ratio M (tapis / coût d'un tour de table) dans les décisions en tapis
-      court : déplacé de la V1.0, les ranges push/fold en big blinds
-      effectives n'en avaient pas besoin
+## Fonctionnalités
+
+### 📜 L'historique des mains
+
+* **Un bloc par main** : son numéro et ses blinds, les blinds postées, **vos
+  cartes**, puis chaque street (**Pre-flop**, **Flop**, **Turn**, **River**)
+  avec **le board dessiné en cartes**, et le **showdown** avec les cartes et
+  la main de chaque joueur.
+* **Deux colonnes** : qui a joué, et ce qu'il a fait. Votre nom ressort.
+* **Des couleurs par type** : les passes et les blinds en gris, les checks et
+  les suivis en blanc, les mises et relances en orange, les all-ins en
+  rouge. Le résultat est en vert ; les éliminations et les temps écoulés en
+  orange.
+* Avec les cartes des bots montrées à la fin de la main (V1.2), leurs mains
+  sont dessinées dans le bloc du showdown, marquées « folded ».
+* La dernière action reste visible. Remontez pour relire une main plus
+  ancienne ; l'historique cesse de suivre jusqu'à ce que vous reveniez en
+  bas. Les 40 dernières mains restent affichées ; le fichier de session les
+  garde toutes.
+* Tous les historiques de l'application l'utilisent : les tables où vous
+  jouez (Cash Game, Tournoi, Spin & Go), le **replayer** et le visionneur de
+  la **Bot Arena**.
+  * Le **replayer** l'écrit pas à pas à mesure que vous avancez dans la
+    main : avancer ajoute les nouvelles lignes, reculer réécrit la main
+    jusqu'à ce pas.
+  * Le visionneur de la **Bot Arena** dessine les cartes de chaque bot au
+    début de chaque main (un spectateur les voit toutes), puis les streets
+    et le showdown.
+
+### 👁️ L'afficher ou le masquer
+
+* Un bouton **History** au bout de la barre du haut de la table (doré quand
+  l'historique est affiché) l'affiche ou le masque ; la table prend la place.
+* C'est un seul réglage pour toutes les tables, gardé dans le profil, et
+  aussi dans la fenêtre des réglages (Tables). Restore defaults le réaffiche.
+* Quand la fenêtre est trop étroite pour la table **et** l'historique,
+  l'historique s'efface et le bouton est grisé. Les commandes de la table
+  demandent environ 1 060 pixels avec l'historique : une table en mosaïque
+  sur la moitié d'un écran full HD s'affiche donc sans l'historique.
+* La barre du haut occupe maintenant toute la fenêtre, au-dessus de la table
+  et de l'historique, pour que ses boutons restent lisibles dans une petite
+  fenêtre. Les boutons d'action sont un peu plus étroits (120 pixels au
+  moins), pour laisser la place à l'historique.
+
+### 🪟 La mosaïque
+
+* **Tile** n'étire plus les fenêtres pour remplir l'écran. Chaque table
+  garde **la forme d'une table** (16:10) et est aussi grande que l'écran le
+  permet, jamais plus grande qu'une nouvelle fenêtre de table (1 180 pixels
+  de large) :
+
+| Tables (écran 1080p) | Disposition |
+| --- | --- |
+| 1 | 1 180 × 737, en haut, centrée |
+| 2 | côte à côte, 960 × 600 chacune |
+| 3 ou 4 | 2 × 2, 832 × 520 chacune, centrées |
+| Plus | une grille à la taille minimale (820 × 480), qui se chevauche pour tenir |
+
+* La grille (colonnes et lignes) est celle qui donne les plus grandes
+  tables. Les tables partent du haut de l'écran et sont centrées en largeur.
+* Un bouton **Tile** dans la barre du haut de chaque table, et **Ctrl+T**
+  dans n'importe quelle fenêtre (le lobby aussi), disposent toutes les tables
+  ouvertes sans repasser par le lobby.
+
+> 📸 *Emplacement de capture d'écran : une table avec le nouvel historique,
+> et deux tables en mosaïque côte à côte.*
+
+## Changements du moteur
+
+* Aucun.
+
+## Objectifs
+
+* [x] Un bouton pour afficher ou masquer l'historique, gardé pour toutes les tables
+* [x] Un historique qui se lit comme celui de Winamax : un bloc par main, des cartes dessinées, les actions en colonnes et en couleurs
+* [x] Le même historique dans le replayer et le visionneur de la Bot Arena
+* [x] Tile garde les proportions des tables au lieu de les étirer
+* [x] Tile depuis les fenêtres des tables (bouton et Ctrl+T)
+
+## Tests
+
+```text
+1681 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V2.0 — IA, stratégies et guide
+
+La **V2.0** ajoute deux bots plus forts, **Shark** et **Adaptive**, construits
+sur tous les points de la liste V2.x : équité Monte Carlo, ranges préflop par
+position, ranges adverses lues dans leurs actions, décisions à l'espérance de
+gain, statistiques des adversaires en direct, ratio M et une stratégie
+push/fold résolue par **CFR**. Une fenêtre **Guide** explique l'application,
+chaque style de bot et le vocabulaire du poker : un débutant s'y retrouve
+sans ce fichier. Aucune règle du poker n'a changé, et les bots existants
+jouent exactement comme avant (les tests golden sont inchangés).
+
+## Fonctionnalités
+
+### 🦈 Shark : le bot stratégique
+
+* **Préflop, selon des tableaux** (`backend/bots/preflop_charts.py`). Il
+  ouvre une range qui dépend du **nombre de joueurs encore à parler** :
+  environ 10 % des mains UTG à 9 joueurs, 17 % UTG à 6, 45 % au bouton, 76 %
+  pour la small blind en heads-up. Face à une relance, il lit la **largeur de
+  la range du relanceur** : il en sur-relance environ un quart et en paie
+  davantage en position ; la big blind défend plus large, et la small blind
+  sur-relance ou se couche (pas de call hors de position). Face à une
+  sur-relance, QQ+ et AK continuent, JJ–77, AQs–ATs, KQs et AQo paient avec
+  des tapis profonds.
+* **Ranges adverses** (`opponent_model.py`). Chaque adversaire part de toutes
+  les mains qu'il peut avoir, puis chaque action la réduit : une relance garde
+  une range d'ouverture, une sur-relance les 6 % meilleures, un call une bande
+  du milieu (les meilleures mains auraient sur-relancé), un check de la big
+  blind n'importe quelle main. Après le flop, chaque main de la range est
+  évaluée sur le board du moment : une mise garde les mains faites et
+  quelques bluffs, un call écarte l'essentiel du vent, un check rend les mains
+  les plus fortes moins probables.
+* **Équité Monte Carlo** (`monte_carlo.py`). 200 donnes aléatoires par
+  décision après le flop, tirées de ces ranges (jamais une carte qu'il voit)
+  et du reste du board, avec l'évaluateur du projet et un RNG propre au bot.
+  Chaque donne retient aussi la force actuelle de la main de chaque
+  adversaire, qui décide s'il paierait une mise.
+* **Espérance de gain**. Il compare, en jetons à partir de maintenant :
+  fold (0), check (équité × pot), call (équité × (pot + call) − call), et des
+  mises ou relances d'un demi-pot, trois quarts, un pot et tapis. Pour une
+  mise, chaque adversaire paie avec les mains assez fortes pour le prix
+  proposé (la part du pot qu'il paie, plus 5 points) et jette les autres ;
+  une donne où tout le monde se couche gagne le pot, sinon le bot gagne sa
+  part du pot agrandi contre ceux qui paient, moins sa mise. La meilleure
+  valeur l'emporte, l'option passive en cas d'égalité. Le tapis n'est
+  envisagé que si le tapis restant vaut au plus 1,5 fois le pot, ou si c'est
+  la seule relance possible.
+* **Tournois : le ratio M**. M est le tapis effectif divisé par le coût d'un
+  tour de blinds et d'antes. À **M ≤ 7**, le bot fait tapis ou se couche (les
+  ranges push/fold de la V1.0, pour 1,5 × M big blinds : les antes élargissent
+  les ranges) ; jusqu'à **M 15**, il ouvre à 2,2 big blinds et sur-relance à
+  tapis ou se couche. **En heads-up avec 20 big blinds ou moins**, il joue
+  l'équilibre push/fold résolu par CFR (ci-dessous).
+* Comme tout bot, il ne lit que ce qu'un joueur peut savoir : les actions
+  publiques, le board et ses propres cartes.
+
+### 🧠 Adaptive : il apprend ses adversaires
+
+* **Chaque contrôleur voit désormais chaque main terminée** :
+  `PlayerController.observe_hand` reçoit ses actions publiques (y compris
+  celles qui suivent la dernière décision du joueur). `PokerGame`, le tournoi
+  et la table de la Bot Arena l'appellent ; les autres bots l'ignorent.
+* Le bot Adaptive compte, par adversaire, le **VPIP**, le **PFR**, le
+  **facteur d'agression** après le flop et les **folds face à une mise**. Tant
+  qu'un adversaire a joué peu de mains, ces chiffres s'appuient sur ceux d'un
+  joueur typique (20 mains fictives à VPIP 28 %, PFR 18 %, AF 2, 45 % de folds
+  face à une mise).
+* Il joue le jeu du Shark avec ces chiffres :
+  * un adversaire qui relance plus que d'habitude a une **range d'ouverture
+    plus large**, sur-relancée et payée plus large ; celui qui joue plus de
+    mains paie plus large ;
+  * on attend **plus de bluffs des joueurs agressifs** : leurs mises gardent
+    plus de mains faibles ;
+  * contre les joueurs qui **se couchent face aux mises** plus que d'habitude
+    il bluffe davantage, et contre les **calling stations** il arrête de
+    bluffer et mise plus fin pour la valeur ;
+  * il **vole les blinds** plus souvent quand les joueurs restants sont
+    serrés.
+* Le Shark prend le joueur typique pour tout le monde et n'apprend jamais :
+  c'est la seule différence entre les deux bots.
+
+### ♟️ CFR : le push/fold heads-up résolu
+
+* **Le jeu** : heads-up, sans ante, un tapis effectif de S big blinds ; la
+  small blind fait tapis ou se couche, la big blind paie ou se couche. C'est
+  la fin de tout tournoi heads-up (les deux derniers joueurs d'un Spin & Go).
+* **La méthode** (`backend/bots/push_fold_solver.py`) : **CFR+**
+  (minimisation du regret contrefactuel). Les deux stratégies jouent l'une
+  contre l'autre encore et encore ; chaque main ajoute à son *regret* ce que
+  l'autre action aurait gagné, et joue ses actions en proportion de leur
+  regret positif. La stratégie moyenne converge vers un **équilibre de
+  Nash** ; `exploitability` mesure ce qu'une meilleure réponse gagnerait
+  encore.
+* **Les équités** des 169 × 169 paires de mains de départ viennent d'un Monte
+  Carlo (400 couleurs et boards aléatoires par paire, seed 20261117) ; les
+  cartes bloquées sont exactes (chaque paire pèse les combinaisons sans carte
+  commune).
+* **La solution** : 600 itérations pour chaque tapis de 1 à 20 big blinds,
+  chacune avec une exploitabilité sous 0,0001 big blind par main, écrite sous
+  forme de ranges dans `heads_up_push_fold.py` (généré, environ 7 minutes :
+  `python -m backend.bots.push_fold_solver`). Elle correspond aux tableaux
+  heads-up publiés :
+
+| Tapis effectif | La small blind fait tapis | La big blind paie |
+| ---: | ---: | ---: |
+| 5 BB | 72 % | 62 % |
+| 10 BB | 58 % | 38 % |
+| 15 BB | 45 % | 28 % |
+| 20 BB | 40 % | 22 % |
+
+### 📊 Mesuré dans la Bot Arena
+
+Matchups heads-up en duplicate, 3 000 mains par paire (bb/100 du bot de la
+ligne, marge à 95 %) :
+
+| | TAG | LAG | Calling Station | Maniac | Nit |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **Shark** | +34 ±25 | +9 ±49 | +466 ±88 | +265 ±112 | +49 ±13 |
+| **Adaptive** | +42 ±31 | +41 ±52 | +570 ±93 | +362 ±121 | — |
+
+* **Adaptive contre Shark** : +2 ±54, à égalité : ils ne diffèrent que
+  contre des joueurs atypiques.
+* **À 6 joueurs**, chaque donne depuis chaque siège (12 000 mains) :
+  Adaptive +259 ±65 bb/100, Shark +197 ±54, TAG +175, LAG +166, Maniac −368,
+  Calling Station −428.
+* **Tournois** (120 parties à six) : Shark +29 % de ROI, Adaptive +26 %,
+  LAG +9 %, TAG −1 %. **Spin & Go** (600 parties contre TAG et LAG) : le Shark
+  en gagne 36 % et a le meilleur ROI hors tirage du multiplicateur (+7 %).
+* **La limite** : à une table pleine de 9 avec un bot Random qui donne ses
+  jetons, les styles plus larges (LAG, TAG) gagnent plus que le Shark et
+  l'Adaptive, qui suivent des tableaux serrés de table pleine et n'ouvrent
+  pas encore plus large contre les joueurs très larges.
+* **Vitesse** : environ 15 ms par main pour une table avec des bots
+  stratégiques, contre environ 1 ms avec seulement des bots heuristiques : la
+  Bot Arena est plus lente avec eux.
+
+### 📖 Le Guide
+
+* Un bouton **Guide** dans le menu principal, à côté de Quitter, ouvre une
+  fenêtre unique pour toute l'application, en cinq pages :
+  * **Welcome** : ce qu'est l'application et comment commencer en trois
+    étapes, et par où commencer quand on découvre le poker ;
+  * **Game modes** : Cash Game, Tournoi, Spin & Go, Bot Arena et Outils ;
+  * **At the table** : agir, l'horloge, l'affichage en BB, l'historique, les
+    tables multiples (Tile, Cascade, Ctrl+T), les réglages et la bankroll ;
+  * **Bot styles** : une carte par bot avec sa façon de jouer, cinq jauges
+    (mains jouées, agression, bluffs, paie jusqu'au bout, force), son VPIP, son
+    PFR et son facteur d'agression mesurés dans la Bot Arena, et **comment le
+    battre** ;
+  * **Poker terms** : positions, actions, statistiques (VPIP, PFR, AF, WTSD,
+    bb/100, ROI) et stratégie (range, équité, cotes du pot, EV, ratio M,
+    push/fold, CFR).
+* Un bouton **?** à côté des styles de jeu des écrans de configuration du
+  Cash Game et du Tournoi, et sur chaque siège de la Bot Arena, ouvre la page
+  Bot styles (sur la carte du bot depuis la Bot Arena).
+* Le contenu est dans `frontend/guide.py` ; un test vérifie que chaque bot a
+  sa carte. L'interface, comme le guide, est en anglais.
+
+> 📸 *Emplacement de capture : le Guide sur la page Bot styles.*
+
+## Changements du moteur
+
+* Aucun. Dans la couche application, `PlayerController.observe_hand` (ne
+  fait rien par défaut) est appelé à la fin de chaque main.
+
+## Objectifs
+
+* [x] Équité Monte Carlo dans les décisions des bots
+* [x] Bot basé sur des ranges (ranges préflop par position)
+* [x] Modélisation des ranges (réduire les ranges adverses selon leurs actions)
+* [x] Décisions fondées sur l'espérance de gain
+* [x] Bot adaptatif / exploitant (stats des adversaires en direct : VPIP, PFR, AF, folds face à une mise)
+* [x] IA de poker : push/fold heads-up résolu par CFR+, évalué dans la Bot Arena
+* [x] Ratio M dans les décisions en tapis court
+* [x] Un Guide : l'application, les styles de bots et le vocabulaire du poker
+
+## Tests
+
+```text
+1722 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V2.x — Suite
+
+* [ ] Des bots stratégiques qui ouvrent plus large contre les joueurs très larges (table pleine)
+* [ ] Des décisions Monte Carlo plus rapides pour les longues séries de la Bot Arena
+* [ ] Des équilibres push/fold avec antes, et à trois joueurs
 
 ---
 

@@ -121,7 +121,7 @@ def test_a_timeout_folds_facing_a_bet_and_is_logged(
     hero = game.session.players[0]
     assert hero.folded
     assert hand.timed_out_actions == [hand.actions[2].sequence]
-    assert "Hero ran out of time — folds" in screen.history_view.toPlainText()
+    assert "Hero ran out of time — folds" in screen.history_view.text()
     assert screen.clock_bar.isHidden()
     assert screen.action_clock is not None
     assert screen.action_clock.time_bank == 0
@@ -143,7 +143,7 @@ def test_a_timeout_checks_when_checking_is_free(
     assert not game.session.players[0].folded
     assert game.hand is not None
     assert game.hand.actions[-1].action == ActionType.CHECK
-    assert "Hero ran out of time — checks" in screen.history_view.toPlainText()
+    assert "Hero ran out of time — checks" in screen.history_view.text()
     screen.stop()
 
 

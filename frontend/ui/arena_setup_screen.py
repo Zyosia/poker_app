@@ -35,6 +35,7 @@ from backend.simulation.tournament_runner import (
 )
 
 from .cash_setup_screen import BLIND_LEVELS
+from .guide_window import open_guide
 
 HAND_PRESETS = (1_000, 10_000, 100_000)
 CUSTOM = "custom"
@@ -109,6 +110,10 @@ class SeatRow(QWidget):
         self.name_edit.setPlaceholderText("Name (optional)")
         self.name_edit.setMaxLength(16)
         self.name_edit.setFixedWidth(150)
+        self.help_button = QPushButton("?")
+        self.help_button.setObjectName("help")
+        self.help_button.setToolTip("About this play style: opens the guide.")
+        self.help_button.clicked.connect(lambda: open_guide("bots", self.bot))
         self.remove_button = QPushButton("✕")
         self.remove_button.setObjectName("small")
         self.remove_button.setToolTip("Remove this seat")
@@ -122,6 +127,7 @@ class SeatRow(QWidget):
         layout.setSpacing(10)
         layout.addWidget(self.profile_combo)
         layout.addWidget(self.description_label, stretch=1)
+        layout.addWidget(self.help_button)
         layout.addWidget(self.name_edit)
         layout.addWidget(self.remove_button)
 

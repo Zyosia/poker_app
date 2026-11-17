@@ -17,6 +17,7 @@ from frontend.ui.arena_watch_screen import ArenaWatchScreen  # noqa: E402
 from frontend.ui.equity_screen import EquityScreen  # noqa: E402
 from frontend.ui.game_screen import GameScreen  # noqa: E402
 from frontend.ui.game_window import GameWindow  # noqa: E402
+from frontend.ui.guide_window import close_guide  # noqa: E402
 from frontend.ui.replayer_screen import ReplayerScreen  # noqa: E402
 
 MAX_EVENT_LOOP_TURNS = 5000
@@ -77,6 +78,7 @@ def never_ask_to_leave(monkeypatch: pytest.MonkeyPatch) -> None:
 def clean_up_widgets(qapp: QApplication) -> Iterator[None]:
     """After each UI test: no window, timer or pending deletion survives."""
     yield
+    close_guide()  # The guide is one window kept by its module.
     destroy_top_level_widgets()
 
 

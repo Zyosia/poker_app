@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -21,8 +20,9 @@ from backend.simulation.config import SimulationConfig
 from backend.simulation.result import SimulationTotals
 from backend.simulation.runner import Batch, BatchSchedule, plan_batches
 from frontend import theme
+from frontend.components.hand_history import HISTORY_WIDTH, HandHistoryView, Tone
 from frontend.components.table_widget import TableWidget
-from frontend.formatting import describe_action, describe_result, format_cards
+from frontend.formatting import describe_result, format_cards
 from frontend.runout import RunoutEquity, is_running_out, runout_delay_ms
 
 from .game_screen import build_table_state
@@ -84,10 +84,8 @@ class ArenaWatchScreen(QWidget):
             button.setObjectName("small")
 
         self.table_widget = TableWidget()
-        self.history_view = QPlainTextEdit()
-        self.history_view.setReadOnly(True)
-        self.history_view.setFixedWidth(290)
-        self.history_view.setMaximumBlockCount(3000)
+        self.history_view = HandHistoryView()
+        self.history_view.setFixedWidth(HISTORY_WIDTH)
 
         controls = QHBoxLayout()
         controls.addSpacing(theme.SETTINGS_BUTTON_ROOM)
@@ -186,7 +184,7 @@ class ArenaWatchScreen(QWidget):
             event = schedule.require_table().step()
 
             if event is not None:
-                self._log(f"{event.player}: {describe_action(event)}")
+                self.history_view.add_action(event)
 
             self._log_reveal()
             self._log_streets()
@@ -258,30 +256,50 @@ class ArenaWatchScreen(QWidget):
             f"HAND #{self.hands_played}   ·   BLINDS {config.small_blind}/"
             f"{config.big_blind}   ·   SEED {config.seed}"
         )
-        self._log(f"\n── Hand #{self.hands_played} ──")
+        history = self.history_view
+        history.start_hand(
+            self.hands_played, f"{config.small_blind}/{config.big_blind}"
+        )
 
-        for event in hand.actions:
-            self._log(f"{event.player}: {describe_action(event)}")
+        for event in hand.actions:  # The blinds.
+            history.add_action(event)
+
+        history.add_section("Hole cards")  # Every bot's: a spectator sees all.
 
         for player in hand.table.players:
             if player.hand:
-                self._log(f"{player.name}: {format_cards(player.hand)}")
+                history.add_cards(
+                    player.name,
+                    player.hand,
+                    "",
+                    line=f"{player.name}: {format_cards(player.hand)}",
+                )
+
+        history.add_section("Pre-flop")
 
     def _finish_hand(self) -> None:
         hand = self.hand
         assert hand is not None
 
+        if hand.showdown_evaluations:
+            self.history_view.add_section("Showdown")
+
         for name, evaluation in hand.showdown_evaluations.items():
             cards = next(p.hand for p in hand.table.players if p.name == name)
-            self._log(f"{name} shows {format_cards(cards)} ({evaluation.name})")
+            self.history_view.add_cards(
+                name,
+                cards,
+                evaluation.name,
+                line=f"{name} shows {format_cards(cards)} ({evaluation.name})",
+            )
 
         for line in describe_result(hand):
-            self._log(line)
+            self._log(line, Tone.RESULT)
 
         try:
             self._require_schedule().finish_hand()
         except Exception as error:  # noqa: BLE001 - shown to the user
-            self._log(f"\n{type(error).__name__}: {error}")
+            self._log(f"\n{type(error).__name__}: {error}", Tone.ALERT)
             self.stop()
             self._done = True
             self.pause_button.setEnabled(False)
@@ -291,7 +309,7 @@ class ArenaWatchScreen(QWidget):
 
     def _on_complete(self) -> None:
         self._done = True
-        self._log("\nAll hands have been played.")
+        self._log("\nAll hands have been played.", Tone.RESULT)
         self.info_label.setText(f"COMPLETE   ·   {self.hands_played} HANDS")
         self.pause_button.setEnabled(False)
         self.step_button.setEnabled(False)
@@ -322,16 +340,22 @@ class ArenaWatchScreen(QWidget):
 
         if not self._reveal_logged and hand.revealed_after_action is not None:
             self._reveal_logged = True
-            self._log("*** Cards revealed ***")
+            self.history_view.add_section(
+                "Cards revealed", line="*** Cards revealed ***"
+            )
 
     def _log_streets(self) -> None:
         hand = self.hand
         assert hand is not None
 
         for street in hand.streets[self._logged_streets :]:
-            if street.community_cards:
-                self._log(
-                    f"*** {street.street} *** {format_cards(street.community_cards)}"
+            board = street.community_cards
+
+            if board:
+                self.history_view.add_section(
+                    street.street.capitalize(),
+                    board,
+                    line=f"*** {street.street} *** {format_cards(board)}",
                 )
 
         self._logged_streets = len(hand.streets)
@@ -348,5 +372,5 @@ class ArenaWatchScreen(QWidget):
                 )
             )
 
-    def _log(self, text: str) -> None:
-        self.history_view.appendPlainText(text)
+    def _log(self, text: str, tone: Tone = Tone.NOTE) -> None:
+        self.history_view.add_note(text, tone)

@@ -46,6 +46,7 @@ from .controllers import (
     HumanController,
     PlayerController,
     build_decision_context,
+    notify_hand_end,
 )
 from .payouts import (
     Multiplier,
@@ -599,6 +600,9 @@ class Tournament:
 
     def _on_hand_finished(self) -> None:
         self.hands_played += 1
+
+        if self.hand is not None:
+            notify_hand_end(self.controllers.values(), self.hand.actions)
 
         if self.on_hand_end is not None and self.hand is not None:
             self.on_hand_end(self.hand, self.stacks_before)

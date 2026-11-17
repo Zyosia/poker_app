@@ -303,7 +303,7 @@ def test_watch_mode_steps_through_hands_with_the_spectator_view(
 
     assert watch.is_complete
     assert watch.hands_played == 3
-    assert "All hands have been played." in watch.history_view.toPlainText()
+    assert "All hands have been played." in watch.history_view.text()
 
     watch.back_button.click()
     assert window.current_screen is window.arena_setup_screen

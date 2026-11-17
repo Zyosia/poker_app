@@ -209,7 +209,7 @@ def test_antes_are_posted_and_shown_once_the_levels_rise(window: MainWindow) -> 
         plan=ActionType.FOLD,
     )
 
-    assert "posts ante" in screen.history_view.toPlainText()
+    assert "posts ante" in screen.history_view.text()
 
 
 def test_skip_to_results_after_busting(busting_window: MainWindow) -> None:
@@ -313,7 +313,7 @@ def test_a_spin_and_go_reveals_its_multiplier_and_ends_with_a_winner(
     assert screen.is_revealing
     assert tournament.hand is None  # No card dealt during the reveal.
     screen.finish_reveal()
-    assert f"× {multiplier.value}" in screen.history_view.toPlainText()
+    assert f"× {multiplier.value}" in screen.history_view.text()
 
     play(
         screen,

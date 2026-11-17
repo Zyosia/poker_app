@@ -17,6 +17,7 @@ from .controllers import (
     HumanController,
     PlayerController,
     build_decision_context,
+    notify_hand_end,
 )
 from .game_modes import GameMode
 from .persistence import save_session
@@ -145,6 +146,9 @@ class PokerGame:
         A busted human stays seated until the next hand starts, which leaves
         time to rebuy.
         """
+        if self.hand is not None:
+            notify_hand_end(self.controllers.values(), self.hand.actions)
+
         for player in self.session.get_busted_players():
             if not self.controllers[player.name].is_human:
                 self.session.eliminate_player(player)

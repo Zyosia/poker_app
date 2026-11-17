@@ -169,7 +169,7 @@ def test_the_history_stays_in_chips(qapp: QApplication) -> None:
     screen.set_show_in_big_blinds(True)
     screen.start_game(make_game(dealer_index=0), human_name=HUMAN)
 
-    assert "Bot2: posts big blind 10" in screen.history_view.toPlainText()
+    assert "Bot2: posts big blind 10" in screen.history_view.text()
     screen.stop()
 
 

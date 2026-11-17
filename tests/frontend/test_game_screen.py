@@ -162,7 +162,7 @@ def test_bots_play_from_the_event_loop_without_blocking(
         "call",
     ]
     assert screen.action_panel.call_button.text() == "Check"
-    assert "Bot1: calls 10" in screen.history_view.toPlainText()
+    assert "Bot1: calls 10" in screen.history_view.text()
 
 
 def test_human_action_is_applied_and_the_display_updated(
@@ -179,7 +179,7 @@ def test_human_action_is_applied_and_the_display_updated(
     assert hero.current_bet == 30
     assert hero.stack == 70
     assert screen.table_widget.seat_widgets[0].stack_label.text() == "70"
-    assert "Hero: raises to 30" in screen.history_view.toPlainText()
+    assert "Hero: raises to 30" in screen.history_view.text()
     assert not screen.action_panel.raise_button.isEnabled()
 
     # Both bots call, then the flop is dealt and Hero acts last.
@@ -192,7 +192,7 @@ def test_human_action_is_applied_and_the_display_updated(
         game.hand.community_cards
     )
     assert screen.table_widget.board_widgets[3].card is None
-    assert "*** FLOP ***" in screen.history_view.toPlainText()
+    assert "*** FLOP ***" in screen.history_view.text()
 
 
 def test_fold_ends_the_hand_and_shows_the_result(screen: GameScreen) -> None:
@@ -245,7 +245,7 @@ def test_showdown_reveals_the_cards_of_the_players_involved(
         for seat_widget in screen.table_widget.seat_widgets
         for card_widget in seat_widget.card_widgets
     )
-    assert "Bot1 shows" in screen.history_view.toPlainText()
+    assert "Bot1 shows" in screen.history_view.text()
     assert sum(player.stack for player in game.session.players) == 200
 
 
@@ -294,7 +294,7 @@ def test_game_is_won_when_every_opponent_is_eliminated(
     assert "You win the game!" in screen.result_label.text()
     assert not screen.next_hand_button.isVisibleTo(screen)
     assert not screen.rebuy_button.isVisibleTo(screen)
-    assert "Bot1 is eliminated" in screen.history_view.toPlainText()
+    assert "Bot1 is eliminated" in screen.history_view.text()
 
 
 def test_menu_button_stops_the_game(screen: GameScreen) -> None:

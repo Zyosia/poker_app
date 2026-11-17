@@ -14,8 +14,8 @@ import math
 import random
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect
-from PySide6.QtGui import QCloseEvent, QGuiApplication
+from PySide6.QtCore import QPoint, QRect, QSize
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication, QWidget
 
 from backend.application.bankroll import GameAccount, GameMode
@@ -38,7 +38,8 @@ from .arena_setup_screen import ArenaSetupScreen
 from .arena_watch_screen import ArenaWatchScreen
 from .bankroll_screen import BankrollScreen
 from .equity_screen import EquityScreen
-from .game_window import WINDOW_SIZE, GameWindow
+from .game_window import MIN_WINDOW_SIZE, TILE_SHORTCUT, WINDOW_SIZE, GameWindow
+from .guide_window import close_guide, open_guide
 from .main_menu_screen import MainMenuScreen
 from .my_stats_screen import MyStatsScreen
 from .navigation_window import NavigationWindow
@@ -61,6 +62,7 @@ DIALOG_SETTINGS = (
     "table_speed",
     "auto_next_hand",
     "show_in_big_blinds",
+    "show_history",
     "four_color_deck",
     "bankroll_hints",
     "table_to_front",
@@ -68,6 +70,67 @@ DIALOG_SETTINGS = (
 """What Restore defaults resets: the settings window, but not your name."""
 CASCADE_STEP = 32
 """Pixels between two tables arranged in cascade."""
+TILE_ASPECT = 1.6
+"""Width / height of a tiled table window: the shape of a table, never
+stretched to fill the screen."""
+
+
+def tile_rects(count: int, area: QRect) -> list[QRect]:
+    """Where to put ``count`` tables side by side (outer frames).
+
+    Every table keeps the same shape (``TILE_ASPECT``) and is as large as
+    the screen allows, never larger than a new table window; the grid
+    (columns and rows) is the one giving the largest tables. The tables fill
+    the screen from the top, centred across it. Too many tables for the
+    minimum window size overlap rather than shrink further.
+    """
+    if count <= 0:
+        return []
+
+    aspect = TILE_ASPECT
+    min_size = QSize(*MIN_WINDOW_SIZE)
+    max_size = QSize(*WINDOW_SIZE)
+
+    best_width = 0.0
+    best_columns = 1
+
+    for columns in range(1, count + 1):
+        rows = math.ceil(count / columns)
+        width = min(
+            area.width() / columns,
+            area.height() / rows * aspect,
+            max_size.width(),
+            max_size.height() * aspect,
+        )
+
+        if width > best_width:
+            best_width, best_columns = width, columns
+
+    columns = best_columns
+    rows = math.ceil(count / columns)
+    width = max(min_size.width(), int(best_width))
+    height = max(min_size.height(), int(best_width / aspect))
+    step_x = _step(width, columns, area.width())
+    step_y = _step(height, rows, area.height())
+    left = area.left() + max(0, (area.width() - (columns - 1) * step_x - width) // 2)
+
+    return [
+        QRect(
+            left + index % columns * step_x,
+            area.top() + index // columns * step_y,
+            width,
+            height,
+        )
+        for index in range(count)
+    ]
+
+
+def _step(size: int, count: int, room: int) -> int:
+    """From one table to the next: side by side, or overlapping to fit."""
+    if count <= 1 or count * size <= room:
+        return size
+
+    return max(0, (room - size) // (count - 1))
 
 
 class MainWindow(NavigationWindow):
@@ -160,6 +223,7 @@ class MainWindow(NavigationWindow):
 
         self.main_menu.mode_selected.connect(self.open_mode)
         self.main_menu.quit_requested.connect(self.close)
+        self.main_menu.guide_requested.connect(lambda: open_guide())
         self.main_menu.bankroll_bar.bankroll_requested.connect(self.open_bankroll)
         self.main_menu.bankroll_bar.reload_requested.connect(self.reload_bankroll)
         self.main_menu.tables_panel.table_selected.connect(
@@ -167,6 +231,7 @@ class MainWindow(NavigationWindow):
         )
         self.main_menu.tables_panel.tile_requested.connect(self.tile_tables)
         self.main_menu.tables_panel.cascade_requested.connect(self.cascade_tables)
+        QShortcut(QKeySequence(TILE_SHORTCUT), self, self.tile_tables)
 
         self.bankroll_screen.back_requested.connect(self.back)
         self.bankroll_screen.changed.connect(
@@ -285,6 +350,13 @@ class MainWindow(NavigationWindow):
             window.table_screen.set_speed(name)
 
         self.save_setting("table_speed", name)
+
+    def set_show_history(self, shown: bool) -> None:
+        """Show or hide the hand history at every table, and remember it."""
+        for window in self.game_windows:
+            window.table_screen.set_history_shown(shown)
+
+        self.save_setting("show_history", shown)
 
     def set_auto_next_hand(self, enabled: bool) -> None:
         for window in self.game_windows:
@@ -440,26 +512,14 @@ class MainWindow(NavigationWindow):
         )
 
     def tile_tables(self) -> None:
-        """Arrange the tables side by side, filling the screen."""
-        windows = self.game_windows
+        """Arrange the tables side by side, each keeping a table's shape."""
+        rects = tile_rects(len(self.game_windows), self._screen_area())
 
-        if not windows:
-            return
-
-        area = self._screen_area()
-        columns = math.ceil(math.sqrt(len(windows)))
-        rows = math.ceil(len(windows) / columns)
-        width = area.width() // columns
-        height = area.height() // rows
-
-        for index, window in enumerate(windows):
+        for window, rect in zip(self.game_windows, rects, strict=True):
             window.showNormal()
             frame = window.frameGeometry().size() - window.geometry().size()
-            window.resize(width - frame.width(), height - frame.height())
-            window.move(
-                area.left() + index % columns * width,
-                area.top() + index // columns * height,
-            )
+            window.resize(rect.size() - frame)
+            window.move(rect.topLeft())
             window.raise_()
 
     def cascade_tables(self) -> None:
@@ -565,4 +625,5 @@ class MainWindow(NavigationWindow):
         self.arena_watch_screen.stop()
         self.replayer_screen.stop()
         self.equity_screen.stop()
+        close_guide()
         super().closeEvent(event)

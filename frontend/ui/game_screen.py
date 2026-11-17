@@ -17,9 +17,9 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -42,10 +42,10 @@ from backend.poker_engine.models import ActionEvent, Hand, Player
 from backend.poker_engine.session import GameSession
 from frontend import theme
 from frontend.components.action_panel import ActionPanel
+from frontend.components.hand_history import HandHistoryView, Tone
 from frontend.components.seat_widget import SeatHighlight, SeatState
 from frontend.components.table_widget import TableState, TableWidget
 from frontend.formatting import (
-    describe_action,
     describe_result,
     format_amount,
     format_cards,
@@ -62,8 +62,9 @@ from frontend.sounds import Sound, SoundPlayer, action_sound
 CLOCK_TICK_MS = 100
 CLOCK_BAR_STEPS = 1000
 CLOCK_COLORS = {"normal": "#3ddc84", "warning": "#f2a33a", "bank": "#5aa9f2"}
-HISTORY_MIN_WIDTH = 1060
-"""Narrower (several tables side by side), the hand history is hidden."""
+HISTORY_WIDTH = 290
+COLUMN_SPACING = 14
+SIDE_MARGIN = 16
 
 
 class TableGame(Protocol):
@@ -200,6 +201,10 @@ class GameScreen(QWidget):
     speed_changed = Signal(str)
     """Emitted with the speed the user picked (see ``frontend.pacing``)."""
     auto_next_hand_changed = Signal(bool)
+    history_shown_changed = Signal(bool)
+    """Emitted when the user shows or hides the hand history."""
+    tile_requested = Signal()
+    """Arrange every open table side by side (multi-tabling)."""
     your_turn_changed = Signal(bool)
     """True when the table starts waiting for your decision, False once it
     no longer does (you acted, the table paused or stopped)."""
@@ -253,7 +258,9 @@ class GameScreen(QWidget):
         self.pause_button.clicked.connect(self.toggle_pause)
 
         self.speed_combo = QComboBox()
-        self.speed_combo.setToolTip("How fast the bots act and the next hand comes.")
+        self.speed_combo.setToolTip(
+            "Speed: how fast the bots act and the next hand comes."
+        )
 
         for table_speed_choice in TABLE_SPEEDS:
             self.speed_combo.addItem(table_speed_choice.name, table_speed_choice.name)
@@ -273,6 +280,21 @@ class GameScreen(QWidget):
 
         self.info_label = QLabel()
         self.info_label.setObjectName("sectionTitle")
+        # Cut rather than widen the window when the top bar is full.
+        self.info_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.tile_button = QPushButton("Tile")
+        self.tile_button.setObjectName("small")
+        self.tile_button.setToolTip("Arrange every open table side by side (Ctrl+T).")
+        self.tile_button.clicked.connect(self.tile_requested)
+        self.history_button = QPushButton("History")
+        self.history_button.setObjectName("toggle")
+        self.history_button.setCheckable(True)
+        self.history_button.setChecked(True)
+        self.history_button.setToolTip("Show or hide the hand history.")
+        self.history_button.clicked.connect(self._on_history_clicked)
+        self._history_wanted = True
         self.menu_button = QPushButton("Menu")
         self.menu_button.setObjectName("small")
         self.menu_button.clicked.connect(self._on_menu_clicked)
@@ -294,10 +316,8 @@ class GameScreen(QWidget):
         self.rebuy_button.setObjectName("accent")
         self.rebuy_button.clicked.connect(self._on_rebuy_clicked)
 
-        self.history_view = QPlainTextEdit()
-        self.history_view.setReadOnly(True)
-        self.history_view.setFixedWidth(270)
-        self.history_view.setMaximumBlockCount(2000)
+        self.history_view = HandHistoryView()
+        self.history_view.setFixedWidth(HISTORY_WIDTH)
 
         self.bottom_stack = QStackedWidget()
         self.bottom_stack.addWidget(self.action_panel)
@@ -325,12 +345,13 @@ class GameScreen(QWidget):
         top_bar = QHBoxLayout()
         top_bar.addSpacing(theme.SETTINGS_BUTTON_ROOM)
         top_bar.addWidget(self.info_label, stretch=1)
-        top_bar.addWidget(QLabel("Speed"))
         top_bar.addWidget(self.speed_combo)
         top_bar.addWidget(self.auto_next_check)
         top_bar.addWidget(self.big_blinds_check)
         top_bar.addWidget(self.pause_button)
+        top_bar.addWidget(self.tile_button)
         top_bar.addWidget(self.menu_button)
+        top_bar.addWidget(self.history_button)
 
         bottom_panel = QFrame()
         bottom_panel.setObjectName("panel")
@@ -341,8 +362,7 @@ class GameScreen(QWidget):
 
         left_layout = QVBoxLayout()
         self.left_layout = left_layout
-        """Top bar, table and bottom panel; subclasses insert above the table."""
-        left_layout.addLayout(top_bar)
+        """Table and bottom panel; subclasses insert above the table."""
         left_layout.addWidget(self.table_widget, stretch=1)
         left_layout.addWidget(bottom_panel)
 
@@ -354,15 +374,54 @@ class GameScreen(QWidget):
         right_layout.addWidget(history_title)
         right_layout.addWidget(self.history_view, stretch=1)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 16)
-        layout.setSpacing(14)
-        layout.addLayout(left_layout, stretch=1)
-        layout.addWidget(self.history_panel)
+        columns = QHBoxLayout()
+        columns.setSpacing(COLUMN_SPACING)
+        columns.addLayout(left_layout, stretch=1)
+        columns.addWidget(self.history_panel)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(SIDE_MARGIN, 12, SIDE_MARGIN, 16)
+        layout.addLayout(top_bar)
+        layout.addLayout(columns, stretch=1)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        self.history_panel.setVisible(self.width() >= HISTORY_MIN_WIDTH)
+        self._show_history_panel()
+
+    # --- Hand history -----------------------------------------------------------
+
+    @property
+    def history_shown(self) -> bool:
+        """The user wants the history (it still hides in a narrow window)."""
+        return self._history_wanted
+
+    def set_history_shown(self, shown: bool) -> None:
+        """Show or hide the hand history, without emitting the change."""
+        self._history_wanted = shown
+        self.history_button.setChecked(shown)
+        self._show_history_panel()
+
+    def _on_history_clicked(self) -> None:
+        self.set_history_shown(not self._history_wanted)
+        self.history_shown_changed.emit(self._history_wanted)
+
+    @property
+    def history_min_width(self) -> int:
+        """The width from which the table and its controls still fit beside
+        the hand history."""
+        table_column = self.left_layout.minimumSize().width()
+
+        return 2 * SIDE_MARGIN + table_column + COLUMN_SPACING + HISTORY_WIDTH
+
+    def _show_history_panel(self) -> None:
+        room = self.width() >= self.history_min_width
+        self.history_panel.setVisible(self._history_wanted and room)
+        self.history_button.setEnabled(room)
+        self.history_button.setToolTip(
+            "Show or hide the hand history."
+            if room
+            else "The window is too narrow for the hand history."
+        )
 
     # ------------------------------------------------------------------
     # Game flow
@@ -493,6 +552,7 @@ class GameScreen(QWidget):
         self.account = account
         self._set_clock(clock)
         self.history_view.clear()
+        self.history_view.hero = human_name
         self._start_next_hand()
 
     def stop(self) -> None:
@@ -637,15 +697,20 @@ class GameScreen(QWidget):
         self.info_label.setText(
             f"HAND #{game.session.hand_number}   ·   BLINDS {level.describe()}"
         )
-        self._log(f"\n── Hand #{game.session.hand_number} ──")
+        history = self.history_view
+        history.start_hand(game.session.hand_number, level.describe())
 
-        for event in hand.actions:
-            self._log(f"{event.player}: {describe_action(event)}")
+        for event in hand.actions:  # The antes and blinds.
+            history.add_action(event)
 
         human = self._human_player()
 
         if human.hand:  # Not dealt in once out of a tournament.
-            self._log(f"Your cards: {format_cards(human.hand)}")
+            history.add_section(
+                "Your cards", human.hand, line=f"Your cards: {format_cards(human.hand)}"
+            )
+
+        history.add_section("Pre-flop")
         self._after_step()
 
     def _play_step(self) -> None:
@@ -658,7 +723,7 @@ class GameScreen(QWidget):
         event = game.step()
 
         if event is not None:
-            self._log(f"{event.player}: {describe_action(event)}")
+            self.history_view.add_action(event)
             self._play_action_sound(event)
 
         self._after_step()
@@ -714,11 +779,16 @@ class GameScreen(QWidget):
             return
 
         self._reveal_logged = True
-        self._log("*** Cards revealed ***")
+        self.history_view.add_section("Cards revealed", line="*** Cards revealed ***")
 
         for player in hand.table.players:
             if player.is_active and player.hand:
-                self._log(f"{player.name}: {format_cards(player.hand)}")
+                self.history_view.add_cards(
+                    player.name,
+                    player.hand,
+                    "",
+                    line=f"{player.name}: {format_cards(player.hand)}",
+                )
 
     def _count_hand_for_clock(self, hand: Hand) -> None:
         """Count each finished hand once, for the time bank's top-ups."""
@@ -769,7 +839,7 @@ class GameScreen(QWidget):
         except IllegalActionError as error:
             # The panel only offers legal actions, so this is unexpected:
             # report it and let the player choose again.
-            self._log(f"Action refused: {error}")
+            self._log(f"Action refused: {error}", Tone.ALERT)
             self._after_step()
             return
 
@@ -780,9 +850,9 @@ class GameScreen(QWidget):
 
         if event is not None and timed_out:
             record_timeout(hand, event)
-            self._log(f"{event.player} ran out of time — {describe_action(event)}")
+            self.history_view.add_action(event, prefix="ran out of time — ")
         elif event is not None:
-            self._log(f"{event.player}: {describe_action(event)}")
+            self.history_view.add_action(event)
 
         if event is not None:
             self._play_action_sound(event)
@@ -797,9 +867,17 @@ class GameScreen(QWidget):
 
     def _log_hand_result(self, hand: Hand) -> list[str]:
         """Log the showdown and the winners; return the winner lines."""
+        if hand.showdown_evaluations:
+            self.history_view.add_section("Showdown")
+
         for name, evaluation in hand.showdown_evaluations.items():
             cards = next(p.hand for p in hand.table.players if p.name == name)
-            self._log(f"{name} shows {format_cards(cards)} ({evaluation.name})")
+            self.history_view.add_cards(
+                name,
+                cards,
+                evaluation.name,
+                line=f"{name} shows {format_cards(cards)} ({evaluation.name})",
+            )
 
         if self.bot_cards != BotCards.SHOWDOWN:
             self._log_bot_cards(hand)
@@ -808,7 +886,7 @@ class GameScreen(QWidget):
         result_lines = describe_result(hand)
 
         for line in result_lines:
-            self._log(line)
+            self._log(line, Tone.RESULT)
 
         return result_lines
 
@@ -822,7 +900,12 @@ class GameScreen(QWidget):
 
             if player.hand:
                 folded = " (folded)" if player.folded else ""
-                self._log(f"{player.name} had {format_cards(player.hand)}{folded}")
+                self.history_view.add_cards(
+                    player.name,
+                    player.hand,
+                    "folded" if player.folded else "",
+                    line=f"{player.name} had {format_cards(player.hand)}{folded}",
+                )
 
     def _show_hand_result(self, hand: Hand) -> None:
         game = self._require_game()
@@ -832,7 +915,7 @@ class GameScreen(QWidget):
 
         for player in hand.table.players:
             if player.is_eliminated and player.total_contribution > 0:
-                self._log(f"{player.name} is eliminated")
+                self._log(f"{player.name} is eliminated", Tone.ALERT)
 
         opponents_left = sum(
             1 for player in session.get_players_with_chips() if player is not human
@@ -907,10 +990,13 @@ class GameScreen(QWidget):
         new_streets = hand.streets[self._logged_street_count :]
 
         for street_event in new_streets:
-            if street_event.community_cards:
-                self._log(
-                    f"*** {street_event.street} *** "
-                    f"{format_cards(street_event.community_cards)}"
+            board = street_event.community_cards
+
+            if board:
+                self.history_view.add_section(
+                    street_event.street.capitalize(),
+                    board,
+                    line=f"*** {street_event.street} *** {format_cards(board)}",
                 )
 
         if any(street_event.community_cards for street_event in new_streets):
@@ -918,5 +1004,5 @@ class GameScreen(QWidget):
 
         self._logged_street_count = len(hand.streets)
 
-    def _log(self, text: str) -> None:
-        self.history_view.appendPlainText(text)
+    def _log(self, text: str, tone: Tone = Tone.NOTE) -> None:
+        self.history_view.add_note(text, tone)
