@@ -23,6 +23,7 @@ from .models import Hand, Player, SeatRecord
 from .session import GameSession
 from .showdown import resolve_hand
 
+_FIRST_SEATS = (Position.BTN, Position.SB, Position.BB)
 POSITIONS_BY_PLAYER_COUNT: dict[int, tuple[Position, ...]] = {
     2: (Position.BTN, Position.BB),
     3: (Position.BTN, Position.SB, Position.BB),
@@ -33,6 +34,25 @@ POSITIONS_BY_PLAYER_COUNT: dict[int, tuple[Position, ...]] = {
         Position.SB,
         Position.BB,
         Position.UTG,
+        Position.HJ,
+        Position.CO,
+    ),
+    # Seven to nine players: full-ring hands read from other sites' histories.
+    7: (*_FIRST_SEATS, Position.UTG, Position.LJ, Position.HJ, Position.CO),
+    8: (
+        *_FIRST_SEATS,
+        Position.UTG,
+        Position.UTG1,
+        Position.LJ,
+        Position.HJ,
+        Position.CO,
+    ),
+    9: (
+        *_FIRST_SEATS,
+        Position.UTG,
+        Position.UTG1,
+        Position.UTG2,
+        Position.LJ,
         Position.HJ,
         Position.CO,
     ),

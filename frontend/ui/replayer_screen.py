@@ -44,7 +44,7 @@ def hand_header(session: SessionRecord, record: HandRecord) -> list[str]:
     lines = [f"── Hand #{record.number} — blinds {record.blind_level.describe()} ──"]
     cards = record.hole_cards(session.human)
 
-    if cards:
+    if cards and session.human not in record.hidden:
         lines.append(f"Dealt to {session.human}: {format_cards(cards)}")
 
     return lines
@@ -237,8 +237,9 @@ class ReplayerScreen(QWidget):
             return
 
         mode = MODE_LABELS[session.mode].upper()
+        number = record.hand_id or f"#{record.number}"
         self.info_label.setText(
-            f"HAND #{record.number} ({self.hand_index + 1} OF {len(session.hands)})"
+            f"HAND {number} ({self.hand_index + 1} OF {len(session.hands)})"
             f"   ·   {mode} {record.blind_level.describe()}"
             f"   ·   {session.started:%d %b %Y %H:%M}"
         )
@@ -291,20 +292,25 @@ class ReplayerScreen(QWidget):
                 )
 
             if hand.finished:
-                lines += self._result_lines(hand)
+                lines += self._result_lines(hand, record.hidden)
 
             steps.append(lines)
 
         return steps
 
     @staticmethod
-    def _result_lines(hand: Hand) -> list[str]:
+    def _result_lines(hand: Hand, hidden: frozenset[str]) -> list[str]:
         lines = []
 
         for player in hand.table.players:
             evaluation = hand.showdown_evaluations.get(player.name)
 
-            if evaluation is not None:
+            if evaluation is None:
+                continue
+
+            if player.name in hidden:
+                lines.append(f"{player.name} mucks")
+            else:
                 cards = format_cards(player.hand)
                 lines.append(f"{player.name} shows {cards} ({evaluation.name})")
 
@@ -401,15 +407,20 @@ class ReplayerScreen(QWidget):
         self.show_in_big_blinds_changed.emit(enabled)
 
     def _render(self) -> None:
-        if self.hand is None or self.session is None:
+        hand, record = self.hand, self.record
+
+        if hand is None or self.session is None or record is None:
             return
 
+        # A hand nobody saw has stand-in cards: no chances shown for them.
+        unseen = any(p.name in record.hidden for p in hand.table.get_active_players())
         self.table_widget.set_state(
             build_table_state(
-                self.hand,
+                hand,
                 human_name=self.session.human,
                 show_all_cards=self.show_all_check.isChecked(),
                 in_big_blinds=self.show_in_big_blinds,
-                equities=self._equity.texts(self.hand),
+                equities={} if unseen else self._equity.texts(hand),
+                hidden=record.hidden,
             )
         )

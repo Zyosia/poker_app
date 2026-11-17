@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from backend.application.game_modes import MODE_LABELS, GameMode
+from backend.application.hand_import import read_hand_history_file
 from backend.application.hand_records import (
     HandRecord,
     SessionLibrary,
@@ -74,7 +75,7 @@ def select_index(table: QTableWidget, index: int) -> None:
 
 def session_result(session: SessionRecord) -> tuple[str, float]:
     """The result shown for a session, and the value it is sorted by."""
-    if session.mode == GameMode.CASH:
+    if session.mode == GameMode.CASH or session.imported:
         return signed(session.net_chips), session.net_chips
 
     finish = session.finish
@@ -213,9 +214,13 @@ class SessionBrowserScreen(QWidget):
         self._fill_sessions()
 
     def open_file(self, path: Path) -> None:
-        """Show a session file from anywhere; it joins the list."""
+        """Show a session file, or a PokerStars or Winamax hand history, from
+        anywhere; it joins the list."""
         try:
-            session = self.library.load(path)
+            if path.suffix.lower() == ".dat":
+                session = self.library.load(path)
+            else:
+                session = read_hand_history_file(path)
         except (SessionFileError, OSError) as error:
             self.notice_label.setText(str(error))
             return
@@ -228,9 +233,9 @@ class SessionBrowserScreen(QWidget):
     def _on_open_clicked(self) -> None:
         name, _ = QFileDialog.getOpenFileName(
             self,
-            "Open a session file",
+            "Open a session file or a hand history",
             str(self.library.directory),
-            "Session files (*.dat);;All files (*)",
+            "Sessions and hand histories (*.dat *.txt);;All files (*)",
         )
 
         if name:
@@ -291,6 +296,7 @@ class SessionBrowserScreen(QWidget):
             return
 
         self.summary_label.setText(self._summary(session))
+        self.summary_label.setToolTip("\n".join(session.notes))
         self.chart.set_series(
             [session.human],
             [(hands, (net,)) for hands, net in session.chart_points()],
@@ -322,6 +328,9 @@ class SessionBrowserScreen(QWidget):
             f"{MODE_LABELS[session.mode]} — {session.started:%d %b %Y %H:%M}",
             f"{session.human} against {players}",
         ]
+
+        if session.imported:
+            first.insert(0, f"Imported from {session.source}")
         second = [f"{len(session.hands)} hands", f"result {result}"]
 
         if session.finish is not None and session.finish.multiplier:
@@ -329,6 +338,9 @@ class SessionBrowserScreen(QWidget):
 
         if session.replayable_hands < len(session.hands):
             second.append("hands saved before V1.1 cannot be replayed")
+
+        if session.notes:
+            second.append(f"{len(session.notes)} hands not played by this engine")
 
         return "   ·   ".join(first) + "\n" + "   ·   ".join(second)
 

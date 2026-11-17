@@ -10,6 +10,8 @@ A step is what ``PokerGame.step`` does: one decision, or one street dealt
 (or the showdown). Step 0 is the hand just dealt, blinds posted.
 """
 
+from collections.abc import Mapping, Sequence
+
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, apply_action
 from backend.poker_engine.constants import ActionType, Card
@@ -75,7 +77,9 @@ class HandReplay:
         session.table.dealer_index = names.index(record.dealer)
 
         try:
-            hand = start_hand(session, deck=Deck.stacked(self._deal_order(names)))
+            cards = {seat.name: seat.hole_cards for seat in seats}
+            order = deal_order(names, record.dealer, cards, record.board)
+            hand = start_hand(session, deck=Deck.stacked(order))
         except (ValueError, RuntimeError) as error:
             raise ReplayError(f"The hand cannot be dealt again: {error}") from error
 
@@ -127,26 +131,33 @@ class HandReplay:
 
         return hand
 
-    def _deal_order(self, names: list[str]) -> list[Card]:
-        """Hole cards one at a time from the left of the dealer, then the
-        board, with a burn card before each street (as ``hand`` deals)."""
-        record = self.record
-        seats = {seat.name: seat for seat in record.seats or ()}
-        dealer = names.index(record.dealer)
-        order = names[dealer + 1 :] + names[: dealer + 1]
-        cards = [seats[name].hole_cards[0] for name in order]
-        cards += [seats[name].hole_cards[1] for name in order]
-        board = record.board
-        known = {*cards, *board}
-        burns = [card for card in FULL_DECK if card not in known][:BURN_CARDS]
 
-        for burn, street_cards in zip(
-            burns, (board[:3], board[3:4], board[4:5]), strict=True
-        ):
-            if street_cards:
-                cards += [burn, *street_cards]
+def deal_order(
+    names: Sequence[str],
+    dealer: str,
+    hole_cards: Mapping[str, Sequence[Card]],
+    board: Sequence[Card],
+) -> list[Card]:
+    """The cards of a hand in the order the engine deals them.
 
-        return cards
+    Hole cards one at a time from the left of the dealer (``names`` are the
+    players dealt in, clockwise), then the board with a burn card before each
+    street; the burn cards are cards nobody holds.
+    """
+    position = list(names).index(dealer)
+    order = [*names[position + 1 :], *names[: position + 1]]
+    cards = [hole_cards[name][0] for name in order]
+    cards += [hole_cards[name][1] for name in order]
+    known = {*cards, *board}
+    burns = [card for card in FULL_DECK if card not in known][:BURN_CARDS]
+
+    for burn, street_cards in zip(
+        burns, (board[:3], board[3:4], board[4:5]), strict=True
+    ):
+        if street_cards:
+            cards += [burn, *street_cards]
+
+    return cards
 
 
 def _same(played: ActionEvent, recorded: ActionEvent) -> bool:

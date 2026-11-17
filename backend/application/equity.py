@@ -7,10 +7,12 @@ Two uses:
   to come, every possible board is counted, so the result is exact. Before
   the flop (about 1.7 million boards) it is estimated from a capped number
   of random boards, so the table never stalls.
-- **The equity calculator** (V1.1, ``EquityCalculator``): any hands, some of
-  them unknown ("random"), on any board. Every board is counted when every
-  hand is known and there are few enough boards; otherwise random boards
-  (Monte Carlo) are drawn, as many as the caller asks for, in steps.
+- **The equity calculator** (V1.1, ``EquityCalculator``): hands, ranges
+  (V1.1.1) or random hands (the range of any two cards) on any board. Every
+  combination of the ranges and every board is counted when there are few
+  enough; otherwise random deals (Monte Carlo) are drawn, as many as the
+  caller asks for, in steps. Every combination of the ranges that does not
+  share a card with another hand or the board counts the same.
 
 The random boards come from an RNG of their own, so the game's cards are
 never affected, and the same seed always gives the same numbers. Only the
@@ -21,10 +23,12 @@ import math
 import random
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from itertools import combinations
+from itertools import combinations, product
 
 from backend.poker_engine.constants import MAX_TABLE_SEATS, RANKS, SUITS, Card
 from backend.poker_engine.hand_evaluator import evaluate_rank
+
+from .ranges import ANY_TWO, Combo, HandRange
 
 FULL_DECK: tuple[Card, ...] = tuple(rank + suit for rank in RANKS for suit in SUITS)
 BOARD_SIZE = 5
@@ -37,6 +41,12 @@ EXACT_BOARD_LIMIT = 50_000
 """The calculator counts every board up to this many (every hand known)."""
 CONFIDENCE_Z = 1.96
 """Normal quantile of a 95% margin of error."""
+MAX_SAMPLE_ATTEMPTS = 10_000
+"""Random draws of the ranges' combinations allowed for one deal."""
+
+PlayerHand = Sequence[Card] | HandRange | None
+"""Two cards, a range, or None (no cards) for a random hand."""
+Deal = tuple[list[tuple[Card, ...]], Sequence[Card]]
 
 
 @dataclass(frozen=True)
@@ -66,17 +76,18 @@ class EquityResult:
 
 
 class EquityCalculator:
-    """Equity of 2 to 6 hands, known or random, on a board of 0 to 5 cards."""
+    """Equity of 2 to 6 hands or ranges, on a board of 0 to 5 cards."""
 
     def __init__(
         self,
-        hands: Sequence[Sequence[Card] | None],
+        hands: Sequence[PlayerHand],
         board: Sequence[Card] = (),
         seed: int | None = None,
         exact_limit: float = EXACT_BOARD_LIMIT,
     ) -> None:
-        """``None`` (or no cards) is a random hand. ``seed`` drives the random
-        boards; up to ``exact_limit`` boards, every board is counted instead.
+        """Each hand is two cards, a ``HandRange``, or None (or no cards) for
+        a random hand. ``seed`` drives the random deals; up to
+        ``exact_limit`` deals (combinations × boards), every deal is counted.
         """
         if not 2 <= len(hands) <= MAX_TABLE_SEATS:
             raise ValueError(f"Equity needs 2 to {MAX_TABLE_SEATS} hands.")
@@ -84,12 +95,23 @@ class EquityCalculator:
         if len(board) > BOARD_SIZE:
             raise ValueError("A board has at most five cards.")
 
-        known_hands = [tuple(hand) if hand else None for hand in hands]
+        fixed: list[tuple[Card, ...] | None] = []
+        ranges: list[HandRange] = []
 
-        if any(hand is not None and len(hand) != HOLE_CARDS for hand in known_hands):
-            raise ValueError("A hand has two cards, or none for a random hand.")
+        for hand in hands:
+            if isinstance(hand, HandRange):
+                ranges.append(hand)
+                fixed.append(None)
+            elif hand:
+                if len(hand) != HOLE_CARDS:
+                    raise ValueError("A hand has two cards, or none for a random hand.")
 
-        known = [card for hand in known_hands if hand for card in hand] + list(board)
+                fixed.append(tuple(hand))
+            else:
+                ranges.append(ANY_TWO)
+                fixed.append(None)
+
+        known = [card for hand in fixed if hand for card in hand] + list(board)
         known_set = set(known)
 
         if not known_set <= set(FULL_DECK):
@@ -98,19 +120,50 @@ class EquityCalculator:
         if len(known_set) != len(known):
             raise ValueError("A card appears twice.")
 
-        self._hands = known_hands
-        self._fixed_hands = [hand for hand in known_hands if hand is not None]
-        self._random_cards = HOLE_CARDS * (len(known_hands) - len(self._fixed_hands))
+        self._fixed = fixed
+        self._ranged = [index for index, hand in enumerate(fixed) if hand is None]
+        self._choices: list[list[Combo]] = []
+
+        for index, hand_range in zip(self._ranged, ranges, strict=True):
+            combos = [
+                combo
+                for combo in hand_range.combos()
+                if combo[0] not in known_set and combo[1] not in known_set
+            ]
+
+            if not combos:
+                raise ValueError(
+                    f"Hand {index + 1}: no combination of its range is left "
+                    "with the cards chosen."
+                )
+
+            self._choices.append(combos)
+
         self._board = list(board)
         self._remaining = [card for card in FULL_DECK if card not in known_set]
         self._to_come = BOARD_SIZE - len(board)
-        boards = math.comb(len(self._remaining), self._to_come)
-        self.exact = not self._random_cards and boards <= exact_limit
-        self.total_boards: int | None = boards if self.exact else None
-        """Every possible board, when they are all counted."""
-        self._runouts: Iterator[tuple[Card, ...]] = combinations(
-            self._remaining, self._to_come
+        boards = math.comb(
+            len(self._remaining) - HOLE_CARDS * len(self._ranged), self._to_come
         )
+        bound = math.prod(len(choices) for choices in self._choices) * boards
+        self.exact = bound <= exact_limit
+        self.total_boards: int | None = None
+        """Every possible deal, when they are all counted."""
+        self._deals: Iterator[Deal] = iter(())
+
+        if self.exact:
+            assignments = [
+                picked for picked in product(*self._choices) if _disjoint(picked)
+            ]
+
+            if not assignments:
+                raise ValueError("The ranges have no combination left together.")
+
+            self.total_boards = len(assignments) * boards
+            self._deals = self._exact_deals(assignments)
+        elif not self._has_assignment(0, set()):
+            raise ValueError("The ranges have no combination left together.")
+
         self._rng = random.Random(seed)
 
         count = len(hands)
@@ -172,29 +225,61 @@ class EquityCalculator:
 
         return counted
 
-    def _deal(self) -> tuple[list[tuple[Card, ...]], Sequence[Card]] | None:
-        """The hands and the cards to come of the next board; None at the end."""
+    def _deal(self) -> Deal | None:
+        """The hands and the cards to come of the next deal; None at the end."""
         if self.exact:
-            runout = next(self._runouts, None)
+            return next(self._deals, None)
 
-            return None if runout is None else (self._fixed_hands, runout)
+        if not self._ranged:
+            return self._hands_with(()), self._rng.sample(
+                self._remaining, self._to_come
+            )
 
-        drawn = self._rng.sample(self._remaining, self._random_cards + self._to_come)
+        picked = self._sample_assignment()
+        used = {card for combo in picked for card in combo}
+        rest = [card for card in self._remaining if card not in used]
 
-        if not self._random_cards:
-            return self._fixed_hands, drawn
+        return self._hands_with(picked), self._rng.sample(rest, self._to_come)
 
-        hands: list[tuple[Card, ...]] = []
-        dealt = 0
+    def _hands_with(self, picked: Sequence[Combo]) -> list[tuple[Card, ...]]:
+        """Every hand, the ranges' ones taken from ``picked`` in order."""
+        chosen = iter(picked)
 
-        for hand in self._hands:
-            if hand is None:
-                hand = (drawn[dealt], drawn[dealt + 1])
-                dealt += HOLE_CARDS
+        return [hand if hand is not None else next(chosen) for hand in self._fixed]
 
-            hands.append(hand)
+    def _exact_deals(self, assignments: list[tuple[Combo, ...]]) -> Iterator[Deal]:
+        for picked in assignments:
+            used = {card for combo in picked for card in combo}
+            rest = [card for card in self._remaining if card not in used]
+            hands = self._hands_with(picked)
 
-        return hands, drawn[dealt:]
+            for runout in combinations(rest, self._to_come):
+                yield hands, runout
+
+    def _sample_assignment(self) -> tuple[Combo, ...]:
+        """One combination per range, drawn uniformly among those that do not
+        share a card (a draw that shares one is drawn again)."""
+        choice = self._rng.choice
+
+        for _ in range(MAX_SAMPLE_ATTEMPTS):
+            picked = tuple(choice(choices) for choices in self._choices)
+
+            if _disjoint(picked):
+                return picked
+
+        raise RuntimeError("The ranges hardly ever fit together; narrow them down.")
+
+    def _has_assignment(self, index: int, used: set[Card]) -> bool:
+        """True if the ranges from ``index`` on can avoid ``used`` and
+        each other."""
+        if index == len(self._choices):
+            return True
+
+        return any(
+            self._has_assignment(index + 1, used | set(combo))
+            for combo in self._choices[index]
+            if not used & set(combo)
+        )
 
     def result(self) -> EquityResult:
         boards = self._boards
@@ -219,6 +304,12 @@ class EquityCalculator:
             exact=self.exact,
             margins=margins,
         )
+
+
+def _disjoint(combos: Sequence[Combo]) -> bool:
+    cards = [card for combo in combos for card in combo]
+
+    return len(set(cards)) == len(cards)
 
 
 def calculate_equity(

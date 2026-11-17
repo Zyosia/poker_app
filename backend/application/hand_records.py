@@ -25,6 +25,7 @@ FORCED_ACTIONS = ("post_sb", "post_bb", "post_ante")
 """Recorded by the engine itself when a hand starts: not decisions."""
 SESSION_FILE_GLOB = "*.dat"
 FILE_DATE_FORMAT = "pk_sess_%Y%m%d_%H%M%S"
+APP_SOURCE = "Poker app"
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,11 @@ class HandRecord:
     revealed_after_action: int | None
     timed_out_actions: tuple[int, ...]
     finished: bool
+    hidden: frozenset[str] = frozenset()
+    """Players whose cards nobody saw (hands from another site's history):
+    their seats hold stand-in cards, which are never shown."""
+    hand_id: str | None = None
+    """The site's number of the hand, for a hand from another site."""
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "HandRecord":
@@ -170,6 +176,14 @@ class SessionRecord:
     hands: tuple[HandRecord, ...]
     finish: TournamentFinish | None
     """The human's result once a tournament is over; None otherwise."""
+    source: str = APP_SOURCE
+    """Where the hands come from: this application, PokerStars or Winamax."""
+    notes: tuple[str, ...] = ()
+    """Hands of the file that could not be read, one message each."""
+
+    @property
+    def imported(self) -> bool:
+        return self.source != APP_SOURCE
 
     @property
     def replayable_hands(self) -> int:

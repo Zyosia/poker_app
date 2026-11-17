@@ -3,12 +3,13 @@
 import pytest
 
 from backend.poker_engine.actions import Action
+from backend.poker_engine.betting import apply_action
 from backend.poker_engine.blinds import AnteType, BlindLevel
 from backend.poker_engine.constants import ActionType, Position
 from backend.poker_engine.deck import Deck
 from backend.poker_engine.hand import play_hand, start_hand
-from backend.poker_engine.models import SeatRecord
-from backend.poker_engine.session import GameConfig, create_session
+from backend.poker_engine.models import Player, SeatRecord
+from backend.poker_engine.session import GameConfig, GameSession, create_session
 
 
 def fold_everything(hand, player) -> Action:
@@ -73,3 +74,30 @@ def test_a_stacked_deck_deals_its_cards_first_in_order() -> None:
 def test_a_stacked_deck_rejects_bad_cards(cards: list[str]) -> None:
     with pytest.raises(ValueError, match="distinct, valid"):
         Deck.stacked(cards)
+
+
+@pytest.mark.parametrize(
+    ("count", "positions"),
+    [
+        (7, ["BTN", "SB", "BB", "UTG", "LJ", "HJ", "CO"]),
+        (8, ["BTN", "SB", "BB", "UTG", "UTG+1", "LJ", "HJ", "CO"]),
+        (9, ["BTN", "SB", "BB", "UTG", "UTG+1", "UTG+2", "LJ", "HJ", "CO"]),
+    ],
+)
+def test_full_ring_hands_have_a_position_for_every_player(
+    count: int, positions: list[str]
+) -> None:
+    """Seven to nine players: hands read from other sites' histories."""
+    players = [Player(name=f"P{index}", stack=1000) for index in range(count)]
+    session = GameSession(players=players, config=GameConfig())
+    session.table.dealer_index = 0
+
+    hand = start_hand(session)
+
+    assert [seat.position for seat in hand.seats] == positions
+    assert hand.current_player is players[3], "UTG, left of the big blind"
+
+    while not hand.finished:
+        apply_action(hand, Action(type=ActionType.FOLD))
+
+    assert hand.payouts == {"P2": 15}, "the big blind wins the blinds"
