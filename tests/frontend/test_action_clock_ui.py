@@ -188,7 +188,7 @@ def test_pause_freezes_the_clock_and_resumes_where_it_was(
     screen.stop()
 
 
-def test_without_a_clock_there_is_no_timeout_and_no_pause(
+def test_without_a_clock_there_is_no_timeout(
     qapp: QApplication, fake_time: FakeTime
 ) -> None:
     screen = GameScreen()
@@ -201,7 +201,7 @@ def test_without_a_clock_there_is_no_timeout_and_no_pause(
 
     assert screen.action_clock is None
     assert screen.clock_bar.isHidden()
-    assert screen.pause_button.isHidden()
+    assert not screen.pause_button.isHidden(), "Pause also holds the next hand"
     assert game.is_waiting_for_human
     screen.stop()
 

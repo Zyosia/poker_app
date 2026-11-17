@@ -12,6 +12,7 @@ from typing import Protocol
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -46,6 +47,7 @@ from frontend.formatting import (
     format_amount,
     format_cards,
 )
+from frontend.pacing import DEFAULT_TABLE_SPEED, TABLE_SPEEDS, table_speed
 from frontend.runout import (
     RunoutEquity,
     is_running_out,
@@ -53,7 +55,6 @@ from frontend.runout import (
     runout_delay_ms,
 )
 
-DEFAULT_STEP_DELAY_MS = 800
 CLOCK_TICK_MS = 100
 CLOCK_BAR_STEPS = 1000
 CLOCK_COLORS = {"normal": "#3ddc84", "warning": "#f2a33a", "bank": "#5aa9f2"}
@@ -181,11 +182,20 @@ class GameScreen(QWidget):
     menu_requested = Signal()
     show_in_big_blinds_changed = Signal(bool)
     """Emitted when the user switches between chips and big blinds."""
+    speed_changed = Signal(str)
+    """Emitted with the speed the user picked (see ``frontend.pacing``)."""
+    auto_next_hand_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.step_delay_ms = DEFAULT_STEP_DELAY_MS
+        speed = table_speed(DEFAULT_TABLE_SPEED)
+        self.step_delay_ms = speed.action_delay_ms
+        """Before each bot action or street."""
+        self.hand_pause_ms = speed.hand_pause_ms
+        """The result shown before the next hand starts on its own."""
+        self._next_hand_due = False
+        """A hand is over and the next one may start on its own."""
         self._game: TableGame | None = None
         self._human_name = ""
         self._logged_street_count = 0
@@ -202,15 +212,31 @@ class GameScreen(QWidget):
         self._step_timer = QTimer(self)
         self._step_timer.setSingleShot(True)
         self._step_timer.timeout.connect(self._play_step)
-        self._clock_timer = QTimer(self)
-        self._clock_timer.setInterval(CLOCK_TICK_MS)
-        self._clock_timer.timeout.connect(self._on_clock_tick)
+        self._action_clock_timer = QTimer(self)
+        """Refreshes the action clock's bar and detects a time out."""
+        self._action_clock_timer.setInterval(CLOCK_TICK_MS)
+        self._action_clock_timer.timeout.connect(self._on_clock_tick)
+        self._next_hand_timer = QTimer(self)
+        self._next_hand_timer.setSingleShot(True)
+        self._next_hand_timer.timeout.connect(self._on_next_hand_timer)
 
         self.pause_button = QPushButton("Pause")
         self.pause_button.setObjectName("small")
-        self.pause_button.setToolTip("Freezes the clocks and the bots.")
+        self.pause_button.setToolTip("Freezes the clocks and the table.")
         self.pause_button.clicked.connect(self.toggle_pause)
-        self.pause_button.hide()
+
+        self.speed_combo = QComboBox()
+        self.speed_combo.setToolTip("How fast the bots act and the next hand comes.")
+
+        for table_speed_choice in TABLE_SPEEDS:
+            self.speed_combo.addItem(table_speed_choice.name, table_speed_choice.name)
+
+        self.speed_combo.setCurrentIndex(self.speed_combo.findData(speed.name))
+        self.speed_combo.activated.connect(self._on_speed_chosen)
+        self.auto_next_check = QCheckBox("Auto next hand")
+        self.auto_next_check.setToolTip("Deal the next hand on its own.")
+        self.auto_next_check.setChecked(True)
+        self.auto_next_check.toggled.connect(self._on_auto_next_toggled)
 
         self.clock_bar = QProgressBar()
         self.clock_bar.setRange(0, CLOCK_BAR_STEPS)
@@ -271,6 +297,9 @@ class GameScreen(QWidget):
     def _build_layout(self) -> None:
         top_bar = QHBoxLayout()
         top_bar.addWidget(self.info_label, stretch=1)
+        top_bar.addWidget(QLabel("Speed"))
+        top_bar.addWidget(self.speed_combo)
+        top_bar.addWidget(self.auto_next_check)
         top_bar.addWidget(self.big_blinds_check)
         top_bar.addWidget(self.pause_button)
         top_bar.addWidget(self.menu_button)
@@ -337,6 +366,61 @@ class GameScreen(QWidget):
             hand_big_blind(hand) if self.show_in_big_blinds else None
         )
 
+    # --- Speed and next hand ------------------------------------------------------
+
+    @property
+    def speed(self) -> str:
+        return self.speed_combo.currentData()
+
+    def set_speed(self, name: str) -> None:
+        """Use a table speed, without emitting the change."""
+        speed = table_speed(name)
+        self.speed_combo.setCurrentIndex(self.speed_combo.findData(speed.name))
+        self.step_delay_ms = speed.action_delay_ms
+        self.hand_pause_ms = speed.hand_pause_ms
+
+    def _on_speed_chosen(self, index: int) -> None:
+        name = self.speed_combo.itemData(index)
+        self.set_speed(name)
+        self.speed_changed.emit(name)
+
+    @property
+    def auto_next_hand(self) -> bool:
+        return self.auto_next_check.isChecked()
+
+    def set_auto_next_hand(self, enabled: bool) -> None:
+        """Deal the next hand on its own or not, without emitting the change."""
+        self.auto_next_check.blockSignals(True)
+        self.auto_next_check.setChecked(enabled)
+        self.auto_next_check.blockSignals(False)
+        self._restart_next_hand_timer()
+
+    def _on_auto_next_toggled(self, enabled: bool) -> None:
+        self._restart_next_hand_timer()
+        self.auto_next_hand_changed.emit(enabled)
+
+    def _schedule_next_hand(self) -> None:
+        """The next hand may start on its own, after the result is shown."""
+        self._next_hand_due = True
+        self._restart_next_hand_timer()
+
+    def _cancel_next_hand(self) -> None:
+        self._next_hand_due = False
+        self._next_hand_timer.stop()
+
+    def _restart_next_hand_timer(self) -> None:
+        if self._next_hand_due and self.auto_next_hand and not self.paused:
+            self._next_hand_timer.start(self.hand_pause_ms)
+        else:
+            self._next_hand_timer.stop()
+
+    def _on_next_hand_timer(self) -> None:
+        if self._game is None or self.paused or not self._next_hand_due:
+            return
+
+        self._next_hand_due = False
+        self._start_next_hand()
+
     def _render_table(self, hand: Hand) -> None:
         self.table_widget.set_state(
             build_table_state(
@@ -374,6 +458,7 @@ class GameScreen(QWidget):
     def stop(self) -> None:
         """Stop the game in progress, if any; a cash game is cashed out."""
         self._step_timer.stop()
+        self._cancel_next_hand()
         self._stop_clock_display()
 
         if self.account is not None and self._game is not None:
@@ -391,11 +476,6 @@ class GameScreen(QWidget):
         self._clock_counted_hand = None
         self.paused = False
         self.pause_button.setText("Pause")
-        self.pause_button.setVisible(self._can_pause())
-
-    def _can_pause(self) -> bool:
-        """Pause is offered when there is a clock to freeze."""
-        return self.action_clock is not None
 
     # --- Pause ------------------------------------------------------------------
 
@@ -412,9 +492,11 @@ class GameScreen(QWidget):
         clock = self.action_clock
         game = self._require_game()
 
+        self._restart_next_hand_timer()
+
         if self.paused:
             self._step_timer.stop()
-            self._clock_timer.stop()
+            self._action_clock_timer.stop()
 
             if clock is not None:
                 clock.pause()
@@ -437,7 +519,7 @@ class GameScreen(QWidget):
         clock = self.action_clock
 
         if clock is None or not clock.is_turn_running or self.paused:
-            self._clock_timer.stop()
+            self._action_clock_timer.stop()
             return
 
         if clock.is_expired:
@@ -462,10 +544,10 @@ class GameScreen(QWidget):
 
         self.clock_bar.show()
         self._update_clock_bar()
-        self._clock_timer.start()
+        self._action_clock_timer.start()
 
     def _stop_clock_display(self) -> None:
-        self._clock_timer.stop()
+        self._action_clock_timer.stop()
         self.clock_bar.hide()
 
     def _update_clock_bar(self) -> None:
@@ -499,6 +581,10 @@ class GameScreen(QWidget):
             return
 
         game = self._require_game()
+        self._cancel_next_hand()
+
+        if game.is_hand_in_progress:  # Already dealt (button and timer both).
+            return
         hand = game.start_hand()
         level = game.session.blind_level
 
@@ -676,8 +762,12 @@ class GameScreen(QWidget):
         self.rebuy_button.setVisible(
             human.is_busted and opponents_left > 0 and can_rebuy
         )
-        self.next_hand_button.setVisible(not human.is_busted and opponents_left > 0)
+        can_continue = not human.is_busted and opponents_left > 0
+        self.next_hand_button.setVisible(can_continue)
         self.bottom_stack.setCurrentIndex(1)
+
+        if can_continue:
+            self._schedule_next_hand()
 
     def _can_pay_rebuy(self) -> bool:
         if self.account is None:
