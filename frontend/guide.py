@@ -254,6 +254,15 @@ SECTIONS: tuple[Section, ...] = (
                     "Everyone starts with the same stack; the blinds rise level "
                     "after level until one player holds every chip. Several blind "
                     "structures, rebuys and add-on, and prizes for the best places.",
+                    "Play against 1 to 499 bots. With more players than the final "
+                    "table seats, the tournament starts on <b>several tables</b>: "
+                    "tables break and are balanced as players go out, until the "
+                    "last ones meet at the final table. You stay at table 1; the "
+                    "<b>Lobby</b> lists every player by stack, the tables, the "
+                    "payouts and the levels.",
+                    "<b>Manage bots…</b> names and styles every bot, or draws a "
+                    "whole field at random: <i>Easy</i> (no Shark or Adaptive), "
+                    "<i>Normal</i> or <i>Hard</i> (mostly strong bots).",
                 ),
             ),
             Topic(

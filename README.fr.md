@@ -64,6 +64,7 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 * [V2.x — Améliorations de l'IA](#v2x--améliorations-de-lia)
 
 * [V3.0 — Extras cash game](#v30--extras-cash-game)
+* [V3.1 — Tournois multi-tables](#v31--tournois-multi-tables)
 
 * [Plus tard / peut-être](#plus-tard--peut-être)
 
@@ -635,7 +636,7 @@ backend/
 │   ├── game.py            PokerGame : joue une session étape par étape
 │   ├── setup.py           Création d'une partie, d'un tournoi, d'un Spin & Go
 │   ├── cash_rules.py      Limites de buy-in, recaves et compléments (V3.0)
-│   ├── tournament.py      Tournoi, recaves, éliminations, Spin & Go
+│   ├── tournament.py      Tournois sur une ou plusieurs tables, recaves, Spin & Go
 │   ├── payouts.py         Répartitions des prix, multiplicateurs du Spin & Go
 │   ├── structures.py      Structures de blinds par défaut
 │   ├── hand_summary.py    Statistiques d'un joueur depuis l'historique
@@ -698,6 +699,7 @@ frontend/
 │   ├── settings_dialog.py La fenêtre des réglages (V1.2)
 │   ├── guide_window.py    Le Guide : application, styles de bots, vocabulaire (V2.0)
 │   ├── replayer_window.py Le relecteur à côté d'une table (V2.1)
+│   ├── tournament_lobby.py, bot_manager_dialog.py  Lobby et bots (V3.1)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -934,10 +936,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V3.0](#v30--extras-cash-game)) :
+[V3.1](#v31--tournois-multi-tables)) :
 
 ```text
-1773 passed
+1803 passed
 ```
 
 ### État actuel
@@ -2969,9 +2971,118 @@ buy-in minimum et maximum, recaves, compléments, bots qui se recavent) et le
 
 ---
 
+# V3.1 — Tournois multi-tables
+
+La **V3.1** transforme le mode Tournoi en tournois multi-tables, comme ceux
+des salles en ligne : jusqu'à **500 joueurs**, des tables qui cassent et
+s'équilibrent, une table finale, un **lobby** qui suit tout le tournoi, et
+une fenêtre pour **gérer les bots** (ou tirer tout un champ au hasard, selon
+la difficulté). Les tournois restent hors ligne : pas d'inscription tardive.
+
+## Fonctionnalités
+
+### 🏆 Plusieurs tables
+
+* **1 à 499 bots.** Avec plus de joueurs que la table finale n'a de places,
+  le tournoi commence sur plusieurs tables : les joueurs sont répartis à tour
+  de rôle sur aussi peu de tables que possible (44 joueurs à 6 par table :
+  8 tables).
+* **Taille des tables et de la table finale** au choix dans l'écran de
+  configuration (3 à 9 places ; la table finale en a au moins autant). Une
+  indication décrit la répartition : « 44 players: 8 tables of up to 6, then
+  a final table of 7. »
+* **Vous jouez la table 1**, pas à pas comme avant. Chaque autre table joue
+  une main pour chacune des vôtres, d'un coup à la fin de votre main : les
+  niveaux de blinds suivent les tours, et les joueurs éliminés au même tour
+  sur des tables différentes sont classés ensemble selon leur tapis de départ
+  (comme en main par main).
+* **Casse et équilibrage**, entre deux mains : les joueurs éliminés quittent
+  leur table, les tables cassent de la plus haute à la plus basse (leurs
+  joueurs remplissent les tables les plus vides), et les tables restent à un
+  joueur près. Le joueur déplacé pour équilibrer est celui qui doit poster la
+  prochaine big blind. Votre table n'est jamais cassée et vous n'êtes jamais
+  déplacé : elle devient la **table finale**, annoncée à la table
+  (« FINAL TABLE — 7 players left »).
+* À votre table, l'historique indique qui **arrive** et qui **part** vers une
+  autre table ; les éliminations affichées sont celles de votre table, et
+  celles de tous les joueurs payés.
+* **Prix** d'un grand champ : environ 15 % des inscrits sont payés, en
+  proportion de 1, 1/2, 1/3... (le vainqueur prend environ 26 % avec 20
+  places payées ; la dernière place payée gagne encore plus que son buy-in).
+  Les parts peuvent désormais être plus fines qu'un pour cent entier
+  (`PayoutStructure.scale`).
+
+### 📋 Le lobby
+
+* Une fenêtre à côté de la table, ouverte au lancement d'un tournoi
+  multi-tables et par le bouton **Lobby** de la table : la dotation, les
+  joueurs restants, le tapis moyen, votre place, les tables restantes, les
+  mains (ou le temps) jouées, et le niveau de blinds avec le suivant.
+* Onglets **Payouts** et **Levels** ; **Players** : tous les joueurs encore
+  en lice, triés par tapis (jetons et big blinds) avec leur table, puis les
+  éliminés par place avec leur prix, et une **recherche** ; **Tables** : le
+  nombre de joueurs de chaque table, ses plus gros et plus petit tapis, et,
+  pour la table choisie, ses joueurs et le bouton.
+* Il suit le tournoi entre les mains pendant que la table continue.
+
+### 🤖 Gérer les bots
+
+* L'écran de configuration indique combien de bots jouent et résume leurs
+  styles (« 43 bots: TAG ×10 · LAG ×7 · ... »). Les bots ajoutés reçoivent un
+  style au hasard ; en moins, les derniers partent.
+* **Bots au hasard** : *Easy* (ni Shark ni Adaptive), *Normal* (tous les
+  styles, quelques bots forts) ou *Hard* (surtout des Sharks et des
+  Adaptives), et **Draw at random** retire tout le champ au hasard.
+* **Manage bots…** ouvre la liste de tous les bots : renommer un bot ou
+  changer son style (double-clic), ajouter des bots d'un style, changer le
+  style d'une sélection ou la retirer, ou tirer un nouveau champ de toute
+  taille et difficulté. Les noms doivent être distincts et différents du
+  vôtre.
+
+### 🚪 Une fois éliminé
+
+* **Skip to results** joue la suite par petites étapes (« Finishing the
+  tournament: 37 players left… ») : la fenêtre reste réactive, même avec un
+  champ de bots forts, dont la suite peut prendre des dizaines de secondes.
+* **Back to menu** garde votre place et votre prix sans jouer la suite, dès
+  que rien ne peut plus les changer (aucune recave ne peut plus grossir la
+  dotation) ; le classement provisoire est sauvegardé avec la session.
+
+> 📸 *Emplacement de capture : l'écran de configuration avec 43 bots, la
+> gestion des bots, et le lobby à côté de la table 1.*
+
+## Changements du moteur et de l'application
+
+* `GameSession.reseat(players, dealer_index)` : une table accueille une
+  nouvelle liste de joueurs, entre deux mains seulement ; les mains terminées
+  gardent la table où elles ont été jouées (sauvegardes et replays
+  inchangés).
+* `Tournament` joue une table ou plusieurs (`TournamentConfig.table_size`,
+  `final_table_size`, `Tournament(featured=...)`) ; avec une table, il joue
+  exactement comme avant (mêmes résultats pour la même graine).
+* `TournamentSettings.bot_names`, `table_size`, `final_table_size` ;
+  `bot_names()` nomme autant de bots que nécessaire ; `random_styles()` tire
+  un champ pour une `Difficulty`.
+
+## Objectifs
+
+* [x] Tournois multi-tables : équilibrage, casse des tables, table finale
+* [x] Taille des tables et de la table finale
+* [x] Lobby du tournoi : infos, joueurs par tapis, tables, prix, niveaux
+* [x] Gestion des bots : ajouter et configurer, champs au hasard par difficulté
+
+## Tests
+
+```text
+1803 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
 # Plus tard / peut-être
 
-* [ ] Tournois multi-tables (équilibrage des tables, inscriptions tardives)
 * [ ] Limite de relances configurable / Limit Hold'em
 * [ ] Mode spectateur pour les tournois de la Bot Arena : déplacé de la V1.0,
       on peut regarder un tournoi en le jouant depuis le menu principal puis

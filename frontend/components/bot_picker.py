@@ -31,9 +31,9 @@ def help_button(bot: str | None = None) -> QPushButton:
     return button
 
 
-def bot_combo(bot: str) -> QComboBox:
+def bot_combo(bot: str, parent: QWidget | None = None) -> QComboBox:
     """A choice of play style, with its description as tooltip."""
-    combo = QComboBox()
+    combo = QComboBox(parent)
 
     for bot_type in BOT_TYPES.values():
         combo.addItem(bot_type.label, bot_type.key)

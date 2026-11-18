@@ -11,7 +11,6 @@ from backend.bots.factory import BOT_TYPES
 from frontend.guide import BOT_GUIDES, MAX_LEVEL, SECTIONS, TRAITS
 from frontend.ui import guide_window
 from frontend.ui.arena_setup_screen import ArenaSetupScreen
-from frontend.ui.cash_setup_screen import CashSetupScreen
 from frontend.ui.guide_window import GuidePage, close_guide, meter, open_guide
 from frontend.ui.main_window import MainWindow
 from frontend.ui.tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
@@ -90,9 +89,12 @@ def test_the_main_menu_opens_the_guide(window: MainWindow) -> None:
 @pytest.mark.parametrize("mode", ["cash", "tournament"])
 def test_the_bot_pickers_explain_the_styles(window: MainWindow, mode: str) -> None:
     table = open_table(window, mode)
-    setup = cash_setup(table) if mode == "cash" else played_setup(table)
-    assert isinstance(setup, CashSetupScreen | TournamentSetupScreen)
-    setup.bot_picker.help_button.click()
+    if mode == "cash":
+        cash_setup(table).bot_picker.help_button.click()
+    else:
+        setup = played_setup(table)
+        assert isinstance(setup, TournamentSetupScreen)
+        setup.help_button.click()
 
     guide = guide_window._window
     assert guide is not None and guide.current_section == "bots"
