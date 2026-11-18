@@ -12,6 +12,7 @@ Every combination of a range counts the same (no weights).
 """
 
 from dataclasses import dataclass
+from functools import cache
 from itertools import combinations
 
 from backend.poker_engine.constants import RANKS, SUITS, Card
@@ -38,8 +39,11 @@ ALL_LABELS: tuple[str, ...] = tuple(
 )
 
 
+@cache
 def label_combos(label: str) -> tuple[Combo, ...]:
-    """The combinations of one starting hand ("AKs": 4, "AKo": 12, "QQ": 6)."""
+    """The combinations of one starting hand ("AKs": 4, "AKo": 12, "QQ": 6).
+
+    Cached: 169 small tuples, read again and again by the bots' ranges."""
     high, low = label[0], label[1]
 
     if high == low:

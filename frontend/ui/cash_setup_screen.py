@@ -2,9 +2,11 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QLayout,
     QPushButton,
@@ -16,6 +18,11 @@ from PySide6.QtWidgets import (
 
 from backend.application.action_clock import CASH_CLOCK
 from backend.application.bankroll import DEFAULT_BALANCE, GameMode
+from backend.application.cash_rules import (
+    MAX_BUY_IN_BIG_BLINDS,
+    MIN_BUY_IN_BIG_BLINDS,
+    BuyInRange,
+)
 from backend.application.setup import GameSettings
 from frontend.components.bankroll_bar import BankrollBar
 from frontend.components.bot_picker import BotPicker
@@ -78,15 +85,46 @@ class CashSetupScreen(QWidget):
         self.bot_combos = self.bot_picker.bot_combos
 
         self.stack_spin = QSpinBox()
-        self.stack_spin.setRange(200, 100_000)
-        self.stack_spin.setSingleStep(100)
-        self.stack_spin.setValue(DEFAULT_SETTINGS.starting_stack)
+        self.stack_spin.setToolTip(
+            f"A seat is bought for {MIN_BUY_IN_BIG_BLINDS} to "
+            f"{MAX_BUY_IN_BIG_BLINDS} big blinds; rebuys and top-ups too."
+        )
 
         self.blinds_combo = QComboBox()
         for small_blind, big_blind in BLIND_LEVELS:
             self.blinds_combo.addItem(
                 f"{small_blind} / {big_blind}", (small_blind, big_blind)
             )
+
+        self._big_blind = DEFAULT_SETTINGS.big_blind
+        self._apply_buy_in_range(DEFAULT_SETTINGS.starting_stack)
+        self.blinds_combo.currentIndexChanged.connect(self._on_blinds_changed)
+
+        self.straddle_check = QCheckBox("Straddle: under the gun posts 2 BB")
+        self.straddle_check.setToolTip(
+            "Every hand, the player under the gun posts a straddle of two big "
+            "blinds and acts last before the flop (three players or more)."
+        )
+        self.bots_rebuy_check = QCheckBox("Bots rebuy and top up")
+        self.bots_rebuy_check.setChecked(DEFAULT_SETTINGS.bots_rebuy)
+        self.bots_rebuy_check.setToolTip(
+            "A busted bot buys in again and a short one tops up: the table "
+            "stays full. Off: busted bots leave the table."
+        )
+        self.auto_top_up_check = QCheckBox("Auto top-up")
+        self.auto_top_up_check.setToolTip(
+            "Before every hand, your stack goes back to the maximum buy-in, "
+            "paid from the bankroll."
+        )
+        table_options = QWidget()
+        options_layout = QHBoxLayout(table_options)
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        options_layout.setSpacing(14)
+        options_layout.addWidget(self.straddle_check)
+        options_layout.addWidget(self.bots_rebuy_check)
+        options_layout.addWidget(self.auto_top_up_check)
+        options_layout.addStretch()
+        self.table_options = table_options
 
         self.clock_combo = ClockCombo(CASH_CLOCK)
         self.buy_in_info = BuyInInfo(GameMode.CASH)
@@ -113,6 +151,7 @@ class CashSetupScreen(QWidget):
         form.addRow("Bots", self.bot_picker.style_widget)
         form.addRow("Starting stack", self.stack_spin)
         form.addRow("Blinds", self.blinds_combo)
+        form.addRow("Table", self.table_options)
         form.addRow("Action clock", self.clock_combo)
 
         panel = QFrame()
@@ -164,7 +203,23 @@ class CashSetupScreen(QWidget):
             starting_stack=self.stack_spin.value(),
             small_blind=small_blind,
             big_blind=big_blind,
+            straddle=self.straddle_check.isChecked(),
+            bots_rebuy=self.bots_rebuy_check.isChecked(),
+            auto_top_up=self.auto_top_up_check.isChecked(),
         )
+
+    def _apply_buy_in_range(self, stack: int) -> None:
+        buy_in = BuyInRange.for_big_blind(self._big_blind)
+        self.stack_spin.setRange(buy_in.minimum, buy_in.maximum)
+        self.stack_spin.setSingleStep(10 * self._big_blind)
+        self.stack_spin.setValue(buy_in.clamp(stack))
+
+    def _on_blinds_changed(self) -> None:
+        """The buy-in keeps its size in big blinds at the new blinds."""
+        _, big_blind = self.blinds_combo.currentData()
+        big_blinds = self.stack_spin.value() / self._big_blind
+        self._big_blind = big_blind
+        self._apply_buy_in_range(round(big_blinds * big_blind))
 
     def _on_play_clicked(self) -> None:
         try:

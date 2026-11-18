@@ -3,8 +3,12 @@
 Every game played in the application is saved in the sessions folder. The
 browser lists them, most recent first; a session shows your result, your
 chips hand after hand, and every hand, which the replayer opens.
+
+PokerStars and Winamax hand histories opened here are kept in the library
+(V2.1), and a session can be deleted, after a confirmation.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -14,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -22,7 +27,6 @@ from PySide6.QtWidgets import (
 )
 
 from backend.application.game_modes import MODE_LABELS, GameMode
-from backend.application.hand_import import read_hand_history_file
 from backend.application.hand_records import (
     HandRecord,
     SessionLibrary,
@@ -38,6 +42,26 @@ from .arena_results_screen import SortableItem
 SESSION_COLUMNS = ("Date", "Mode", "Hands", "Result", "Replays")
 HAND_COLUMNS = ("Hand", "Blinds", "Position", "Cards", "Board", "Result", "Pot")
 ORDINALS = {1: "1st", 2: "2nd", 3: "3rd"}
+
+
+def confirm_delete(parent: QWidget, session: SessionRecord) -> bool:
+    """Ask before deleting a session: it cannot be undone."""
+    what = (
+        f"the {session.source} hand history {session.path.name}"
+        if session.imported
+        else f"the session of {session.started:%d %b %Y %H:%M}"
+    )
+    answer = QMessageBox.question(
+        parent,
+        "Delete the session",
+        f"Delete {what} ({len(session.hands)} hands)?\n\n"
+        "Its hands will no longer be listed, replayed or counted in your "
+        "stats. This cannot be undone.",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+
+    return answer == QMessageBox.StandardButton.Yes
 
 
 def signed(chips: int) -> str:
@@ -101,6 +125,8 @@ class SessionBrowserScreen(QWidget):
     ) -> None:
         super().__init__(parent)
         self.library = library or SessionLibrary()
+        self.in_use: Callable[[], set[Path]] = set
+        """The session files of the games being played: never deleted."""
         self.sessions: list[SessionRecord] = []
         self.visible_sessions: list[SessionRecord] = []
         self.session: SessionRecord | None = None
@@ -145,6 +171,9 @@ class SessionBrowserScreen(QWidget):
         self.hands_table.itemSelectionChanged.connect(self._update_replay_button)
         self.hands_table.itemDoubleClicked.connect(lambda _item: self.replay_selected())
 
+        self.delete_button = QPushButton("Delete session")
+        self.delete_button.setObjectName("danger")
+        self.delete_button.clicked.connect(self.delete_selected)
         self.replay_button = QPushButton("Replay hand")
         self.replay_button.setObjectName("primary")
         self.replay_button.clicked.connect(self.replay_selected)
@@ -172,6 +201,7 @@ class SessionBrowserScreen(QWidget):
         body.addLayout(right, stretch=6)
 
         buttons = QHBoxLayout()
+        buttons.addWidget(self.delete_button)
         buttons.addStretch()
         buttons.addWidget(self.replay_button)
         buttons.addWidget(self.back_button)
@@ -201,9 +231,11 @@ class SessionBrowserScreen(QWidget):
     # --- Sessions ------------------------------------------------------------
 
     def refresh(self) -> None:
-        """Read the sessions folder again (unchanged files are not re-read)."""
-        scan = self.library.scan()
-        self.sessions = list(scan.sessions)
+        """Read the sessions folder and the imported histories again
+        (unchanged files are not re-read)."""
+        scan = self.library.scan(include_imports=True)
+        outside = [s for s in self.sessions if not self.library.owns(s.path)]
+        self.sessions = outside + list(scan.sessions)
         count = len(scan.unreadable)
         self.notice_label.setText(
             f"{count} file{'s' if count > 1 else ''} could not be read."
@@ -215,12 +247,13 @@ class SessionBrowserScreen(QWidget):
 
     def open_file(self, path: Path) -> None:
         """Show a session file, or a PokerStars or Winamax hand history, from
-        anywhere; it joins the list."""
+        anywhere; it joins the list. A hand history is kept in the library,
+        so it is listed again next time."""
         try:
             if path.suffix.lower() == ".dat":
                 session = self.library.load(path)
             else:
-                session = read_hand_history_file(path)
+                session = self.library.import_history(path)
         except (SessionFileError, OSError) as error:
             self.notice_label.setText(str(error))
             return
@@ -376,3 +409,38 @@ class SessionBrowserScreen(QWidget):
     def _update_replay_button(self) -> None:
         index = self.selected_hand_index()
         self.replay_button.setEnabled(self.session is not None and index is not None)
+        self._update_delete_button()
+
+    def _update_delete_button(self) -> None:
+        session = self.session
+        reason = self._cannot_delete(session)
+        self.delete_button.setEnabled(session is not None and reason is None)
+        self.delete_button.setToolTip(
+            reason or "Delete this session for good: its hands leave your stats."
+        )
+
+    def _cannot_delete(self, session: SessionRecord | None) -> str | None:
+        if session is None:
+            return "No session selected."
+
+        if not self.library.owns(session.path):
+            return "This file is outside the session folder: it is only shown here."
+
+        if session.path.resolve() in {p.resolve() for p in self.in_use()}:
+            return "This game is still being played."
+
+        return None
+
+    def delete_selected(self) -> None:
+        """Delete the selected session, once the user confirms."""
+        session = self.session
+
+        if session is None or self._cannot_delete(session) is not None:
+            return
+
+        if not confirm_delete(self, session):
+            return
+
+        self.library.delete(session)
+        self.sessions = [s for s in self.sessions if s.path != session.path]
+        self._fill_sessions()

@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import accumulate
 
+from backend.application.ranges import Combo
 from backend.poker_engine.constants import RANKS, SUITS, Card
 from backend.poker_engine.hand_evaluator import evaluate_rank
 
@@ -54,10 +55,16 @@ def deal_showdowns(
     ``ranges[i]``.
     """
     known = {*hole_cards, *board}
+    deck = [card for card in DECK if card not in known]
     cumulative = [list(accumulate(r.weights)) for r in ranges]
     indexes = [range(len(r.combos)) for r in ranges]
     missing = BOARD_SIZE - len(board)
+    drawn = missing + 2 * len(ranges)
+    """Enough cards for the board whatever the opponents hold."""
     showdowns: list[Showdown] = []
+    # On the river the board is complete: each hand is evaluated once.
+    river_hero = evaluate_rank([*hole_cards, *board]) if not missing else None
+    river_ranks: dict[Combo, Rank] = {}
 
     for _ in range(count):
         picks = _pick_hands(ranges, cumulative, indexes, known, rng)
@@ -65,22 +72,37 @@ def deal_showdowns(
         if picks is None:
             continue
 
-        used = known.union(*(ranges[i].combos[k] for i, k in enumerate(picks)))
-        extra = [
-            card for card in rng.sample(DECK, missing + len(used)) if card not in used
-        ]
-        final_board = [*board, *extra[:missing]]
-        hero = evaluate_rank([*hole_cards, *final_board])
+        combos = [ranges[i].combos[k] for i, k in enumerate(picks)]
+
+        if river_hero is not None:
+            hero = river_hero
+            ranks = [_river_rank(combo, board, river_ranks) for combo in combos]
+        else:
+            held = {card for combo in combos for card in combo}
+            extra = [card for card in rng.sample(deck, drawn) if card not in held]
+            final_board = [*board, *extra[:missing]]
+            hero = evaluate_rank([*hole_cards, *final_board])
+            ranks = [evaluate_rank([*combo, *final_board]) for combo in combos]
+
         opponents = tuple(
-            (
-                evaluate_rank([*ranges[i].combos[k], *final_board]),
-                strengths[i][k],
-            )
-            for i, k in enumerate(picks)
+            (rank, strengths[i][k])
+            for (i, k), rank in zip(enumerate(picks), ranks, strict=True)
         )
         showdowns.append(Showdown(hero, opponents))
 
     return showdowns
+
+
+def _river_rank(
+    combo: Combo, board: tuple[Card, ...], ranks: dict[Combo, Rank]
+) -> Rank:
+    rank = ranks.get(combo)
+
+    if rank is None:
+        rank = evaluate_rank([*combo, *board])
+        ranks[combo] = rank
+
+    return rank
 
 
 def _pick_hands(

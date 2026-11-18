@@ -6,6 +6,7 @@ owns the profile, the sounds and the settings that every window shares,
 and brings the table waiting for you to the front.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
@@ -14,7 +15,9 @@ from PySide6.QtWidgets import QWidget
 
 from backend.application.bankroll import GameAccount, InsufficientFundsError
 from backend.application.controllers import HumanController
+from backend.application.game import PokerGame
 from backend.application.game_modes import MODE_LABELS, GameMode
+from backend.application.hand_records import live_session_record
 from backend.application.profile import BotCards, UserSettings
 from backend.application.setup import (
     GameSettings,
@@ -31,6 +34,7 @@ from .bankroll_screen import BankrollScreen
 from .cash_setup_screen import CashSetupScreen
 from .game_screen import GameScreen
 from .navigation_window import NavigationWindow
+from .replayer_window import ReplayerWindow, last_replayable_hand
 from .tournament_results_screen import TournamentResultsScreen
 from .tournament_screen import TournamentScreen
 from .tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
@@ -73,6 +77,7 @@ class GameWindow(NavigationWindow):
         """Table 1, 2...: the lowest number free when the window opened."""
         self.game_name = MODE_LABELS[mode]
         self._played_settings: PlayedSettings | None = None
+        self.replayer_window: ReplayerWindow | None = None
 
         self.setup_screen = self._create_setup_screen()
         self.table_screen: GameScreen = (
@@ -136,6 +141,7 @@ class GameWindow(NavigationWindow):
         table.auto_next_hand_changed.connect(lobby.set_auto_next_hand)
         table.history_shown_changed.connect(lobby.set_show_history)
         table.tile_requested.connect(lobby.tile_tables)
+        table.replay_requested.connect(self.replay_last_hand)
         QShortcut(QKeySequence(TILE_SHORTCUT), self, lobby.tile_tables)
         table.your_turn_changed.connect(self._on_your_turn_changed)
 
@@ -240,6 +246,7 @@ class GameWindow(NavigationWindow):
         self.game_name = f"Cash game {stakes}"
         self._update_title()
         self.push(self.table_screen)
+        self.table_screen.auto_top_up = settings.auto_top_up
         self.table_screen.start_game(
             game,
             human_name=settings.player_name,
@@ -328,6 +335,45 @@ class GameWindow(NavigationWindow):
         if screen is self.table_screen:
             self.table_screen.stop()
 
+    # --- Replayer -----------------------------------------------------------------
+
+    def replay_last_hand(self) -> ReplayerWindow | None:
+        """Open the replayer, in a window of its own, on the last hand
+        played at this table; the game goes on meanwhile."""
+        table = self.table_screen
+        game = table.game
+
+        if game is None:
+            return None
+
+        session = live_session_record(game.session, table.human_name, self.mode)
+        index = last_replayable_hand(session)
+
+        if index is None:
+            return None
+
+        if self.replayer_window is None:
+            self.replayer_window = ReplayerWindow(self.windowTitle())
+
+        replayer = self.replayer_window.replayer
+        replayer.set_show_in_big_blinds(self.lobby.profile.settings.show_in_big_blinds)
+        self.replayer_window.show_hand(session, index)
+
+        return self.replayer_window
+
+    def save_path_in_use(self) -> Path | None:
+        """The session file this window's game is writing, if any."""
+        table = self.table_screen
+        game = table.game
+
+        if game is None:
+            return None
+
+        if isinstance(game, PokerGame):
+            return game.save_path
+
+        return table.save_path if isinstance(table, TournamentScreen) else None
+
     def closeEvent(self, event: QCloseEvent) -> None:
         """A running tournament asks first (it is forfeited); a cash game is
         cashed out."""
@@ -336,6 +382,11 @@ class GameWindow(NavigationWindow):
         if isinstance(table, TournamentScreen) and not table.prepare_to_leave():
             event.ignore()
             return
+
+        if self.replayer_window is not None:
+            self.replayer_window.close()
+            self.replayer_window.deleteLater()
+            self.replayer_window = None
 
         table.stop()
         self.closed.emit(self)

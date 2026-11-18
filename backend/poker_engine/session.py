@@ -16,6 +16,9 @@ class GameConfig:
     small_blind: int = 5
     big_blind: int = 10
     max_players: int = MAX_TABLE_SEATS
+    straddle: bool = False
+    """The player under the gun posts a straddle (two big blinds) every hand,
+    with three players or more (V3.0, cash games)."""
 
     def __post_init__(self) -> None:
         if self.starting_stack <= 0:
@@ -71,13 +74,34 @@ class GameSession:
             if player.is_busted and not player.is_eliminated
         ]
 
-    def rebuy_player(self, player: Player) -> None:
-        """Give a busted player a new stack."""
+    def rebuy_player(self, player: Player, amount: int | None = None) -> None:
+        """Give a busted player a new stack (``rebuy_stack`` by default)."""
         if not player.is_busted:
             raise ValueError(f"{player.name} is not busted.")
 
-        player.stack = self.config.rebuy_stack
+        self._check_between_hands()
+        stack = self.config.rebuy_stack if amount is None else amount
+
+        if stack <= 0:
+            raise ValueError("A rebuy must be positive.")
+
+        player.stack = stack
         player.eliminated = False
+
+    def add_chips(self, player: Player, amount: int) -> None:
+        """Top up the stack of a player still in the game, between hands."""
+        if amount <= 0:
+            raise ValueError("A top-up must be positive.")
+
+        if player.is_eliminated or player.is_busted:
+            raise ValueError(f"{player.name} has no stack to top up: a rebuy.")
+
+        self._check_between_hands()
+        player.stack += amount
+
+    def _check_between_hands(self) -> None:
+        if self.hands and not self.hands[-1].finished:
+            raise RuntimeError("Chips are only added between hands.")
 
     def eliminate_player(self, player: Player) -> None:
         """Remove a busted player from the session."""

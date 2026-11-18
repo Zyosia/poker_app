@@ -127,6 +127,9 @@ QPushButton#accent:hover { background-color: #cf9722; }
 QPushButton#accent:disabled { background-color: #40331a; border-color: #4d3d1f; }
 
 QPushButton#small { padding: 6px 10px; font-size: 12px; }
+QPushButton#danger { color: #ff7b7b; border-color: #7a3434; }
+QPushButton#danger:hover { background-color: #3a1f22; }
+QPushButton#danger:disabled { color: #5a6270; border-color: #2c3442; }
 QPushButton#help {
     min-width: 26px;
     max-width: 26px;

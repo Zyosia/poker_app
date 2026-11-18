@@ -32,6 +32,7 @@ from frontend.components.card_widget import CardWidget
 from frontend.modes import MODES, TOOLS, Mode, ScreenKey
 from frontend.sounds import SoundPlayer
 
+from . import settings_dialog as settings_module
 from .arena_progress_screen import ArenaProgressScreen
 from .arena_results_screen import ArenaResultsScreen
 from .arena_setup_screen import ArenaSetupScreen
@@ -183,6 +184,7 @@ class MainWindow(NavigationWindow):
         self.equity_screen = EquityScreen()
         self.my_stats_screen = MyStatsScreen()
         self.session_browser_screen = SessionBrowserScreen(self.library)
+        self.session_browser_screen.in_use = self.paths_in_use
 
         recovered = self.profile.bankroll.recover_open_games()
         self.startup_notice: str | None = None
@@ -299,6 +301,7 @@ class MainWindow(NavigationWindow):
         dialog = SettingsDialog(self.profile.settings, self.sounds, parent or self)
         dialog.setting_changed.connect(self._on_setting_changed)
         dialog.defaults_requested.connect(self.restore_default_settings)
+        dialog.delete_all_requested.connect(self.delete_all_data)
         dialog.finished.connect(self._on_settings_closed)
         self.settings_dialog = dialog
         dialog.open()
@@ -320,6 +323,39 @@ class MainWindow(NavigationWindow):
 
         if self.settings_dialog is not None:
             self.settings_dialog.show_settings(self.profile.settings)
+
+    def delete_all_data(self) -> bool:
+        """Delete every session and imported history, reset the bankroll and
+        its history and the name, once the user confirms. Refused while
+        tables are open: their games are being saved and paid for."""
+        parent = self.settings_dialog or self
+
+        if self.game_windows:
+            settings_module.tell(
+                parent,
+                "Delete all data",
+                "Close your tables first: their games are still being played.",
+            )
+            return False
+
+        if not settings_module.confirm_delete_all(parent):
+            return False
+
+        self.library.delete_all()
+        self.profile.reset_data()
+        self.back_to_first()  # No tool keeps showing a deleted session.
+        self.apply_settings()
+
+        if self.settings_dialog is not None:
+            self.settings_dialog.show_settings(self.profile.settings)
+
+        return True
+
+    def paths_in_use(self) -> set[Path]:
+        """The session files of the games being played."""
+        paths = (window.save_path_in_use() for window in self.game_windows)
+
+        return {path for path in paths if path is not None}
 
     def _on_settings_closed(self) -> None:
         dialog = self.settings_dialog

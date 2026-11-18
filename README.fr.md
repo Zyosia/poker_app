@@ -60,9 +60,10 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 * [V1.4 — Historique et mosaïque](#v14--historique-et-mosaïque)
 
 * [V2.0 — IA, stratégies et guide](#v20--ia-stratégies-et-guide)
-* [V2.x — Suite](#v2x--suite)
+* [V2.1 — Vos données, replay à la table](#v21--vos-données-replay-à-la-table)
+* [V2.x — Améliorations de l'IA](#v2x--améliorations-de-lia)
 
-* [V3.x — Extras cash game](#v3x--extras-cash-game)
+* [V3.0 — Extras cash game](#v30--extras-cash-game)
 
 * [Plus tard / peut-être](#plus-tard--peut-être)
 
@@ -633,6 +634,7 @@ backend/
 │   ├── controllers.py     PlayerController, HumanController, DecisionContext
 │   ├── game.py            PokerGame : joue une session étape par étape
 │   ├── setup.py           Création d'une partie, d'un tournoi, d'un Spin & Go
+│   ├── cash_rules.py      Limites de buy-in, recaves et compléments (V3.0)
 │   ├── tournament.py      Tournoi, recaves, éliminations, Spin & Go
 │   ├── payouts.py         Répartitions des prix, multiplicateurs du Spin & Go
 │   ├── structures.py      Structures de blinds par défaut
@@ -658,7 +660,8 @@ backend/
 │   ├── monte_carlo.py     Showdowns aléatoires contre ces ranges (V2.0)
 │   ├── strategy_bot.py    Shark et Adaptive : tableaux, ratio M, EV (V2.0)
 │   ├── push_fold_solver.py  Push/fold heads-up résolu par CFR+ (V2.0)
-│   ├── heads_up_push_fold.py  Sa solution, générée (V2.0)
+│   ├── three_handed_solver.py  Push/fold à trois par CFR Monte Carlo (V2.x)
+│   ├── push_fold_solutions.py  Leurs solutions, générées (V2.x)
 │   └── factory.py         Création d'un bot depuis son nom (nit, tag, lag…)
 └── simulation/            Simulations de bots sans interface (Beta 1.0)
     ├── config.py          SimulationConfig, SeatSpec, StackPolicy, seeds
@@ -694,6 +697,7 @@ frontend/
 │   ├── game_window.py     Une partie dans sa propre fenêtre (V1.3)
 │   ├── settings_dialog.py La fenêtre des réglages (V1.2)
 │   ├── guide_window.py    Le Guide : application, styles de bots, vocabulaire (V2.0)
+│   ├── replayer_window.py Le relecteur à côté d'une table (V2.1)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -930,10 +934,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V2.0](#v20--ia-stratégies-et-guide)) :
+[V3.0](#v30--extras-cash-game)) :
 
 ```text
-1722 passed
+1773 passed
 ```
 
 ### État actuel
@@ -2657,7 +2661,8 @@ jouent exactement comme avant (les tests golden sont inchangés).
   commune).
 * **La solution** : 600 itérations pour chaque tapis de 1 à 20 big blinds,
   chacune avec une exploitabilité sous 0,0001 big blind par main, écrite sous
-  forme de ranges dans `heads_up_push_fold.py` (généré, environ 7 minutes :
+  forme de ranges (depuis la V2.x dans `push_fold_solutions.py`, avec antes ;
+  généré par
   `python -m backend.bots.push_fold_solver`). Elle correspond aux tableaux
   heads-up publiés :
 
@@ -2744,20 +2749,223 @@ ligne, marge à 95 %) :
 
 ---
 
-# V2.x — Suite
+# V2.1 — Vos données, replay à la table
 
-* [ ] Des bots stratégiques qui ouvrent plus large contre les joueurs très larges (table pleine)
-* [ ] Des décisions Monte Carlo plus rapides pour les longues séries de la Bot Arena
-* [ ] Des équilibres push/fold avec antes, et à trois joueurs
+La **V2.1** permet de faire le ménage dans vos données et de revoir une main
+sans quitter la table, et garde les historiques importés. Aucune règle du
+poker n'a changé.
+
+## Fonctionnalités
+
+### 🗑️ Supprimer toutes les données
+
+* Un bouton **Delete all data…** dans les réglages (groupe *Your data*)
+  supprime toutes les sessions sauvegardées et tous les historiques importés,
+  remet la bankroll à **100 000 avec un historique vide**, et redonne à votre
+  nom sa valeur par défaut. Les autres réglages (son, tables) sont conservés.
+* Une **confirmation** est demandée d'abord, avec **Non** comme réponse par
+  défaut, et liste ce qui sera supprimé.
+* C'est refusé tant que des tables sont ouvertes (« Close your tables
+  first ») : leurs parties sont encore sauvegardées et payées. Le fichier de
+  sauvegarde du profil, qui contient l'ancien profil, est supprimé aussi.
+
+### ▶️ Replay à la table
+
+* Un bouton **Replay** sur chaque table (Cash Game, Tournoi, Spin & Go),
+  actif dès qu'une main est terminée, ouvre le **relecteur de mains dans sa
+  propre fenêtre** sur la dernière main ; la table continue pendant ce temps.
+* Le relecteur lit les mains de la partie en mémoire : il fonctionne même
+  sans sauvegarde ; les boutons de main passent aux mains précédentes de la
+  partie. Fermer la table ferme son relecteur.
+
+### 📂 Le navigateur de sessions
+
+* **Les historiques importés sont conservés** : un fichier PokerStars ou
+  Winamax ouvert dans le navigateur est copié dans le dossier `imports` des
+  sessions, et revient dans la liste la fois suivante (et après un
+  redémarrage). Un fichier importé deux fois n'est gardé qu'une fois ; deux
+  fichiers différents de même nom ne se marchent pas dessus.
+* **Delete session**, avec une confirmation : le fichier de la session (ou
+  la copie importée) est supprimé, et ses mains quittent la liste, le
+  relecteur et **My stats**.
+  * La session d'une partie en cours ne peut pas être supprimée, ni un
+    fichier ouvert hors du dossier des sessions (il est seulement affiché).
+* Les mains importées ne comptent ni dans My stats ni pour « revoir la
+  dernière main » : elles n'ont pas été jouées dans l'application.
+
+> 📸 *Emplacement de capture : le bouton Replay d'une table et sa fenêtre de
+> relecture ; les réglages avec Delete all data.*
+
+## Changements du moteur
+
+* Aucun. `SessionLibrary` (couche application) importe, liste et supprime
+  les fichiers ; `live_session_record` construit en mémoire un
+  enregistrement rejouable d'une partie ; `ProfileStore.reset_data` remet à
+  zéro la bankroll et le nom.
+
+## Objectifs
+
+* [x] Supprimer toutes les données depuis les réglages, après confirmation
+* [x] Un bouton Replay à la table, qui rejoue la dernière main
+* [x] Les historiques importés conservés dans le navigateur de sessions
+* [x] Supprimer une session ; ses mains quittent les statistiques
+
+## Tests
+
+```text
+1751 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
 
 ---
 
-# V3.x — Extras cash game
+# V2.x — Améliorations de l'IA
 
-Déplacé de la V1.2, pas prioritaire.
+Les jalons laissés par la V2.0, réalisés après la V2.1.
 
-* [ ] Règles complètes de recave / complément (humain et bots, buy-in min/max)
-* [ ] Straddle
+### 🎯 Isoler les joueurs larges
+
+* Le bot **Adaptive** ouvre désormais plus large quand un **joueur large**
+  (VPIP de 45 % ou plus) doit encore parler ou a limpé : il compte deux
+  joueurs de moins derrière lui, et un limpeur large ne resserre plus sa
+  range.
+* Une **sur-relance d'un joueur qui relance beaucoup** (PFR de 35 % ou plus)
+  reçoit la réponse d'une ouverture, pas seulement des mains premium, et le
+  tapis d'un joueur large est payé plus large (en proportion de sa fréquence
+  de relance).
+* À la table de 9 où il était à la traîne (tous les styles, Random et Maniac
+  compris, 9 000 mains en duplicate), l'Adaptive est passé de **+175 à +394
+  bb/100**, de la cinquième à la première place, devant le TAG (+315) et le
+  LAG (+258).
+
+### ⚡ Des décisions Monte Carlo plus rapides
+
+* **100 donnes d'abord**, et les 100 autres seulement quand les deux
+  meilleures options sont à moins d'un dixième du pot l'une de l'autre : la
+  suite ne changerait pas le choix.
+* Les forces des mains d'un adversaire sont calculées **une fois par street**
+  (elles l'étaient à chaque décision), les combinaisons de chaque main de
+  départ sont mises en cache, le board est tiré des cartes restantes (pas du
+  paquet entier), et à la river chaque main n'est évaluée qu'une fois.
+* Les ranges gardent 100 mains après le flop (160 avant).
+* La même table à 6 joue **600 mains en 6,6 s au lieu de 9,4 s**, et les
+  résultats heads-up n'ont pas bougé au-delà du bruit (Shark +32 bb/100
+  contre le TAG, +488 contre la Calling Station).
+
+### ♟️ Push/fold avec antes, et à trois
+
+* Le solveur heads-up prend les **antes** : aucune, **classiques** (un
+  dixième de big blind chacun, comme les antes classiques de l'application)
+  et une **ante de big blind** (la big blind paie une big blind, le réglage
+  par défaut de l'application à partir du niveau 4).
+* Un solveur **à trois joueurs** (`three_handed_solver.py`) : le bouton fait
+  tapis ou se couche, la small blind paie ou fait tapis, la big blind paie un
+  ou deux tapis. Tabuler les équités de tous les trios de mains serait trop
+  long : il utilise un **CFR Monte Carlo**, où chacune des 1 000 000
+  itérations distribue de vraies cartes et met à jour les six décisions sur
+  cette donne. Deux seeds s'accordent à environ deux points de range près.
+* Toutes les solutions sont dans `push_fold_solutions.py` (généré en environ
+  11 minutes sur 12 cœurs : `python -m backend.bots.push_fold_solver`) :
+  heads-up de 1 à 20 big blinds, à trois à 2–8, 10, 12, 15 et 20 big blinds.
+* Les bots stratégiques les jouent en tournoi, avec **20 big blinds ou
+  moins**, selon les antes de la main ; une relance compte comme un tapis, un
+  limp comme un fold.
+
+À trois joueurs, 10 big blinds (part des mains) :
+
+| Antes | Le bouton fait tapis | La SB paie le bouton | La SB fait tapis | La BB paie le bouton | La BB paie les deux | La BB paie la SB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Aucune | 33 % | 24 % | 55 % | 31 % | 25 % | 40 % |
+| Classiques | 36 % | 28 % | 60 % | 34 % | 25 % | 45 % |
+| Ante de big blind | 39 % | 31 % | 59 % | 48 % | 47 % | 59 % |
+
+* Avec une ante de big blind, la big blind a deux big blinds dans le pot :
+  elle paie beaucoup plus large (toutes les mains à 5 big blinds en
+  heads-up), si bien que la small blind ne fait pas toujours tapis plus
+  large.
+* **Spin & Go** (600 parties contre TAG et LAG) : le Shark en gagne 37 %, et
+  son ROI hors tirage du multiplicateur est passé de +7 % à **+11 %**.
+
+## Objectifs
+
+* [x] Des bots stratégiques qui ouvrent plus large contre les joueurs très larges (table pleine)
+* [x] Des décisions Monte Carlo plus rapides pour les longues séries de la Bot Arena
+* [x] Des équilibres push/fold avec antes, et à trois joueurs
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V3.0 — Extras cash game
+
+La **V3.0** donne au cash game les règles de buy-in des salles en ligne (un
+buy-in minimum et maximum, recaves, compléments, bots qui se recavent) et le
+**straddle**.
+
+## Fonctionnalités
+
+### 💵 Buy-in, recave et complément
+
+* Une place s'achète pour **40 à 100 big blinds** (`cash_rules.py`). Le tapis
+  de départ de l'écran du Cash Game reste dans ces limites, et garde sa
+  taille en big blinds quand les blinds changent (1 000 à 5/10 devient 2 000
+  à 10/20).
+* **Recave** : une fois à court de jetons, choisissez le montant entre le
+  minimum et le maximum (le maximum par défaut) avant de le payer depuis la
+  bankroll.
+* **Complément** : entre deux mains, **Top up +X** ramène votre tapis au
+  buy-in maximum, payé depuis la bankroll (une ligne *Top-up* dans le
+  journal). Jamais au-delà du maximum.
+* **Complément automatique** (option de l'écran de configuration) : votre
+  tapis revient au maximum avant chaque main, tant que la bankroll paie.
+* **Les bots se recavent et complètent** (option, activée par défaut) : un
+  bot éliminé rachète le maximum et un bot sous le minimum complète jusqu'au
+  maximum, pour que la table reste pleine ; l'historique l'indique
+  (« Bella rebuys 1000 »). Désactivée, les bots éliminés quittent la table
+  comme avant.
+
+### 🎲 Le straddle
+
+* Une option **Straddle** de l'écran de configuration : à chaque main, le
+  joueur sous le pistolet (UTG) poste une **relance à l'aveugle de deux big
+  blinds** avant la distribution.
+* Il fonctionne comme une troisième blind : la mise à payer est de deux big
+  blinds, la relance suivante d'au moins quatre, la parole commence **à
+  gauche du straddler**, et le straddler parle **en dernier avant le flop**,
+  avec l'option de checker ou de relancer. Après le flop, l'ordre ne change
+  pas.
+* À trois joueurs, c'est le bouton qui straddle ; en heads-up il n'y a pas
+  de straddle, et un joueur qui ne pourrait straddler qu'à tapis ne le fait
+  pas.
+* Les mains avec straddle sont sauvegardées, rejouées et comptées comme les
+  autres ; le straddle est une mise forcée, pas volontaire (pas de VPIP), et
+  l'historique affiche « Straddles 20 ».
+
+> 📸 *Emplacement de capture : l'écran de configuration avec les options de
+> table, et le bouton Top up entre deux mains.*
+
+## Changements du moteur
+
+* `GameConfig.straddle` (désactivé par défaut) : le straddle est posté au
+  début de la main (action `post_straddle`) et déplace le premier joueur à
+  parler préflop. Sans lui, chaque main se joue exactement comme avant (tests
+  golden inchangés).
+* `GameSession.add_chips` (un complément) et `rebuy_player(player, amount)` :
+  les jetons ne s'ajoutent qu'entre deux mains.
+
+## Objectifs
+
+* [x] Règles complètes de recave / complément (humain et bots, buy-in min/max)
+* [x] Straddle
+
+## Tests
+
+```text
+1773 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
 
 ---
 

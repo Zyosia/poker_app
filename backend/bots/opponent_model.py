@@ -36,7 +36,7 @@ from .push_fold import PERCENT_BEFORE
 
 AGGRESSIVE = frozenset({ActionType.RAISE, ActionType.ALL_IN})
 VOLUNTARY = frozenset({ActionType.CALL, ActionType.RAISE, ActionType.ALL_IN})
-BLIND_POSTS = frozenset({"post_sb", "post_bb", "post_ante"})
+BLIND_POSTS = frozenset({"post_sb", "post_bb", "post_ante", "post_straddle"})
 
 
 @dataclass(frozen=True)
@@ -162,7 +162,7 @@ CALL_AIR_WEIGHT = 0.3
 MIN_BLUFF_WEIGHT = 0.05
 BLUFF_WEIGHT_PER_AGGRESSION = 0.06
 MAX_BLUFF_WEIGHT = 0.45
-POSTFLOP_RANGE_SIZE = 160
+POSTFLOP_RANGE_SIZE = 100
 """Hands kept per opponent once the flop is dealt (a weighted sample)."""
 
 
@@ -237,6 +237,10 @@ class OpponentRange:
 
     combos: list[Combo]
     weights: list[float]
+    _strengths: dict[tuple[Card, ...], list[float]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    """The strength of every hand, by board: rated once per street."""
 
     @classmethod
     def from_starting_hands(
@@ -293,12 +297,20 @@ class OpponentRange:
             if combo[0] not in dead and combo[1] not in dead
         ]
 
-        if kept:
+        if kept and len(kept) < len(self.combos):
             self.combos = [combo for combo, _ in kept]
             self.weights = [weight for _, weight in kept]
+            self._strengths.clear()
 
     def strengths(self, board: tuple[Card, ...]) -> list[float]:
-        return [postflop_strength(combo, board) for combo in self.combos]
+        """The strength of every hand on ``board`` (0 to 1)."""
+        rated = self._strengths.get(board)
+
+        if rated is None:
+            rated = [postflop_strength(combo, board) for combo in self.combos]
+            self._strengths[board] = rated
+
+        return rated
 
     def _reweigh(
         self, board: tuple[Card, ...], factor: Callable[[float], float]

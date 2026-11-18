@@ -41,6 +41,7 @@ RECOMMENDED_BUY_INS = {"cash": 20, "tournament": 50, "spin": 50}
 class TransactionType(StrEnum):
     BUY_IN = "buy_in"
     REBUY = "rebuy"
+    TOP_UP = "top_up"
     ADD_ON = "add_on"
     CASH_OUT = "cash_out"
     PRIZE = "prize"
@@ -52,6 +53,7 @@ class TransactionType(StrEnum):
 TRANSACTION_LABELS = {
     TransactionType.BUY_IN: "Buy-in",
     TransactionType.REBUY: "Rebuy",
+    TransactionType.TOP_UP: "Top-up",
     TransactionType.ADD_ON: "Add-on",
     TransactionType.CASH_OUT: "Cash-out",
     TransactionType.PRIZE: "Prize",

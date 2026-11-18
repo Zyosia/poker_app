@@ -13,8 +13,9 @@ divided by the cost of a round of blinds and antes):
 - at ``PUSH_FOLD_M`` or less, it shoves or folds (the ``push_fold`` ranges,
   for the stack in big blinds a round of blinds would cost without antes);
 - up to ``SHORT_M``, it opens smaller and re-raises all-in or folds;
-- heads-up with ``HEADS_UP_PUSH_FOLD_BIG_BLINDS`` or less, it plays the
-  push/fold equilibrium solved by CFR (``heads_up_push_fold``).
+- heads-up, or three-handed (button, small blind, big blind), with
+  ``SOLVED_BIG_BLINDS`` or less, it plays the push/fold equilibrium solved
+  by CFR for the hand's antes (``push_fold_solutions``, V2.x).
 
 **After the flop**, it estimates each opponent's range from their actions,
 deals a few hundred Monte Carlo showdowns against those ranges, and picks
@@ -48,7 +49,6 @@ from backend.poker_engine.actions import Action, LegalAction
 from backend.poker_engine.constants import ActionType, Position, Street
 from backend.poker_engine.models import ActionEvent
 
-from .heads_up_push_fold import PUSH_FOLD_RANGES
 from .monte_carlo import Showdown, deal_showdowns, equity, share_against
 from .opponent_model import (
     AGGRESSIVE,
@@ -70,9 +70,16 @@ from .preflop_charts import (
     three_bet_percent,
 )
 from .push_fold import call_shove_percent, hand_class, open_shove_percent
+from .push_fold_solutions import HEADS_UP_RANGES, THREE_HANDED_RANGES
+from .three_handed_solver import Spot
 
 SHOWDOWNS = 200
-"""Monte Carlo deals per decision after the flop (about 10 ms)."""
+"""Monte Carlo deals per decision after the flop, at most."""
+FIRST_SHOWDOWNS = 100
+"""Deals first; the rest only when the decision is close (V2.x: faster)."""
+CLEAR_MARGIN = 0.1
+"""A decision is clear when the best option beats the next one by this
+share of the pot: the second half of the deals would not change it."""
 BET_FRACTIONS = (0.5, 0.75, 1.0)
 """Bet sizes tried, as fractions of the pot after calling."""
 CALL_MARGIN = 0.05
@@ -101,11 +108,18 @@ PUSH_FOLD_M = 7.0
 SHORT_M = 15.0
 BIG_BLINDS_PER_M = 1.5
 """A round of blinds without antes costs 1.5 big blinds."""
-HEADS_UP_PUSH_FOLD_BIG_BLINDS = max(PUSH_FOLD_RANGES)
+SOLVED_BIG_BLINDS = 20
+"""Up to this effective stack, two or three players play the solved ranges."""
 
 STEAL_POSITIONS_BEHIND = 3
 """Cutoff, button and small blind: the seats that steal the blinds."""
 TIGHT_VPIP = 0.22
+LOOSE_VPIP = 0.45
+"""The adaptive bot isolates players who play this share of hands or more."""
+LOOSE_PFR = 0.35
+"""A player raising this often re-raises light: answered like an open."""
+LOOSE_WIDENING = 2
+"""Players behind counted fewer, to open wider, when loose ones are left."""
 STREET_CARDS = {Street.FLOP: 3, Street.TURN: 4, Street.RIVER: 5}
 FULL_RING_SHOVE_POSITIONS = {
     Position.UTG1: Position.UTG,
@@ -163,8 +177,11 @@ class StrategyBot(PlayerController):
         depth = effective_big_blinds(context)
 
         if context.game_format == GameFormat.TOURNAMENT:
-            if heads_up and depth <= HEADS_UP_PUSH_FOLD_BIG_BLINDS:
+            if heads_up and depth <= SOLVED_BIG_BLINDS:
                 return self._heads_up_push_fold(context, legal, depth)
+
+            if len(dealt_in) == 3 and depth <= SOLVED_BIG_BLINDS:
+                return self._three_handed_push_fold(context, legal, depth)
 
             m = m_ratio(context)
 
@@ -188,6 +205,10 @@ class StrategyBot(PlayerController):
 
         if len(raises) == 1:
             return self._facing_open(context, legal, raises[0], dealt_in, short)
+
+        if self.adaptive and self.tendencies(raises[-1].player).pfr >= LOOSE_PFR:
+            # A loose player's re-raise is no stronger than another's open.
+            return self._facing_open(context, legal, raises[-1], dealt_in, short)
 
         hole = hand_class(context.hole_cards)
 
@@ -233,7 +254,17 @@ class StrategyBot(PlayerController):
                 )
             return Action(type=ActionType.CHECK)
 
-        widened = behind + 2 * limpers
+        limping = {
+            e.player
+            for e in context.actions
+            if e.street == Street.PREFLOP and e.action == ActionType.CALL
+        }
+        loose_limpers = sum(1 for name in limping if self._is_loose(name))
+        # A limper narrows the range, except a loose one: they are isolated.
+        widened = behind + 2 * (limpers - loose_limpers)
+
+        if self.adaptive and (loose_limpers or self._loose_behind(context)):
+            widened -= LOOSE_WIDENING
 
         if (
             self.adaptive
@@ -252,6 +283,20 @@ class StrategyBot(PlayerController):
         size = SHORT_OPEN_BIG_BLINDS if short else OPEN_BIG_BLINDS
 
         return self._raise_to(context, legal, (size + limpers) * big_blind)
+
+    def _is_loose(self, name: str) -> bool:
+        return self.adaptive and self.tendencies(name).vpip >= LOOSE_VPIP
+
+    def _loose_behind(self, context: DecisionContext) -> bool:
+        acted = {e.player for e in context.actions if e.action not in BLIND_POSTS}
+
+        return any(
+            self._is_loose(p.name)
+            for p in context.players
+            if p.position is not None
+            and p.name != context.player.name
+            and p.name not in acted
+        )
 
     def _tight_behind(self, context: DecisionContext) -> bool:
         acted = {e.player for e in context.actions if e.action not in BLIND_POSTS}
@@ -287,7 +332,14 @@ class StrategyBot(PlayerController):
             depth = effective_big_blinds(context)
             callers = _callers_after(context, opener_event)
 
-            if percent < call_shove_percent(is_big_blind, depth, multiway=callers > 0):
+            threshold = call_shove_percent(is_big_blind, depth, multiway=callers > 0)
+
+            if self.adaptive:
+                # A loose shover shoves more hands: call them wider.
+                looseness = self.tendencies(opener.name).pfr / PRIOR.pfr
+                threshold = min(threshold * max(1.0, looseness), 100.0)
+
+            if percent < threshold:
                 if ActionType.CALL in legal:
                     return Action(type=ActionType.CALL)
                 return _shove(legal)
@@ -359,9 +411,8 @@ class StrategyBot(PlayerController):
         legal: dict[ActionType, LegalAction],
         depth: float,
     ) -> Action:
-        push, call = PUSH_FOLD_RANGES[
-            min(max(round(depth), 1), HEADS_UP_PUSH_FOLD_BIG_BLINDS)
-        ]
+        solutions = HEADS_UP_RANGES[ante_kind(context)]
+        push, call = solutions[_nearest(solutions, depth)]
         hole = hand_class(context.hole_cards)
         facing = context.current_bet > context.player.current_bet
 
@@ -374,6 +425,46 @@ class StrategyBot(PlayerController):
             return _check_or_fold(legal)
 
         if hole in _range(push):
+            return _shove(legal)
+
+        return _check_or_fold(legal)
+
+    def _three_handed_push_fold(
+        self,
+        context: DecisionContext,
+        legal: dict[ActionType, LegalAction],
+        depth: float,
+    ) -> Action:
+        """The solved three-handed ranges; any raise counts as a shove, a
+        limp as a fold (the solution has no small bets)."""
+        solutions = THREE_HANDED_RANGES[ante_kind(context)]
+        ranges = solutions[_nearest(solutions, depth)]
+        raisers = {
+            e.position
+            for e in context.actions
+            if e.street == Street.PREFLOP and e.action in AGGRESSIVE
+        }
+        callers = {
+            e.position
+            for e in context.actions
+            if e.street == Street.PREFLOP and e.action == ActionType.CALL
+        }
+        position = context.player.position
+        button_in = Position.BTN in raisers
+        small_in = Position.SB in raisers or (button_in and Position.SB in callers)
+
+        if position == Position.BTN:
+            spot = Spot.BUTTON_SHOVES
+        elif position == Position.SB:
+            spot = Spot.SMALL_BLIND_CALLS if button_in else Spot.SMALL_BLIND_SHOVES
+        elif button_in and small_in:
+            spot = Spot.BIG_BLIND_CALLS_BOTH
+        elif button_in:
+            spot = Spot.BIG_BLIND_CALLS_BUTTON
+        else:
+            spot = Spot.BIG_BLIND_CALLS_SMALL_BLIND
+
+        if hand_class(context.hole_cards) in _range(ranges[spot]):
             return _shove(legal)
 
         return _check_or_fold(legal)
@@ -400,21 +491,36 @@ class StrategyBot(PlayerController):
         ranges = [state.ranges[p.name] for p in opponents]
         strengths = [r.strengths(board) for r in ranges]
         showdowns = deal_showdowns(
-            context.hole_cards, board, ranges, strengths, SHOWDOWNS, self._rng
+            context.hole_cards, board, ranges, strengths, FIRST_SHOWDOWNS, self._rng
         )
 
         if not showdowns:
             return _check_or_fold(legal)
 
-        return self._best_action(context, legal, opponents, showdowns)
+        options = self._options(context, legal, opponents, showdowns)
 
-    def _best_action(
+        if _margin(options) < CLEAR_MARGIN * context.pot:
+            showdowns += deal_showdowns(
+                context.hole_cards,
+                board,
+                ranges,
+                strengths,
+                SHOWDOWNS - FIRST_SHOWDOWNS,
+                self._rng,
+            )
+            options = self._options(context, legal, opponents, showdowns)
+
+        # Ties go to the most passive option, listed first.
+        return max(options, key=lambda option: option[0])[1]
+
+    def _options(
         self,
         context: DecisionContext,
         legal: dict[ActionType, LegalAction],
         opponents: list[PlayerView],
         showdowns: list[Showdown],
-    ) -> Action:
+    ) -> list[tuple[float, Action]]:
+        """The expected value of every option, the passive ones first."""
         pot = context.pot
         share = equity(showdowns)
         options: list[tuple[float, Action]] = []
@@ -438,8 +544,7 @@ class StrategyBot(PlayerController):
             value = self._bet_value(context, opponents, showdowns, target)
             options.append((value, self._raise_action(context, legal, target)))
 
-        # Ties go to the most passive option, listed first.
-        return max(options, key=lambda option: option[0])[1]
+        return options
 
     def _bet_targets(
         self, context: DecisionContext, legal: dict[ActionType, LegalAction]
@@ -632,6 +737,32 @@ class StrategyBot(PlayerController):
             return Action(type=ActionType.ALL_IN)
 
         return action
+
+
+def ante_kind(context: DecisionContext) -> str:
+    """The antes of the hand: "none", "classic" (every player) or
+    "big_blind" (the big blind posts the table's ante)."""
+    posters = [e for e in context.actions if e.action == "post_ante"]
+
+    if not posters:
+        return "none"
+
+    if len(posters) == 1 and posters[0].position == Position.BB:
+        return "big_blind"
+
+    return "classic"
+
+
+def _nearest(solutions: dict[int, tuple[str, ...]], depth: float) -> int:
+    """The solved stack closest to ``depth``."""
+    return min(solutions, key=lambda solved: abs(solved - depth))
+
+
+def _margin(options: list[tuple[float, Action]]) -> float:
+    """How far the best option is ahead of the next one."""
+    values = sorted((value for value, _ in options), reverse=True)
+
+    return values[0] - values[1] if len(values) > 1 else float("inf")
 
 
 def effective_big_blinds(context: DecisionContext) -> float:
