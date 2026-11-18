@@ -3,7 +3,6 @@
 import random
 
 import pytest
-from backend.bots.push_fold_solutions import HEADS_UP_RANGES, THREE_HANDED_RANGES
 
 from backend.application.controllers import (
     DecisionContext,
@@ -30,6 +29,7 @@ from backend.bots.preflop_charts import (
     players_behind,
     three_bet_percent,
 )
+from backend.bots.push_fold_solutions import HEADS_UP_RANGES, THREE_HANDED_RANGES
 from backend.bots.random_bot import RandomBot
 from backend.bots.strategy_bot import StrategyBot, ante_kind, m_ratio
 from backend.bots.three_handed_solver import Spot
