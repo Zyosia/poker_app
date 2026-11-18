@@ -57,6 +57,12 @@ class GameSettings:
     starting_stack: int = 1000
     small_blind: int = 5
     big_blind: int = 10
+    straddle: bool = False
+    """The player under the gun straddles (two big blinds) every hand."""
+    bots_rebuy: bool = True
+    """Busted bots rebuy and short bots top up: the table stays full."""
+    auto_top_up: bool = False
+    """Your stack goes back to the maximum buy-in before every hand."""
 
     def __post_init__(self) -> None:
         check_player_name(self.player_name)
@@ -83,12 +89,18 @@ def create_game(
             rebuy_stack=settings.starting_stack,
             small_blind=settings.small_blind,
             big_blind=settings.big_blind,
+            straddle=settings.straddle,
         ),
     )
     session.table.dealer_index = rng.randrange(len(session.players))
     controllers[settings.player_name] = human_controller
 
-    return PokerGame(session=session, controllers=controllers, save_path=save_path)
+    return PokerGame(
+        session=session,
+        controllers=controllers,
+        save_path=save_path,
+        bots_rebuy=settings.bots_rebuy,
+    )
 
 
 # --- Tournaments ---------------------------------------------------------------

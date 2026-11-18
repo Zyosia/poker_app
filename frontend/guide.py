@@ -240,8 +240,12 @@ SECTIONS: tuple[Section, ...] = (
                 "♠ Cash Game",
                 (
                     "You against 1 to 8 bots, from heads-up to a full-ring table of "
-                    "9. Your stack is paid from the bankroll and returns to it when "
-                    "you leave. You can rebuy when you run out of chips.",
+                    "9. A seat is bought for 40 to 100 big blinds, paid from the "
+                    "bankroll and returned to it when you leave. Rebuy when you run "
+                    "out of chips, or <b>top up</b> between hands (automatically if "
+                    "you like); bots rebuy too, so the table stays full.",
+                    "With the <b>straddle</b> option, the player under the gun puts "
+                    "in two big blinds every hand and acts last before the flop.",
                 ),
             ),
             Topic(
@@ -276,8 +280,9 @@ SECTIONS: tuple[Section, ...] = (
                     "<b>Equity Calculator</b>: the chances of hands or ranges on any "
                     "board. <b>My Stats</b>: your own VPIP, PFR, aggression and "
                     "results. <b>Sessions</b>: every saved game, its chip graph and "
-                    "its hands. PokerStars and Winamax hand histories can be "
-                    "imported.",
+                    "its hands; a session can be deleted there. PokerStars and "
+                    "Winamax hand histories can be imported: they stay in the "
+                    "list.",
                 ),
             ),
         ),
@@ -305,7 +310,8 @@ SECTIONS: tuple[Section, ...] = (
                     "player's chance of winning.",
                     "The <b>hand history</b> on the right shows every hand with its "
                     "cards and coloured actions; the <b>History</b> button hides or "
-                    "shows it.",
+                    "shows it. <b>Replay</b> opens the last hand in a replayer "
+                    "window while the table goes on.",
                 ),
             ),
             Topic(
@@ -324,7 +330,8 @@ SECTIONS: tuple[Section, ...] = (
                     "The <b>⚙</b> button (Ctrl+,) opens the settings from any "
                     "window: your name, sounds, the bots' cards at showdown, the "
                     "table speed. The bankroll screen shows your balance, a graph "
-                    "and every buy-in and prize.",
+                    "and every buy-in and prize. <b>Delete all data…</b> in the "
+                    "settings starts again from zero, after a confirmation.",
                 ),
             ),
         ),

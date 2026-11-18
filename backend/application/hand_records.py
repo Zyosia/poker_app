@@ -5,8 +5,15 @@ records. Every format version is read (see ``persistence``). Hands saved
 before format 4 have no ``seats``: their hole cards and starting stacks were
 not recorded, so they cannot be replayed, but their actions, board, pots and
 payouts are known, which is enough for results and stats.
+
+The library also keeps the **imported hand histories** (PokerStars,
+Winamax): a file opened in the session browser is copied to its ``imports``
+folder, so it is listed again at the next launch. Imported hands are never
+counted in "My stats" (they were not played in this application), and
+deleting a session removes its file for good.
 """
 
+import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,13 +24,21 @@ from backend.poker_engine.blinds import AnteType, BlindLevel
 from backend.poker_engine.constants import Card, Position, Street
 from backend.poker_engine.hand_evaluator import HandCategory, HandEvaluation
 from backend.poker_engine.models import ActionEvent, PotResult, SeatRecord, StreetEvent
+from backend.poker_engine.session import GameSession
 
 from .game_modes import GameMode
-from .persistence import SESSION_DIR, SessionFileError, load_session_file
+from .persistence import (
+    SESSION_DIR,
+    SessionFileError,
+    load_session_file,
+    serialize_session,
+)
 
-FORCED_ACTIONS = ("post_sb", "post_bb", "post_ante")
+FORCED_ACTIONS = ("post_sb", "post_bb", "post_ante", "post_straddle")
 """Recorded by the engine itself when a hand starts: not decisions."""
 SESSION_FILE_GLOB = "*.dat"
+IMPORTS_FOLDER = "imports"
+HISTORY_FILE_GLOB = "*.txt"
 FILE_DATE_FORMAT = "pk_sess_%Y%m%d_%H%M%S"
 APP_SOURCE = "Poker app"
 
@@ -210,6 +225,19 @@ class SessionRecord:
         return points
 
 
+def live_session_record(
+    session: GameSession, human: str, mode: GameMode
+) -> SessionRecord:
+    """The record of a game still being played (its hands so far), read
+    from memory: the replayer of a table works even when nothing is saved."""
+    data = serialize_session(session, human=human, mode=mode)
+
+    try:
+        return _session_record(Path(), data, started=datetime.now())
+    except (KeyError, TypeError, ValueError, IndexError) as error:
+        raise SessionFileError(f"The game cannot be replayed: {error!r}") from error
+
+
 def load_session_record(path: Path) -> SessionRecord:
     """Read a saved session; raises ``SessionFileError`` if it cannot be."""
     data = load_session_file(path)
@@ -237,14 +265,20 @@ class SessionLibrary:
         self.directory = directory
         self._cache: dict[Path, tuple[tuple[int, int], SessionRecord]] = {}
 
-    def scan(self) -> LibraryScan:
+    @property
+    def imports_directory(self) -> Path:
+        return self.directory / IMPORTS_FOLDER
+
+    def scan(self, include_imports: bool = False) -> LibraryScan:
+        """The sessions played in the application, most recent first; with
+        ``include_imports``, the imported hand histories too."""
+        paths = _files(self.directory, SESSION_FILE_GLOB)
+
+        if include_imports:
+            paths += _files(self.imports_directory, HISTORY_FILE_GLOB)
+
         sessions: list[SessionRecord] = []
         unreadable: list[str] = []
-        paths = (
-            sorted(self.directory.glob(SESSION_FILE_GLOB))
-            if self.directory.is_dir()
-            else []
-        )
 
         for path in paths:
             try:
@@ -252,15 +286,18 @@ class SessionLibrary:
             except (SessionFileError, OSError) as error:
                 unreadable.append(str(error))
 
-        present = set(paths)
-        self._cache = {
-            path: entry for path, entry in self._cache.items() if path in present
-        }
+        if include_imports:  # A full scan: forget the files that are gone.
+            present = set(paths)
+            self._cache = {
+                path: entry for path, entry in self._cache.items() if path in present
+            }
+
         sessions.sort(key=lambda session: (session.started, session.path), reverse=True)
 
         return LibraryScan(tuple(sessions), tuple(unreadable))
 
     def load(self, path: Path) -> SessionRecord:
+        """A session file, or a PokerStars or Winamax hand history (.txt)."""
         status = path.stat()
         version = (status.st_mtime_ns, status.st_size)
         cached = self._cache.get(path)
@@ -268,16 +305,91 @@ class SessionLibrary:
         if cached is not None and cached[0] == version:
             return cached[1]
 
-        record = load_session_record(path)
+        if path.suffix.lower() == ".dat":
+            record = load_session_record(path)
+        else:
+            # Imported here: hand_import builds on this module's records.
+            from .hand_import import read_hand_history_file
+
+            record = read_hand_history_file(path)
+
         self._cache[path] = (version, record)
 
         return record
+
+    def import_history(self, path: Path) -> SessionRecord:
+        """Keep a copy of a hand history in the library, and read it.
+
+        A file already imported (same name and content) is not copied again;
+        another file of the same name gets a numbered name.
+        """
+        if self.owns(path):
+            return self.load(path)
+
+        from .hand_import import read_hand_history_file
+
+        read_hand_history_file(path)  # Only a readable history is kept.
+        self.imports_directory.mkdir(parents=True, exist_ok=True)
+        target = self._import_target(path)
+
+        if not target.exists():
+            shutil.copyfile(path, target)
+
+        return self.load(target)
+
+    def _import_target(self, path: Path) -> Path:
+        content = path.read_bytes()
+        target = self.imports_directory / path.name
+        number = 1
+
+        while target.exists() and target.read_bytes() != content:
+            number += 1
+            target = self.imports_directory / f"{path.stem} ({number}){path.suffix}"
+
+        return target
+
+    def owns(self, path: Path) -> bool:
+        """True for a file of the library (a session or an import)."""
+        folder = path.resolve().parent
+
+        return folder in (self.directory.resolve(), self.imports_directory.resolve())
+
+    def delete(self, session: SessionRecord) -> None:
+        """Delete a session (or an imported history) from the library, for good.
+
+        Raises ``ValueError`` for a file outside the library: it is not the
+        library's to delete.
+        """
+        if not self.owns(session.path):
+            raise ValueError(f"{session.path.name} is not in the session library.")
+
+        session.path.unlink(missing_ok=True)
+        self._cache.pop(session.path, None)
+
+    def delete_all(self) -> int:
+        """Delete every session and imported history; returns how many."""
+        paths = _files(self.directory, SESSION_FILE_GLOB) + _files(
+            self.imports_directory, HISTORY_FILE_GLOB
+        )
+
+        for path in paths:
+            path.unlink(missing_ok=True)
+
+        self._cache.clear()
+
+        return len(paths)
+
+
+def _files(directory: Path, pattern: str) -> list[Path]:
+    return sorted(directory.glob(pattern)) if directory.is_dir() else []
 
 
 # --- Parsing -------------------------------------------------------------------
 
 
-def _session_record(path: Path, data: Mapping[str, Any]) -> SessionRecord:
+def _session_record(
+    path: Path, data: Mapping[str, Any], started: datetime | None = None
+) -> SessionRecord:
     seat_names = tuple(player["name"] for player in data["session"]["players"])
     hands = tuple(HandRecord.from_dict(hand) for hand in data["hands"])
     human = data.get("human") or seat_names[0]  # The app seats the human first.
@@ -285,7 +397,7 @@ def _session_record(path: Path, data: Mapping[str, Any]) -> SessionRecord:
 
     return SessionRecord(
         path=path,
-        started=_started(path),
+        started=started or _started(path),
         mode=_mode(data, hands),
         human=human,
         seat_names=seat_names,

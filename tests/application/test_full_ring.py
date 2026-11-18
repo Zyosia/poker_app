@@ -105,6 +105,8 @@ def test_a_full_ring_cash_game_keeps_every_chip() -> None:
         while game.is_hand_in_progress:
             game.step()
 
+        # The bots' rebuys and top-ups (V3.0) are the only chips added.
+        total += sum(refill.amount for refill in game.refills)
         assert sum(player.stack for player in game.session.players) == total
 
     assert {Position.UTG1, Position.UTG2, Position.LJ} <= seen_positions

@@ -71,7 +71,10 @@ class HandReplay:
 
         session = GameSession(
             players=[Player(name=seat.name, stack=seat.stack) for seat in seats],
-            config=GameConfig(),
+            # A straddled hand is dealt again with its straddle.
+            config=GameConfig(
+                straddle=any(e.action == "post_straddle" for e in record.actions)
+            ),
         )
         session.set_blind_level(record.blind_level)
         session.table.dealer_index = names.index(record.dealer)

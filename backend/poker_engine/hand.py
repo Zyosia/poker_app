@@ -13,7 +13,13 @@ control between two steps:
 
 from collections.abc import Callable
 
-from .actions import Action, post_ante, post_big_blind, post_small_blind
+from .actions import (
+    Action,
+    post_ante,
+    post_big_blind,
+    post_small_blind,
+    put_chips_in_pot,
+)
 from .betting import apply_action, begin_betting_round
 from .blinds import AnteType
 from .constants import Position, Street
@@ -166,8 +172,12 @@ def assign_positions(session: GameSession, hand: Hand) -> None:
     hand.first_to_act = ordered_players[first_to_act_index]
 
 
+MIN_STRADDLE_PLAYERS = 3
+"""Heads-up there is no straddle: the button already posts the small blind."""
+
+
 def post_blinds(session: GameSession, hand: Hand) -> None:
-    """Post the antes, the Small Blind and the Big Blind.
+    """Post the antes, the Small Blind and the Big Blind (and the straddle).
 
     Classic antes are posted before the blinds; a big-blind ante is posted
     by the big blind after their blind (see ``blinds`` for the rules).
@@ -219,6 +229,41 @@ def post_blinds(session: GameSession, hand: Hand) -> None:
 
     if level.ante and level.ante_type == AnteType.BIG_BLIND:
         _post_ante(hand, big_blind_player, level.ante, for_table=True)
+
+    if session.config.straddle and len(players) >= MIN_STRADDLE_PLAYERS:
+        _post_straddle(hand, 2 * level.big_blind)
+
+
+def _post_straddle(hand: Hand, amount: int) -> None:
+    """The first player to act pre-flop posts a blind raise to ``amount``.
+
+    It works as a third blind: the bet to call becomes ``amount``, the next
+    raise is to at least twice it, the action starts left of the straddler,
+    and the straddler acts last pre-flop, with the option to raise. A player
+    who could not post it without going all-in does not straddle.
+    """
+    straddler = hand.first_to_act
+    assert straddler is not None
+
+    if straddler.stack <= amount - straddler.current_bet:
+        return
+
+    bet_before = straddler.current_bet
+    put_chips_in_pot(player=straddler, hand=hand, amount=amount - bet_before)
+    hand.current_bet = amount
+    hand.last_raise_size = amount
+    record_action(
+        hand=hand,
+        player=straddler,
+        action="post_straddle",
+        amount=amount - bet_before,
+        bet_before=bet_before,
+    )
+    hand.first_to_act = next(
+        player
+        for player in hand.table.players_after(straddler)
+        if player.position is not None
+    )
 
 
 def _post_ante(hand: Hand, player: Player, amount: int, for_table: bool) -> None:

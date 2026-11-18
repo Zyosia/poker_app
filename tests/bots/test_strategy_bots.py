@@ -3,6 +3,7 @@
 import random
 
 import pytest
+from backend.bots.push_fold_solutions import HEADS_UP_RANGES, THREE_HANDED_RANGES
 
 from backend.application.controllers import (
     DecisionContext,
@@ -13,7 +14,6 @@ from backend.application.controllers import (
 from backend.application.game import PokerGame
 from backend.application.ranges import HandRange
 from backend.bots.factory import create_bot, get_bot_type
-from backend.bots.heads_up_push_fold import PUSH_FOLD_RANGES
 from backend.bots.monte_carlo import deal_showdowns, equity
 from backend.bots.opponent_model import (
     PRIOR,
@@ -31,10 +31,11 @@ from backend.bots.preflop_charts import (
     three_bet_percent,
 )
 from backend.bots.random_bot import RandomBot
-from backend.bots.strategy_bot import StrategyBot, m_ratio
+from backend.bots.strategy_bot import StrategyBot, ante_kind, m_ratio
+from backend.bots.three_handed_solver import Spot
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import apply_action
-from backend.poker_engine.blinds import BlindLevel
+from backend.poker_engine.blinds import AnteType, BlindLevel
 from backend.poker_engine.constants import ActionType, Card, Position
 from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.models import Hand
@@ -211,7 +212,7 @@ def heads_up_tournament_spot(
 
 
 def test_heads_up_short_stacks_play_the_solved_ranges() -> None:
-    push, call = (HandRange.parse(n).labels for n in PUSH_FOLD_RANGES[10])
+    push, call = (HandRange.parse(n).labels for n in HEADS_UP_RANGES["none"][10])
     assert "K2o" in push and "72o" not in push
 
     assert decide(heads_up_tournament_spot(10, ("KS", "2H"))).type == ActionType.ALL_IN
@@ -228,21 +229,63 @@ def test_heads_up_short_stacks_play_the_solved_ranges() -> None:
 def test_the_solved_ranges_match_the_known_equilibrium() -> None:
     """Published heads-up Nash charts (no ante): about 58% of hands shoved
     and 37% called at 10 big blinds; the ranges narrow as stacks grow."""
-    push, call = (HandRange.parse(n).share for n in PUSH_FOLD_RANGES[10])
+    push, call = (HandRange.parse(n).share for n in HEADS_UP_RANGES["none"][10])
 
     assert 0.54 < push < 0.62
     assert 0.33 < call < 0.42
 
     pushes = [
-        HandRange.parse(PUSH_FOLD_RANGES[d][0]).share for d in sorted(PUSH_FOLD_RANGES)
+        HandRange.parse(HEADS_UP_RANGES["none"][d][0]).share
+        for d in sorted(HEADS_UP_RANGES["none"])
     ]
     calls = [
-        HandRange.parse(PUSH_FOLD_RANGES[d][1]).share for d in sorted(PUSH_FOLD_RANGES)
+        HandRange.parse(HEADS_UP_RANGES["none"][d][1]).share
+        for d in sorted(HEADS_UP_RANGES["none"])
     ]
 
     assert pushes == sorted(pushes, reverse=True)
     assert calls == sorted(calls, reverse=True)
     assert pushes[0] == calls[0] == 1.0  # At 1 big blind, every hand goes in.
+
+
+def three_handed_spot(
+    stack_big_blinds: int, cards: tuple[Card, Card], ante: int = 0
+) -> DecisionContext:
+    """Three players at 50/100 (a big-blind ante if ``ante``): Hero is the
+    button and acts first."""
+    session = create_session(["Hero", "SB", "BB"], GameConfig(starting_stack=10_000))
+    session.set_blind_level(
+        BlindLevel(
+            small_blind=50, big_blind=100, ante=ante, ante_type=AnteType.BIG_BLIND
+        )
+    )
+    session.table.dealer_index = 0
+
+    for player in session.players:
+        player.stack = stack_big_blinds * 100
+
+    hand = start_hand(session)
+
+    return hero_context(hand, cards, GameFormat.TOURNAMENT)
+
+
+def test_three_handed_short_stacks_play_the_solved_ranges() -> None:
+    push = HandRange.parse(THREE_HANDED_RANGES["none"][10][Spot.BUTTON_SHOVES]).labels
+    shoved = next(label for label in ("A7o", "K9s", "QJs", "77") if label in push)
+    folded = next(label for label in ("93o", "72o", "52o") if label not in push)
+
+    def cards(label: str) -> tuple[Card, Card]:
+        suits = ("S", "S") if label.endswith("s") else ("S", "H")
+        return (label[0] + suits[0], label[1] + suits[1])
+
+    assert decide(three_handed_spot(10, cards(shoved))).type == ActionType.ALL_IN
+    assert decide(three_handed_spot(10, cards(folded))).type == ActionType.FOLD
+
+
+def test_the_antes_of_a_hand_are_recognized() -> None:
+    assert ante_kind(three_handed_spot(10, ("AS", "KH"))) == "none"
+    assert ante_kind(three_handed_spot(10, ("AS", "KH"), ante=100)) == "big_blind"
+    assert ante_kind(heads_up_tournament_spot(10, ("AS", "KH"))) == "none"
 
 
 def test_m_ratio_counts_the_blinds_and_antes() -> None:
@@ -493,3 +536,24 @@ def test_the_strategy_bots_beat_the_calling_station() -> None:
     net = {s.bot: s.net_chips for s in result.players.values()}
 
     assert net["station"] < 0 < min(net["shark"], net["adaptive"])
+
+
+def test_the_adaptive_bot_opens_wider_with_a_loose_player_behind() -> None:
+    hand, _ = six_max_hand(dealer=0)
+    act(hand, "UTG", ActionType.RAISE, 25)
+
+    for name in ("HJ", "CO", "Hero", "SB"):
+        act(hand, name, ActionType.FOLD)
+
+    act(hand, "BB", ActionType.CALL)  # "BB" plays every hand.
+    learner, fixed = shark(adaptive=True), shark()
+
+    for _ in range(40):
+        learner.observe_hand(tuple(hand.actions))
+
+    spot, _ = six_max_hand(dealer=3)  # Hero under the gun, "BB" behind.
+    context = hero_context(spot, ("KS", "6S"))
+
+    assert "K6s" not in open_range(5).labels and "K6s" in open_range(3).labels
+    assert learner.choose_action(context).type == ActionType.RAISE
+    assert fixed.choose_action(context).type == ActionType.FOLD

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -34,7 +35,9 @@ from backend.application.action_clock import (
     timeout_action,
 )
 from backend.application.bankroll import GameAccount, TransactionType
+from backend.application.cash_rules import BuyInRange
 from backend.application.controllers import HumanController, PlayerController
+from backend.application.game import PokerGame
 from backend.application.profile import BotCards
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, get_legal_actions
@@ -49,6 +52,7 @@ from frontend.formatting import (
     describe_result,
     format_amount,
     format_cards,
+    format_chips,
 )
 from frontend.pacing import DEFAULT_TABLE_SPEED, TABLE_SPEEDS, table_speed
 from frontend.runout import (
@@ -204,6 +208,8 @@ class GameScreen(QWidget):
     history_shown_changed = Signal(bool)
     """Emitted when the user shows or hides the hand history."""
     tile_requested = Signal()
+    replay_requested = Signal()
+    """The user wants to replay the last hand (in a window of its own)."""
     """Arrange every open table side by side (multi-tabling)."""
     your_turn_changed = Signal(bool)
     """True when the table starts waiting for your decision, False once it
@@ -288,6 +294,13 @@ class GameScreen(QWidget):
         self.tile_button.setObjectName("small")
         self.tile_button.setToolTip("Arrange every open table side by side (Ctrl+T).")
         self.tile_button.clicked.connect(self.tile_requested)
+        self.replay_button = QPushButton("Replay")
+        self.replay_button.setObjectName("small")
+        self.replay_button.setToolTip(
+            "Replay the last hand in a window of its own; the table goes on."
+        )
+        self.replay_button.setEnabled(False)
+        self.replay_button.clicked.connect(self.replay_requested)
         self.history_button = QPushButton("History")
         self.history_button.setObjectName("toggle")
         self.history_button.setCheckable(True)
@@ -315,6 +328,20 @@ class GameScreen(QWidget):
         self.rebuy_button = QPushButton("Rebuy")
         self.rebuy_button.setObjectName("accent")
         self.rebuy_button.clicked.connect(self._on_rebuy_clicked)
+        self.rebuy_spin = QSpinBox()
+        self.rebuy_spin.setToolTip("The rebuy: from the minimum to the maximum buy-in.")
+        self.rebuy_spin.setMinimumHeight(48)
+        self.rebuy_spin.valueChanged.connect(self._show_rebuy_amount)
+        self.top_up_button = QPushButton("Top up")
+        self.top_up_button.setObjectName("accent")
+        self.top_up_button.setToolTip(
+            "Back to the maximum buy-in for the next hand, paid from the bankroll."
+        )
+        self.top_up_button.clicked.connect(self.top_up)
+        self.auto_top_up = False
+        """Top up to the maximum buy-in before every hand (cash games)."""
+        self.top_up_button.hide()  # Shown between hands, when it applies.
+        self.rebuy_spin.hide()
 
         self.history_view = HandHistoryView()
         self.history_view.setFixedWidth(HISTORY_WIDTH)
@@ -332,10 +359,12 @@ class GameScreen(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
         layout.addWidget(self.result_label, stretch=1)
+        layout.addWidget(self.top_up_button)
+        layout.addWidget(self.rebuy_spin)
         layout.addWidget(self.rebuy_button)
         layout.addWidget(self.next_hand_button)
 
-        for button in (self.rebuy_button, self.next_hand_button):
+        for button in (self.top_up_button, self.rebuy_button, self.next_hand_button):
             button.setMinimumHeight(48)
             button.setMinimumWidth(150)
 
@@ -350,6 +379,7 @@ class GameScreen(QWidget):
         top_bar.addWidget(self.big_blinds_check)
         top_bar.addWidget(self.pause_button)
         top_bar.addWidget(self.tile_button)
+        top_bar.addWidget(self.replay_button)
         top_bar.addWidget(self.menu_button)
         top_bar.addWidget(self.history_button)
 
@@ -430,6 +460,17 @@ class GameScreen(QWidget):
     @property
     def game(self) -> TableGame | None:
         return self._game
+
+    @property
+    def human_name(self) -> str:
+        return self._human_name
+
+    def _update_replay_button(self) -> None:
+        """Replay is offered once a hand of the game is over."""
+        game = self._game
+        self.replay_button.setEnabled(
+            game is not None and any(hand.finished for hand in game.session.hands)
+        )
 
     @property
     def show_in_big_blinds(self) -> bool:
@@ -553,6 +594,7 @@ class GameScreen(QWidget):
         self._set_clock(clock)
         self.history_view.clear()
         self.history_view.hero = human_name
+        self._update_replay_button()
         self._start_next_hand()
 
     def stop(self) -> None:
@@ -568,6 +610,7 @@ class GameScreen(QWidget):
         self.account = None
         self._game = None
         self._update_your_turn()
+        self._update_replay_button()
 
     def _set_clock(self, preset: ClockPreset | None) -> None:
         """Give the human a fresh action clock (or none), and reset Pause."""
@@ -688,6 +731,10 @@ class GameScreen(QWidget):
 
         if game.is_hand_in_progress:  # Already dealt (button and timer both).
             return
+
+        if self.auto_top_up:
+            self.top_up()
+
         hand = game.start_hand()
         level = game.session.blind_level
         self.sounds.play(Sound.DEAL)
@@ -751,6 +798,7 @@ class GameScreen(QWidget):
                 self._step_timer.start(self._next_step_delay(hand))
 
         self._update_your_turn()
+        self._update_replay_button()
 
     def _update_your_turn(self) -> None:
         """Tell whether the table now waits for you, when that changes."""
@@ -921,6 +969,12 @@ class GameScreen(QWidget):
             1 for player in session.get_players_with_chips() if player is not human
         )
 
+        if isinstance(game, PokerGame):
+            for refill in game.refills:
+                verb = "rebuys" if refill.rebuy else "tops up"
+                self._log(f"{refill.player} {verb} {refill.amount}")
+
+        self._prepare_rebuy()
         can_rebuy = self._can_pay_rebuy()
 
         if opponents_left == 0:
@@ -931,10 +985,10 @@ class GameScreen(QWidget):
             result_lines.append("You are out of chips.")
 
         self.result_label.setText("   ·   ".join(result_lines))
-        self.rebuy_button.setText(f"Rebuy {session.config.rebuy_stack}")
-        self.rebuy_button.setVisible(
-            human.is_busted and opponents_left > 0 and can_rebuy
-        )
+        rebuy_offered = human.is_busted and opponents_left > 0 and can_rebuy
+        self.rebuy_button.setVisible(rebuy_offered)
+        self.rebuy_spin.setVisible(rebuy_offered and self._rebuy_range() is not None)
+        self._update_top_up_button(opponents_left > 0)
         can_continue = not human.is_busted and opponents_left > 0
         self.next_hand_button.setVisible(can_continue)
         self.bottom_stack.setCurrentIndex(1)
@@ -942,21 +996,103 @@ class GameScreen(QWidget):
         if can_continue:
             self._schedule_next_hand()
 
+    # --- Rebuys and top-ups (cash games, V3.0) -------------------------------------
+
+    def _rebuy_range(self) -> BuyInRange | None:
+        """The buy-in limits of a cash game; None at a tournament table."""
+        game = self._game
+
+        return game.buy_in_range if isinstance(game, PokerGame) else None
+
+    def _prepare_rebuy(self) -> None:
+        """Offer a rebuy between the buy-in limits (the maximum by default)."""
+        limits = self._rebuy_range()
+
+        if limits is None:
+            return
+
+        self.rebuy_spin.blockSignals(True)
+        self.rebuy_spin.setRange(limits.minimum, limits.maximum)
+        self.rebuy_spin.setSingleStep(
+            10 * self._require_game().session.blind_level.big_blind
+        )
+        self.rebuy_spin.setValue(limits.maximum)
+        self.rebuy_spin.blockSignals(False)
+        self._show_rebuy_amount()
+
+    def rebuy_amount(self) -> int:
+        if self._rebuy_range() is None:
+            return self._require_game().session.config.rebuy_stack
+
+        return self.rebuy_spin.value()
+
+    def _show_rebuy_amount(self) -> None:
+        self.rebuy_button.setText(f"Rebuy {format_chips(self.rebuy_amount())}")
+
     def _can_pay_rebuy(self) -> bool:
         if self.account is None:
             return True
 
-        return self.account.can_pay(self._require_game().session.config.rebuy_stack)
+        return self.account.can_pay(self.rebuy_amount())
 
     def _on_rebuy_clicked(self) -> None:
         game = self._require_game()
+        amount = self.rebuy_amount()
 
         if self.account is not None:
-            self.account.pay(TransactionType.REBUY, game.session.config.rebuy_stack)
+            self.account.pay(TransactionType.REBUY, amount)
 
-        game.session.rebuy_player(self._human_player())
-        self._log(f"{self._human_name} rebuys {game.session.config.rebuy_stack}")
+        game.session.rebuy_player(self._human_player(), amount)
+        self._log(f"{self._human_name} rebuys {amount}")
         self._start_next_hand()
+
+    def top_up_amount(self) -> int:
+        """Chips that bring your stack back to the maximum buy-in, if the
+        bankroll pays them; 0 when none can be added now."""
+        limits = self._rebuy_range()
+        game = self._game
+
+        if limits is None or game is None or game.is_hand_in_progress:
+            return 0
+
+        human = self._human_player()
+
+        if human.is_busted:
+            return 0
+
+        amount = limits.top_up(human.stack)
+
+        if self.account is not None and not self.account.can_pay(amount):
+            return 0
+
+        return amount
+
+    def top_up(self) -> int:
+        """Top up to the maximum buy-in between two hands; the chips added."""
+        amount = self.top_up_amount()
+
+        if amount <= 0:
+            return 0
+
+        if self.account is not None:
+            self.account.pay(TransactionType.TOP_UP, amount)
+
+        human = self._human_player()
+        self._require_game().session.add_chips(human, amount)
+
+        if self.account is not None:
+            self.account.update_stack(human.stack)
+
+        self._log(f"{self._human_name} tops up {amount}")
+        self._refresh_amounts()
+        self._update_top_up_button(True)
+
+        return amount
+
+    def _update_top_up_button(self, table_goes_on: bool) -> None:
+        amount = self.top_up_amount() if table_goes_on else 0
+        self.top_up_button.setText(f"Top up +{format_chips(amount)}")
+        self.top_up_button.setVisible(amount > 0)
 
     def _on_menu_clicked(self) -> None:
         self.stop()

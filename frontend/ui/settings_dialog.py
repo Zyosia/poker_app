@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSlider,
     QVBoxLayout,
@@ -32,6 +33,31 @@ BOT_CARDS_LABELS = {
 }
 PREVIEW_SOUND = Sound.BET
 """Played when the volume is set, to hear it."""
+DELETE_ALL_TEXT = (
+    "Delete all your data?\n\n"
+    "• every saved session and imported hand history (your stats start again "
+    "from zero)\n"
+    "• your bankroll and its history: back to 100,000\n"
+    "• your name: back to the default\n\n"
+    "Your other settings are kept. This cannot be undone."
+)
+
+
+def confirm_delete_all(parent: QWidget) -> bool:
+    """Ask before deleting everything; No is the default answer."""
+    answer = QMessageBox.warning(
+        parent,
+        "Delete all data",
+        DELETE_ALL_TEXT,
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+
+    return answer == QMessageBox.StandardButton.Yes
+
+
+def tell(parent: QWidget, title: str, text: str) -> None:
+    QMessageBox.information(parent, title, text)
 
 
 class SettingsDialog(QDialog):
@@ -40,6 +66,8 @@ class SettingsDialog(QDialog):
     setting_changed = Signal(str, object)
     """The name of a ``UserSettings`` field and its new value."""
     defaults_requested = Signal()
+    delete_all_requested = Signal()
+    """Delete the sessions, the bankroll history and the name (V2.1)."""
 
     def __init__(
         self, settings: UserSettings, sounds: SoundPlayer, parent: QWidget | None = None
@@ -128,6 +156,19 @@ class SettingsDialog(QDialog):
             "Every setting of this window, except your name."
         )
         self.defaults_button.clicked.connect(self.defaults_requested)
+        self.delete_all_button = QPushButton("Delete all data…")
+        self.delete_all_button.setObjectName("danger")
+        self.delete_all_button.setToolTip(
+            "Every session, the bankroll and its history, and your name. "
+            "A confirmation is asked first."
+        )
+        self.delete_all_button.clicked.connect(self.delete_all_requested)
+        delete_note = QLabel(
+            "Sessions, imported histories, bankroll (back to 100,000) and its "
+            "history, your name."
+        )
+        delete_note.setObjectName("hintText")
+        delete_note.setWordWrap(True)
         self.close_button = QPushButton("Close")
         self.close_button.setObjectName("primary")
         self.close_button.setDefault(True)
@@ -156,6 +197,10 @@ class SettingsDialog(QDialog):
         tables.addRow(self.hints_check)
         tables.addRow(self.to_front_check)
 
+        data = QVBoxLayout()
+        data.addWidget(delete_note)
+        data.addWidget(self.delete_all_button)
+
         buttons = QHBoxLayout()
         buttons.addWidget(self.defaults_button)
         buttons.addStretch()
@@ -165,7 +210,12 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(12)
 
-        for title, form in (("Player", player), ("Sound", sound), ("Tables", tables)):
+        for title, form in (
+            ("Player", player),
+            ("Sound", sound),
+            ("Tables", tables),
+            ("Your data", data),
+        ):
             group = QGroupBox(title)
             group.setLayout(form)
             layout.addWidget(group)

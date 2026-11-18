@@ -31,7 +31,7 @@ from backend.application.setup import (
 )
 from backend.application.structures import TOURNAMENT_STRUCTURES
 from frontend.components.bankroll_bar import BankrollBar
-from frontend.components.bot_picker import BotPicker, bot_combo
+from frontend.components.bot_picker import BotPicker, bot_combo, help_button
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
 from frontend.formatting import format_chips
@@ -291,6 +291,9 @@ class SpinSetupScreen(QWidget):
 
         for combo in self.bot_combos:
             bots.addWidget(combo)
+
+        self.help_button = help_button()
+        bots.addWidget(self.help_button)
 
         self.buy_in_choice = BuyInChoice(SPIN_BUY_INS, DEFAULT_SPIN.buy_in)
         self.buy_in_spin = self.buy_in_choice.spin

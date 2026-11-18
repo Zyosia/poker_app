@@ -14,7 +14,7 @@ from frontend.ui.arena_setup_screen import ArenaSetupScreen
 from frontend.ui.cash_setup_screen import CashSetupScreen
 from frontend.ui.guide_window import GuidePage, close_guide, meter, open_guide
 from frontend.ui.main_window import MainWindow
-from frontend.ui.tournament_setup_screen import TournamentSetupScreen
+from frontend.ui.tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
 from tests.frontend.windows import cash_setup, open_table, played_setup
 
 
@@ -93,6 +93,14 @@ def test_the_bot_pickers_explain_the_styles(window: MainWindow, mode: str) -> No
     setup = cash_setup(table) if mode == "cash" else played_setup(table)
     assert isinstance(setup, CashSetupScreen | TournamentSetupScreen)
     setup.bot_picker.help_button.click()
+
+    guide = guide_window._window
+    assert guide is not None and guide.current_section == "bots"
+
+
+def test_the_spin_and_go_bots_explain_the_styles(qapp: QApplication) -> None:
+    screen = SpinSetupScreen()
+    screen.help_button.click()
 
     guide = guide_window._window
     assert guide is not None and guide.current_section == "bots"

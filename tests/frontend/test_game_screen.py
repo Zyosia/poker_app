@@ -261,15 +261,19 @@ def test_busted_human_can_rebuy(screen: GameScreen) -> None:
 
     assert "out of chips" in screen.result_label.text()
     assert screen.rebuy_button.isVisibleTo(screen)
-    assert screen.rebuy_button.text() == "Rebuy 100"
+    # A cash rebuy is 40 to 100 big blinds (V3.0): the maximum by default.
+    assert screen.rebuy_button.text() == "Rebuy 1 000"
+    assert (screen.rebuy_spin.minimum(), screen.rebuy_spin.maximum()) == (400, 1000)
     assert not screen.next_hand_button.isVisibleTo(screen)
 
+    screen.rebuy_spin.setValue(600)
+    assert screen.rebuy_button.text() == "Rebuy 600"
     screen.rebuy_button.click()
 
     assert hero.eliminated is False
     assert game.session.hand_number == 2
     assert game.is_hand_in_progress is True
-    assert hero.stack + hero.current_bet == 100
+    assert hero.stack + hero.current_bet == 600
 
 
 def test_game_is_won_when_every_opponent_is_eliminated(

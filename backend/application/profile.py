@@ -196,6 +196,17 @@ class ProfileStore:
     def bankroll(self) -> Bankroll:
         return self.profile.bankroll
 
+    def reset_data(self) -> None:
+        """Forget the user's data: a new bankroll of 100,000 with an empty
+        ledger, and the default name. The other settings stay. The backup
+        file, which holds the previous profile, is deleted too."""
+        self.profile.bankroll = Bankroll()
+        self.profile.settings.player_name = UserSettings().player_name
+        self.save()
+
+        if self.backup_path is not None:
+            self.backup_path.unlink(missing_ok=True)
+
     def save(self) -> None:
         """Write the profile atomically, keeping the previous file as backup."""
         if self.path is None:

@@ -12,6 +12,7 @@ from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.models import ActionEvent, Hand, Player
 from backend.poker_engine.session import GameSession
 
+from .cash_rules import BuyInRange, Refill
 from .controllers import (
     DecisionContext,
     HumanController,
@@ -31,6 +32,7 @@ class PokerGame:
         session: GameSession,
         controllers: Mapping[str, PlayerController],
         save_path: Path | None = None,
+        bots_rebuy: bool = False,
     ) -> None:
         """Create a game.
 
@@ -46,6 +48,15 @@ class PokerGame:
         self.controllers = dict(controllers)
         self.save_path = save_path
         self.hand: Hand | None = None
+        self.bots_rebuy = bots_rebuy
+        """Busted bots rebuy and short bots top up (V3.0), instead of busted
+        bots being eliminated."""
+        self.refills: list[Refill] = []
+        """The bots' rebuys and top-ups at the end of the last hand."""
+
+    @property
+    def buy_in_range(self) -> BuyInRange:
+        return BuyInRange.for_big_blind(self.session.blind_level.big_blind)
 
     @property
     def human_name(self) -> str | None:
@@ -131,6 +142,26 @@ class PokerGame:
 
         return event
 
+    def _refill_bots(self) -> list[Refill]:
+        """Busted bots buy the maximum again; bots below the minimum top up
+        to the maximum."""
+        buy_in = self.buy_in_range
+        refills: list[Refill] = []
+
+        for player in self.session.players:
+            if self.controllers[player.name].is_human or player.is_eliminated:
+                continue
+
+            if player.is_busted:
+                self.session.rebuy_player(player, buy_in.maximum)
+                refills.append(Refill(player.name, buy_in.maximum, rebuy=True))
+            elif player.stack < buy_in.minimum:
+                amount = buy_in.top_up(player.stack)
+                self.session.add_chips(player, amount)
+                refills.append(Refill(player.name, amount, rebuy=False))
+
+        return refills
+
     def build_context(self, player: Player) -> DecisionContext:
         """Build the information a player is allowed to see to decide."""
         if self.hand is None:
@@ -148,6 +179,8 @@ class PokerGame:
         """
         if self.hand is not None:
             notify_hand_end(self.controllers.values(), self.hand.actions)
+
+        self.refills = self._refill_bots() if self.bots_rebuy else []
 
         for player in self.session.get_busted_players():
             if not self.controllers[player.name].is_human:

@@ -66,11 +66,10 @@ def test_an_unexploitable_strategy_beats_a_bad_one(
 
 
 def test_the_solution_module_is_valid_python() -> None:
-    source = solution_source({1: ("22+, A2s+", "AA"), 2: ("", "KK+, AKs")})
+    heads_up = {"none": {1: ("22+, A2s+", "AA"), 2: ("", "KK+, AKs")}}
+    three = {"none": {2: ("AA", "KK+", "QQ+", "JJ+", "AKs", "")}}
     namespace: dict[str, object] = {}
-    exec(compile(source, "heads_up_push_fold", "exec"), namespace)
+    exec(compile(solution_source(heads_up, three), "solutions", "exec"), namespace)
 
-    assert namespace["PUSH_FOLD_RANGES"] == {
-        1: ("22+, A2s+", "AA"),
-        2: ("", "KK+, AKs"),
-    }
+    assert namespace["HEADS_UP_RANGES"] == heads_up
+    assert namespace["THREE_HANDED_RANGES"] == three
