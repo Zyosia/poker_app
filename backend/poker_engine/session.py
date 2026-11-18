@@ -101,7 +101,25 @@ class GameSession:
 
     def _check_between_hands(self) -> None:
         if self.hands and not self.hands[-1].finished:
-            raise RuntimeError("Chips are only added between hands.")
+            raise RuntimeError("Only possible between hands.")
+
+    def reseat(self, players: list[Player], dealer_index: int) -> None:
+        """Seat a new list of players, between hands only (tournament tables
+        that break or balance). The finished hands keep the table they were
+        played at."""
+        self._check_between_hands()
+
+        if not 1 <= len(players) <= self.config.max_players:
+            raise ValueError(f"A table seats 1 to {self.config.max_players} players.")
+
+        if len({player.name for player in players}) != len(players):
+            raise ValueError("Player names must be unique.")
+
+        if not 0 <= dealer_index < len(players):
+            raise ValueError("The dealer must be one of the seated players.")
+
+        self.players = players
+        self.table = Table(players=players, dealer_index=dealer_index)
 
     def eliminate_player(self, player: Player) -> None:
         """Remove a busted player from the session."""

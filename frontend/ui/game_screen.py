@@ -752,7 +752,7 @@ class GameScreen(QWidget):
 
         human = self._human_player()
 
-        if human.hand:  # Not dealt in once out of a tournament.
+        if human.hand and not human.is_eliminated:  # Out of a tournament: none.
             history.add_section(
                 "Your cards", human.hand, line=f"Your cards: {format_cards(human.hand)}"
             )

@@ -35,6 +35,7 @@ from .cash_setup_screen import CashSetupScreen
 from .game_screen import GameScreen
 from .navigation_window import NavigationWindow
 from .replayer_window import ReplayerWindow, last_replayable_hand
+from .tournament_lobby import TournamentLobbyWindow
 from .tournament_results_screen import TournamentResultsScreen
 from .tournament_screen import TournamentScreen
 from .tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
@@ -78,6 +79,7 @@ class GameWindow(NavigationWindow):
         self.game_name = MODE_LABELS[mode]
         self._played_settings: PlayedSettings | None = None
         self.replayer_window: ReplayerWindow | None = None
+        self.lobby_window: TournamentLobbyWindow | None = None
 
         self.setup_screen = self._create_setup_screen()
         self.table_screen: GameScreen = (
@@ -148,6 +150,8 @@ class GameWindow(NavigationWindow):
         if isinstance(table, TournamentScreen):
             table.menu_requested.connect(self.back_to_first)
             table.finished.connect(self.show_tournament_results)
+            table.lobby_requested.connect(self.open_lobby)
+            table.standings_changed.connect(self._refresh_lobby)
             self.results_screen.play_again_requested.connect(self.play_again)
             self.results_screen.menu_requested.connect(self.back_to_first)
         else:
@@ -319,6 +323,33 @@ class GameWindow(NavigationWindow):
             account=account,
         )
 
+        if tournament.multi_table:
+            self.open_lobby()
+        elif self.lobby_window is not None:
+            self.lobby_window.close()
+
+    # --- Tournament lobby (V3.1) --------------------------------------------------
+
+    def open_lobby(self) -> TournamentLobbyWindow | None:
+        """The lobby of the tournament played here, in a window of its own."""
+        table = self.table_screen
+
+        if not isinstance(table, TournamentScreen) or table.game is None:
+            return None
+
+        if self.lobby_window is None:
+            self.lobby_window = TournamentLobbyWindow(self.title)
+
+        self.lobby_window.show_tournament(table.tournament, table.human_name)
+
+        return self.lobby_window
+
+    def _refresh_lobby(self) -> None:
+        lobby = self.lobby_window
+
+        if lobby is not None and lobby.isVisible():
+            lobby.refresh()
+
     def show_tournament_results(self, tournament: Tournament) -> None:
         assert self._played_settings is not None
         self.results_screen.show_tournament(
@@ -383,10 +414,13 @@ class GameWindow(NavigationWindow):
             event.ignore()
             return
 
-        if self.replayer_window is not None:
-            self.replayer_window.close()
-            self.replayer_window.deleteLater()
-            self.replayer_window = None
+        for window in (self.replayer_window, self.lobby_window):
+            if window is not None:
+                window.close()
+                window.deleteLater()
+
+        self.replayer_window = None
+        self.lobby_window = None
 
         table.stop()
         self.closed.emit(self)

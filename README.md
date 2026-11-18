@@ -66,6 +66,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V3.0 — Cash Game Extras](#v30--cash-game-extras)
 
+- [V3.1 — Multi-table Tournaments](#v31--multi-table-tournaments)
+
 - [Later / Maybe](#later--maybe)
 
 - [Development Principles](#development-principles)
@@ -593,7 +595,7 @@ backend/
 │   ├── game.py            PokerGame: plays a session step by step
 │   ├── setup.py           Game, tournament and Spin & Go creation
 │   ├── cash_rules.py      Buy-in limits, rebuys and top-ups (V3.0)
-│   ├── tournament.py      Tournament, rebuys, eliminations, Spin & Go
+│   ├── tournament.py      Tournaments on one table or several, rebuys, Spin & Go
 │   ├── payouts.py         Payout structures, Spin & Go multipliers
 │   ├── structures.py      Default blind structures
 │   ├── hand_summary.py    A player's stats from the hand history
@@ -656,6 +658,7 @@ frontend/
 │   ├── settings_dialog.py The settings window (V1.2)
 │   ├── guide_window.py    The Guide: application, bot styles, terms (V2.0)
 │   ├── replayer_window.py The replayer beside a table (V2.1)
+│   ├── tournament_lobby.py, bot_manager_dialog.py  Lobby and bots (V3.1)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -2781,9 +2784,112 @@ a maximum buy-in, rebuys, top-ups, bots that rebuy) and the **straddle**.
 
 ---
 
+# V3.1 — Multi-table Tournaments
+
+**V3.1** turns the Tournament mode into multi-table tournaments, like the
+ones of online rooms: up to **500 players**, tables that break and balance,
+a final table, a **lobby** that follows the whole tournament, and a window
+to **manage the bots** (or draw a whole field at random, by difficulty).
+Tournaments stay offline: no late registration.
+
+## Features
+
+### 🏆 Several tables
+
+- **1 to 499 bots.** With more players than the final table seats, the
+  tournament starts on several tables: the players are dealt round-robin to
+  as few tables as needed (44 players at 6 per table: 8 tables).
+- **Table size and final table** are chosen in the setup (3 to 9 seats; the
+  final table seats at least as many). A hint tells how the players will be
+  seated: "44 players: 8 tables of up to 6, then a final table of 7."
+- **You play table 1**, step by step as before. Every other table plays one
+  hand for each of yours, at once when your hand ends: the blind levels
+  follow the rounds, and players busted in the same round on different
+  tables are ranked together by their starting stack (as in hand-for-hand
+  play).
+- **Breaking and balancing**, between two hands: the players out leave their
+  table, tables break from the highest number down (their players fill the
+  emptiest tables), and the tables stay within one player of each other. The
+  player moved to balance is the one due to post the next big blind. Your
+  table is never broken and you are never moved: it becomes the **final
+  table**, announced at the table ("FINAL TABLE — 7 players left").
+- At your table, the history tells who **joins** and who **moves** to another
+  table; the eliminations logged are those of your table, and every player
+  out in the money.
+- **Payouts** of a large field: about 15% of the entrants are paid, in
+  proportion to 1, 1/2, 1/3... (the winner takes about 26% with 20 places
+  paid; the last paid place still wins more than its buy-in). Payout shares
+  can now be finer than a whole percent (`PayoutStructure.scale`).
+
+### 📋 The lobby
+
+- A window beside the table, opened when a multi-table tournament starts and
+  from the table's **Lobby** button: the prize pool, the players left, the
+  average stack, your place, the tables left, the hands (or time) played,
+  and the blind level with the next one.
+- **Payouts** and **Levels** tabs; **Players**: everyone still in, sorted by
+  stack (chips and big blinds) with their table, then the players out by
+  place with their prize, and a **search**; **Tables**: each table's number
+  of players and biggest and smallest stacks, and, for the table selected,
+  its players and the button.
+- It follows the tournament between hands while the table goes on.
+
+### 🤖 Managing the bots
+
+- The setup shows how many bots play and a summary of their styles
+  ("43 bots: TAG ×10 · LAG ×7 · ..."). More bots get a style at random;
+  fewer drop the last ones.
+- **Random bots**: *Easy* (no Shark or Adaptive), *Normal* (every style, a
+  few strong bots) or *Hard* (mostly Sharks and Adaptives), and **Draw at
+  random** restyles the whole field.
+- **Manage bots…** opens the list of every bot: rename a bot or change its
+  style (double-click), add bots of a style, restyle or remove a selection,
+  or draw a new field of any size and difficulty. Names must be distinct and
+  different from yours.
+
+### 🚪 Once you are out
+
+- **Skip to results** plays the rest in short steps ("Finishing the
+  tournament: 37 players left…"): the window stays responsive, even for a
+  field of strong bots, whose rest can take tens of seconds to play.
+- **Back to menu** keeps your place and prize without playing the rest, once
+  nothing can change them (no rebuy can still add to the prize pool); the
+  standings so far are saved with the session.
+
+> 📸 *Screenshot placeholder: the setup with 43 bots, the bot manager, and the
+> lobby beside table 1.*
+
+## Engine and application changes
+
+- `GameSession.reseat(players, dealer_index)`: a table seats a new list of
+  players, between hands only; the finished hands keep the table they were
+  played at (saves and replays unchanged).
+- `Tournament` plays one table or several (`TournamentConfig.table_size`,
+  `final_table_size`, `Tournament(featured=...)`); with one table it plays
+  exactly as before (same results for the same seed).
+- `TournamentSettings.bot_names`, `table_size`, `final_table_size`;
+  `bot_names()` names any number of bots; `random_styles()` draws a field
+  for a `Difficulty`.
+
+## Objectives
+
+- [x] Multi-table tournaments: table balancing, breaking, final table
+- [x] Table size and final table size
+- [x] Tournament lobby: info, players by stack, tables, payouts, levels
+- [x] Bot manager: add and configure bots, random fields by difficulty
+
+## Tests
+
+```text
+1803 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
 # Later / Maybe
 
-- [ ] Multi-table tournaments (table balancing, late registration)
 - [ ] Configurable betting cap / Limit Hold'em
 - [ ] Watch mode for Bot Arena tournament runs: moved from V1.0, a tournament
       can be watched by playing it from the main menu and busting out
@@ -2868,7 +2974,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1773 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1803 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

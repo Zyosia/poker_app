@@ -4,6 +4,7 @@ Amounts are whole units of a fictional currency. Rounding never loses a
 unit: the remainders of a split go to the higher places.
 """
 
+import math
 import random
 from dataclasses import dataclass
 from fractions import Fraction
@@ -11,17 +12,21 @@ from fractions import Fraction
 
 @dataclass(frozen=True)
 class PayoutStructure:
-    """Share of the prize pool for each paid place, in whole percents."""
+    """Share of the prize pool for each paid place, in whole percents (or in
+    whole parts of ``scale``: 10,000 for basis points)."""
 
     name: str
     percentages: tuple[int, ...]
+    scale: int = 100
 
     def __post_init__(self) -> None:
         if not self.percentages or any(share <= 0 for share in self.percentages):
             raise ValueError("Every paid place needs a positive share.")
 
-        if sum(self.percentages) != 100:
-            raise ValueError("The shares of a payout structure must sum to 100.")
+        if sum(self.percentages) != self.scale:
+            raise ValueError(
+                f"The shares of a payout structure must sum to {self.scale}."
+            )
 
         if list(self.percentages) != sorted(self.percentages, reverse=True):
             raise ValueError("A place cannot pay more than a better place.")
@@ -46,7 +51,7 @@ class PayoutStructure:
 
         shares = list(self.percentages[:entrants])
         shares[0] += sum(self.percentages[entrants:])
-        prizes = [prize_pool * share // 100 for share in shares]
+        prizes = [prize_pool * share // self.scale for share in shares]
 
         for place in range(prize_pool - sum(prizes)):
             prizes[place % len(prizes)] += 1
@@ -62,13 +67,46 @@ HIGH_MULTIPLIER = PayoutStructure("80 / 10 / 10", (80, 10, 10))
 PAYOUT_PRESETS: tuple[PayoutStructure, ...] = (WINNER_TAKES_ALL, TOP_TWO, TOP_THREE)
 
 
+PAID_SHARE_OF_FIELD = 0.15
+"""A multi-table tournament pays about 15% of its entrants."""
+BASIS_POINTS = 10_000
+
+
 def default_payout(entrants: int) -> PayoutStructure:
     """Winner takes all up to 3 players, 65 / 35 from 4 to 6 players, then
-    50 / 30 / 20 at a full-ring table (7 to 9 players)."""
+    50 / 30 / 20 at a full-ring table (7 to 9 players). Beyond, a
+    multi-table tournament pays its top 15% (see ``field_payout``)."""
     if entrants <= 3:
         return WINNER_TAKES_ALL
 
-    return TOP_TWO if entrants <= 6 else TOP_THREE
+    if entrants <= 6:
+        return TOP_TWO
+
+    if entrants <= 9:
+        return TOP_THREE
+
+    return field_payout(max(3, round(entrants * PAID_SHARE_OF_FIELD)))
+
+
+def field_payout(places: int) -> PayoutStructure:
+    """``places`` paid in proportion to 1, 1/2, 1/3... (in basis points).
+
+    The first place takes about 55% with 3 places paid, 26% with 20, 20%
+    with 75; the last paid place still wins more than one buy-in in a field
+    of six times as many entrants. Basis points lost to rounding go to the
+    higher places, one each.
+    """
+    if places < 1:
+        raise ValueError("At least one place is paid.")
+
+    weights = [1 / place for place in range(1, places + 1)]
+    total = math.fsum(weights)
+    shares = [int(BASIS_POINTS * weight / total) for weight in weights]
+
+    for index in range(BASIS_POINTS - sum(shares)):
+        shares[index % places] += 1
+
+    return PayoutStructure(f"Top {places} paid", tuple(shares), scale=BASIS_POINTS)
 
 
 def split_prizes(prizes: list[int], shares: int) -> list[int]:

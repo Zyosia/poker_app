@@ -21,6 +21,7 @@ from backend.application.tournament import Tournament
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import get_legal_actions
 from backend.poker_engine.constants import ActionType
+from frontend.ui.bot_manager_dialog import FieldBot
 from frontend.ui.main_window import MainWindow
 from frontend.ui.tournament_results_screen import TournamentResultsScreen
 from frontend.ui.tournament_screen import TournamentScreen
@@ -152,14 +153,13 @@ def test_the_menu_opens_both_tournament_modes(window: MainWindow) -> None:
 def test_the_setup_builds_the_settings(window: MainWindow) -> None:
     setup = open_table(window, "tournament").setup_screen
     assert isinstance(setup, TournamentSetupScreen)
-    setup.opponents_spin.setValue(3)
-    setup.same_style_check.setChecked(True)
-    setup.bot_combos[0].setCurrentIndex(setup.bot_combos[0].findData("maniac"))
+    setup.set_field([FieldBot(name, "maniac") for name in ("Ann", "Ben", "Cid")])
     setup.rebuys_check.setChecked(True)
 
     settings = setup.current_settings()
 
     assert settings.opponents == ("maniac", "maniac", "maniac")
+    assert settings.bot_names == ("Ann", "Ben", "Cid")
     assert settings.rebuys
     assert settings.tournament_config().rebuys is not None
 

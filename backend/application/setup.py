@@ -1,7 +1,7 @@
 """Creation of a game from the settings chosen by the user."""
 
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +14,7 @@ from .game import PokerGame
 from .payouts import FAIR_MULTIPLIERS, MultiplierTable, PayoutStructure
 from .structures import SPIN_PLAYERS, TOURNAMENT_STARTING_STACK, structure_by_name
 from .tournament import (
+    MAX_ENTRANTS,
     LevelClock,
     RebuyRules,
     SpinConfig,
@@ -34,8 +35,52 @@ BOT_NAMES = (
     "Ivo",
 )
 """One more than a full table needs: a bot never takes the human's name."""
+MORE_BOT_NAMES = (
+    "Jade",
+    "Kai",
+    "Lena",
+    "Milo",
+    "Nora",
+    "Oscar",
+    "Paula",
+    "Quinn",
+    "Rosa",
+    "Sami",
+    "Tara",
+    "Ugo",
+    "Vera",
+    "Wes",
+    "Xena",
+    "Yann",
+    "Zoe",
+    "Ana",
+    "Boris",
+    "Chloe",
+    "Dario",
+    "Emma",
+    "Felix",
+    "Greta",
+    "Hugo",
+    "Iris",
+    "Jonas",
+    "Kira",
+    "Leo",
+    "Maya",
+    "Nico",
+    "Olga",
+    "Pablo",
+    "Rita",
+    "Sven",
+    "Tess",
+    "Umar",
+    "Vic",
+    "Wanda",
+    "Yuri",
+)
+"""Names for the bots of a large tournament field, after ``BOT_NAMES``."""
 DEFAULT_PLAYER_NAME = "Hero"
 MAX_PLAYER_NAME_LENGTH = 12
+MAX_BOT_NAME_LENGTH = 16
 
 TOURNAMENT_BUY_INS = (100, 500, 1_000, 5_000, 10_000)
 SPIN_BUY_INS = (100, 500, 1_000, 5_000)
@@ -80,10 +125,10 @@ def create_game(
     The human takes the first seat and the first dealer is drawn at random.
     """
     rng = rng or random.Random()
-    bot_names, controllers = _seat_bots(settings.player_name, settings.opponents, rng)
+    names, controllers = _seat_bots(settings.player_name, settings.opponents, rng)
 
     session = create_session(
-        player_names=[settings.player_name, *bot_names],
+        player_names=[settings.player_name, *names],
         config=GameConfig(
             starting_stack=settings.starting_stack,
             rebuy_stack=settings.starting_stack,
@@ -125,10 +170,27 @@ class TournamentSettings:
     buy_in: int = DEFAULT_TOURNAMENT_BUY_IN
     payout: PayoutStructure | None = None
     rebuys: bool = False
+    bot_names: tuple[str, ...] = ()
+    """The bots' names, in the order of ``opponents``; empty: automatic."""
+    table_size: int = MAX_TABLE_SEATS
+    final_table_size: int = MAX_TABLE_SEATS
+    """With more players than this, the tournament starts on several tables
+    of ``table_size`` seats (V3.1)."""
 
     def __post_init__(self) -> None:
         check_player_name(self.player_name)
-        check_opponents(self.opponents)
+
+        if not 1 <= len(self.opponents) <= MAX_ENTRANTS - 1:
+            raise ValueError(
+                f"A tournament has 1 to {MAX_ENTRANTS - 1} bots (you are the "
+                f"{MAX_ENTRANTS}th player)."
+            )
+
+        for bot in self.opponents:
+            get_bot_type(bot)
+
+        if self.bot_names:
+            check_bot_names(self.bot_names, len(self.opponents), self.player_name)
 
         if self.levels_by not in (LEVELS_BY_HANDS, LEVELS_BY_TIME):
             raise ValueError("Levels go up by hands or by time.")
@@ -136,7 +198,15 @@ class TournamentSettings:
         if self.starting_stack <= 0 or self.buy_in < 0:
             raise ValueError("Invalid starting stack or buy-in.")
 
-        structure_by_name(self.structure)
+        self.tournament_config()  # Checks the structure and the table sizes.
+
+    @property
+    def entrants(self) -> int:
+        return len(self.opponents) + 1
+
+    @property
+    def is_multi_table(self) -> bool:
+        return self.entrants > self.final_table_size
 
     def tournament_config(self) -> TournamentConfig:
         rebuys = None
@@ -155,6 +225,8 @@ class TournamentSettings:
             buy_in=self.buy_in,
             payout=self.payout,
             rebuys=rebuys,
+            table_size=self.table_size,
+            final_table_size=self.final_table_size,
         )
 
 
@@ -204,17 +276,66 @@ def check_opponents(opponents: tuple[str, ...]) -> None:
         get_bot_type(bot)
 
 
+def check_bot_names(names: tuple[str, ...], count: int, player_name: str) -> None:
+    """One name per bot: distinct, not empty, short, and not yours."""
+    if len(names) != count:
+        raise ValueError("Every bot needs a name.")
+
+    for name in names:
+        if not name.strip():
+            raise ValueError("A bot name cannot be empty.")
+
+        if len(name) > MAX_BOT_NAME_LENGTH:
+            raise ValueError(
+                f"A bot name is at most {MAX_BOT_NAME_LENGTH} characters long."
+            )
+
+    if len(set(names)) != len(names):
+        raise ValueError("Two bots have the same name.")
+
+    if player_name in names:
+        raise ValueError(f"A bot is named {player_name}, like you.")
+
+
+def bot_names(count: int, taken: Collection[str] = ()) -> list[str]:
+    """``count`` distinct bot names, none of them ``taken``: the names of
+    ``BOT_NAMES`` then ``MORE_BOT_NAMES``, then numbered ("Alex 2"...)."""
+    pool = BOT_NAMES + MORE_BOT_NAMES
+    used = set(taken)
+    names: list[str] = []
+    series = 1
+
+    while len(names) < count:
+        for base in pool:
+            name = base if series == 1 else f"{base} {series}"
+
+            if name not in used:
+                names.append(name)
+                used.add(name)
+
+            if len(names) == count:
+                break
+
+        series += 1
+
+    return names
+
+
 def _seat_bots(
-    player_name: str, opponents: tuple[str, ...], rng: random.Random
+    player_name: str,
+    opponents: tuple[str, ...],
+    rng: random.Random,
+    names: tuple[str, ...] = (),
 ) -> tuple[list[str], dict[str, PlayerController]]:
-    """Name the bots, each with its own random generator."""
-    names = [name for name in BOT_NAMES if name != player_name][: len(opponents)]
+    """Name the bots (``names``, or automatic names), each with its own
+    random generator."""
+    names = names or tuple(bot_names(len(opponents), {player_name}))
     controllers: dict[str, PlayerController] = {
         name: create_bot(bot, random.Random(rng.getrandbits(64)))
         for name, bot in zip(names, opponents, strict=True)
     }
 
-    return names, controllers
+    return list(names), controllers
 
 
 def create_tournament(
@@ -223,24 +344,34 @@ def create_tournament(
     rng: random.Random | None = None,
     clock_source: Callable[[], float] | None = None,
 ) -> Tournament:
-    """A tournament opposing the human (first seat) to bots.
+    """A tournament opposing the human (first seat, table 1) to bots.
 
     The hands are kept for the history and the save file. Levels by time
     use a ``LevelClock`` on ``clock_source`` (``time.monotonic`` by default).
+    On several tables, the bots are seated in a random order.
     """
     rng = rng or random.Random()
-    bot_names, controllers = _seat_bots(settings.player_name, settings.opponents, rng)
+    names, controllers = _seat_bots(
+        settings.player_name, settings.opponents, rng, settings.bot_names
+    )
     controllers[settings.player_name] = human_controller
-    seats = [settings.player_name, *bot_names]
+    seats = [settings.player_name, *names]
+    dealer_index = rng.randrange(len(seats))
+    deck_rng = random.Random(rng.getrandbits(64))
+
+    if settings.is_multi_table:
+        rng.shuffle(names)
+        seats = [settings.player_name, *names]
 
     return Tournament(
         settings.tournament_config(),
         seats,
         controllers,
-        dealer_index=rng.randrange(len(seats)),
-        deck_rng=random.Random(rng.getrandbits(64)),
+        dealer_index=dealer_index,
+        deck_rng=deck_rng,
         clock=_clock(settings.levels_by, clock_source),
         keep_hands=True,
+        featured=settings.player_name,
     )
 
 
@@ -252,12 +383,12 @@ def create_spin_and_go(
 ) -> Tournament:
     """A Spin & Go: the multiplier is drawn first, then the hands are dealt."""
     rng = rng or random.Random()
-    bot_names, controllers = _seat_bots(settings.player_name, settings.opponents, rng)
+    names, controllers = _seat_bots(settings.player_name, settings.opponents, rng)
     controllers[settings.player_name] = human_controller
 
     return create_spin(
         SpinConfig(multipliers=settings.multipliers, buy_in=settings.buy_in),
-        [settings.player_name, *bot_names],
+        [settings.player_name, *names],
         controllers,
         random.Random(rng.getrandbits(64)),
         clock=_clock(settings.levels_by, clock_source),

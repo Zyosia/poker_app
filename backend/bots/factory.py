@@ -3,6 +3,7 @@
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from enum import StrEnum
 
 from backend.application.controllers import PlayerController
 
@@ -148,3 +149,60 @@ def create_bot(
 ) -> PlayerController:
     """Create a bot of the given type, drawing its decisions from ``rng``."""
     return get_bot_type(key).create(rng, overrides)
+
+
+# --- Random lineups (V3.1) ----------------------------------------------------
+
+
+class Difficulty(StrEnum):
+    """How strong a field of bots drawn at random is."""
+
+    EASY = "easy"
+    NORMAL = "normal"
+    HARD = "hard"
+
+
+DIFFICULTY_LABELS = {
+    Difficulty.EASY: "Easy — no Shark or Adaptive",
+    Difficulty.NORMAL: "Normal — every style, a few strong bots",
+    Difficulty.HARD: "Hard — mostly Sharks and Adaptives",
+}
+DIFFICULTY_WEIGHTS: dict[Difficulty, dict[str, int]] = {
+    Difficulty.EASY: {
+        "station": 3,
+        "maniac": 2,
+        "basic": 2,
+        "nit": 2,
+        "lag": 1,
+        "tag": 1,
+        "random": 1,
+    },
+    Difficulty.NORMAL: {
+        "tag": 3,
+        "lag": 2,
+        "nit": 2,
+        "station": 2,
+        "basic": 2,
+        "maniac": 1,
+        "shark": 1,
+        "adaptive": 1,
+    },
+    Difficulty.HARD: {
+        "shark": 3,
+        "adaptive": 3,
+        "tag": 2,
+        "lag": 2,
+        "nit": 1,
+        "basic": 1,
+    },
+}
+"""Relative chance of each style being drawn, by difficulty."""
+
+
+def random_styles(
+    count: int, difficulty: Difficulty, rng: random.Random
+) -> tuple[str, ...]:
+    """The play styles of ``count`` bots drawn at random for ``difficulty``."""
+    weights = DIFFICULTY_WEIGHTS[difficulty]
+
+    return tuple(rng.choices(tuple(weights), weights=tuple(weights.values()), k=count))

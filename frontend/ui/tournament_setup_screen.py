@@ -1,5 +1,8 @@
 """Setup of a Tournament and of a Spin & Go against bots."""
 
+import math
+import random
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -28,14 +31,26 @@ from backend.application.setup import (
     TOURNAMENT_BUY_INS,
     SpinSettings,
     TournamentSettings,
+    bot_names,
 )
 from backend.application.structures import TOURNAMENT_STRUCTURES
+from backend.application.tournament import MIN_TABLE_SIZE
+from backend.bots.factory import Difficulty
+from backend.poker_engine.constants import MAX_TABLE_SEATS
 from frontend.components.bankroll_bar import BankrollBar
-from frontend.components.bot_picker import BotPicker, bot_combo, help_button
+from frontend.components.bot_picker import bot_combo, help_button
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
 from frontend.formatting import format_chips
 
+from .bot_manager_dialog import (
+    MAX_BOTS,
+    BotManagerDialog,
+    FieldBot,
+    describe_field,
+    difficulty_combo,
+    random_field,
+)
 from .cash_setup_screen import player_name_label, scrolling
 
 DEFAULT_TOURNAMENT = TournamentSettings()
@@ -132,6 +147,19 @@ def setup_page(
     return scrolling(layout)
 
 
+def describe_tables(entrants: int, table_size: int, final_table_size: int) -> str:
+    """How the players are seated: one table, or several then a final table."""
+    if entrants <= final_table_size:
+        return f"{entrants} players: one table."
+
+    tables = math.ceil(entrants / table_size)
+
+    return (
+        f"{entrants} players: {tables} tables of up to {table_size}, then a "
+        f"final table of {final_table_size}."
+    )
+
+
 def error_label() -> QLabel:
     label = QLabel()
     label.setObjectName("errorText")
@@ -142,7 +170,7 @@ def error_label() -> QLabel:
 
 
 class TournamentSetupScreen(QWidget):
-    """You against 1 to 8 bots, with rising blinds."""
+    """You against 1 to 499 bots, on one table or several, with rising blinds."""
 
     start_requested = Signal(TournamentSettings)
     back_requested = Signal()
@@ -152,10 +180,48 @@ class TournamentSetupScreen(QWidget):
 
         self.bankroll_bar = BankrollBar()
         self.name_label = player_name_label(DEFAULT_TOURNAMENT.player_name)
-        self.bot_picker = BotPicker(DEFAULT_TOURNAMENT.opponents)
-        self.opponents_spin = self.bot_picker.opponents_spin
-        self.same_style_check = self.bot_picker.same_style_check
-        self.bot_combos = self.bot_picker.bot_combos
+        self.rng = random.Random()
+        """Draws the bots added at random (tests seed it)."""
+        names = bot_names(
+            len(DEFAULT_TOURNAMENT.opponents), {DEFAULT_TOURNAMENT.player_name}
+        )
+        self.field = [
+            FieldBot(name, style)
+            for name, style in zip(names, DEFAULT_TOURNAMENT.opponents, strict=True)
+        ]
+        """Every bot: name and play style (see ``BotManagerDialog``)."""
+
+        self.opponents_spin = QSpinBox()
+        self.opponents_spin.setRange(1, MAX_BOTS)
+        self.opponents_spin.setValue(len(self.field))
+        self.opponents_spin.setToolTip(
+            "More bots than the final table seats: the tournament starts on "
+            "several tables. New bots get a play style at random."
+        )
+        self.manage_button = QPushButton("Manage bots…")
+        self.manage_button.setToolTip("Names and play styles of every bot.")
+        self.manage_button.clicked.connect(self.manage_bots)
+        self.help_button = help_button()
+        self.field_label = QLabel()
+        self.field_label.setObjectName("hintText")
+        self.field_label.setWordWrap(True)
+        self.difficulty_combo = difficulty_combo()
+        self.draw_button = QPushButton("Draw at random")
+        self.draw_button.setToolTip(
+            "Gives every bot a name and a play style at random, for the difficulty."
+        )
+        self.draw_button.clicked.connect(self.draw_field)
+
+        self.table_size_spin = QSpinBox()
+        self.table_size_spin.setRange(MIN_TABLE_SIZE, MAX_TABLE_SEATS)
+        self.table_size_spin.setValue(DEFAULT_TOURNAMENT.table_size)
+        self.table_size_spin.setPrefix("Tables of ")
+        self.final_table_spin = QSpinBox()
+        self.final_table_spin.setRange(MIN_TABLE_SIZE, MAX_TABLE_SEATS)
+        self.final_table_spin.setValue(DEFAULT_TOURNAMENT.final_table_size)
+        self.final_table_spin.setPrefix("Final table of ")
+        self.tables_label = QLabel()
+        self.tables_label.setObjectName("hintText")
 
         self.stack_spin = QSpinBox()
         self.stack_spin.setRange(100, 100_000)
@@ -204,9 +270,23 @@ class TournamentSetupScreen(QWidget):
         form = QFormLayout()
         form.setVerticalSpacing(10)
         form.setHorizontalSpacing(18)
+        opponents = QHBoxLayout()
+        opponents.addWidget(self.opponents_spin, stretch=1)
+        opponents.addWidget(self.manage_button)
+        opponents.addWidget(self.help_button)
+        random_row = QHBoxLayout()
+        random_row.addWidget(self.difficulty_combo, stretch=1)
+        random_row.addWidget(self.draw_button)
+        tables = QHBoxLayout()
+        tables.addWidget(self.table_size_spin)
+        tables.addWidget(self.final_table_spin)
+
         form.addRow("Your name", self.name_label)
-        form.addRow("Opponents", self.bot_picker.count_widget)
-        form.addRow("Bots", self.bot_picker.style_widget)
+        form.addRow("Opponents", opponents)
+        form.addRow("Bots", self.field_label)
+        form.addRow("Random bots", random_row)
+        form.addRow("Seating", tables)
+        form.addRow("", self.tables_label)
         form.addRow("Starting stack", self.stack_spin)
         form.addRow("Blind structure", self.structure_combo)
         form.addRow("Level speed", self.speed_combo)
@@ -230,10 +310,77 @@ class TournamentSetupScreen(QWidget):
             )
         )
         self.buy_in_spin.valueChanged.connect(self.refresh_cost)
+        self.opponents_spin.valueChanged.connect(self._resize_field)
+        self.table_size_spin.valueChanged.connect(self._refresh_tables)
+        self.final_table_spin.valueChanged.connect(self._refresh_tables)
         self.refresh_cost()
+        self._refresh_field()
+
+    # --- The bots -------------------------------------------------------------
+
+    @property
+    def difficulty(self) -> Difficulty:
+        return Difficulty(self.difficulty_combo.currentData())
 
     def opponents(self) -> tuple[str, ...]:
-        return self.bot_picker.opponents()
+        return tuple(bot.style for bot in self.field)
+
+    def set_field(self, field: list[FieldBot]) -> None:
+        self.field = list(field)
+        self._refresh_field()
+
+    def draw_field(self) -> None:
+        """Every bot drawn again at random, for the difficulty."""
+        self.set_field(
+            random_field(
+                len(self.field), self.difficulty, self.rng, self.name_label.text()
+            )
+        )
+
+    def manage_bots(self) -> None:
+        dialog = self.bot_manager()
+
+        if dialog.exec() == BotManagerDialog.DialogCode.Accepted:
+            self.difficulty_combo.setCurrentIndex(
+                self.difficulty_combo.findData(dialog.difficulty)
+            )
+            self.set_field(dialog.field())
+
+    def bot_manager(self) -> BotManagerDialog:
+        """The window managing the bots, on the current field."""
+        return BotManagerDialog(
+            self.field, self.name_label.text(), self.difficulty, self.rng, self
+        )
+
+    def _resize_field(self, count: int) -> None:
+        """New bots at random (for the difficulty); fewer: the last ones go."""
+        if count != len(self.field):
+            self.set_field(
+                random_field(
+                    count,
+                    self.difficulty,
+                    self.rng,
+                    self.name_label.text(),
+                    keep=self.field,
+                )
+            )
+
+    def _refresh_field(self) -> None:
+        self.opponents_spin.blockSignals(True)
+        self.opponents_spin.setValue(len(self.field))
+        self.opponents_spin.blockSignals(False)
+        self.field_label.setText(describe_field(self.field))
+        self._refresh_tables()
+
+    def _refresh_tables(self) -> None:
+        """The final table seats at least as many as the other tables."""
+        table_size = self.table_size_spin.value()
+        self.final_table_spin.setMinimum(table_size)
+        self.tables_label.setText(
+            describe_tables(
+                len(self.field) + 1, table_size, self.final_table_spin.value()
+            )
+        )
 
     def cost(self) -> int:
         return self.buy_in_spin.value()
@@ -244,7 +391,18 @@ class TournamentSetupScreen(QWidget):
         self.refresh_cost()
 
     def set_player_name(self, name: str) -> None:
+        """Your name; a bot with the same name is renamed."""
         self.name_label.setText(name)
+
+        if any(bot.name == name for bot in self.field):
+            taken = {name, *(bot.name for bot in self.field)}
+            [new_name] = bot_names(1, taken)
+            self.set_field(
+                [
+                    FieldBot(new_name, bot.style) if bot.name == name else bot
+                    for bot in self.field
+                ]
+            )
 
     def refresh_cost(self) -> None:
         affordable = self.buy_in_info.refresh(self.cost(), self._balance, self._hints)
@@ -256,12 +414,15 @@ class TournamentSetupScreen(QWidget):
         return TournamentSettings(
             player_name=self.name_label.text(),
             opponents=self.opponents(),
+            bot_names=tuple(bot.name for bot in self.field),
             starting_stack=self.stack_spin.value(),
             structure=self.structure_combo.currentData(),
             levels_by=self.speed_combo.currentData(),
             buy_in=self.buy_in_spin.value(),
             payout=payout,
             rebuys=self.rebuys_check.isChecked(),
+            table_size=self.table_size_spin.value(),
+            final_table_size=self.final_table_spin.value(),
         )
 
     def _on_start_clicked(self) -> None:
