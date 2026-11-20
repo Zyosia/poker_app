@@ -70,6 +70,9 @@ class UserSettings:
     """A sound when it is your turn to act."""
     bot_cards: str = BotCards.SHOWDOWN.value
     """A ``BotCards`` value."""
+    show_bot_styles: bool = False
+    """Each bot's play style under its name at the table (V3.2): off by
+    default, so the user can try to spot the styles first."""
     four_color_deck: bool = False
     """Diamonds blue and clubs green, so the four suits never look alike."""
     table_to_front: bool = True

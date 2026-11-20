@@ -66,6 +66,7 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 * [V3.0 — Extras cash game](#v30--extras-cash-game)
 * [V3.1 — Tournois multi-tables](#v31--tournois-multi-tables)
 * [V3.1.1 — Limit Hold'em, tables en direct](#v311--limit-holdem-tables-en-direct)
+* [V3.2 — Spin & Go en un clic, styles des bots](#v32--spin--go-en-un-clic-styles-des-bots)
 
 * [Plus tard / peut-être](#plus-tard--peut-être)
 
@@ -702,6 +703,7 @@ frontend/
 │   ├── replayer_window.py Le relecteur à côté d'une table (V2.1)
 │   ├── tournament_lobby.py, bot_manager_dialog.py  Lobby et bots (V3.1)
 │   ├── table_spectator_window.py  Regarder une autre table (V3.1.1)
+│   ├── spin_quick_screen.py  Spin & Go en un clic (V3.2)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -941,7 +943,7 @@ Chip integrity
 [V3.1.1](#v311--limit-holdem-tables-en-direct)) :
 
 ```text
-1864 passed
+1906 passed
 ```
 
 ### État actuel
@@ -1919,6 +1921,9 @@ bankroll (solde, journal, partie en cours) sont sauvegardés dans
 | Windows | `%APPDATA%\Poker\profile.json` |
 | macOS | `~/Library/Application Support/Poker/profile.json` |
 | Linux | `~/.local/share/Poker/profile.json` |
+
+Depuis les sources ; une application empaquetée utilise son propre dossier
+`PokerApp` (voir [V3.2](#v32--spin--go-en-un-clic-styles-des-bots)).
 
 Le fichier a un `format_version`. Chaque sauvegarde écrit un fichier
 temporaire, garde la version précédente dans `profile.bak`, puis renomme le
@@ -3199,6 +3204,97 @@ permet de les **regarder**.
 
 ```text
 1864 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# V3.2 — Spin & Go en un clic, styles des bots
+
+La **V3.2** lance un Spin & Go en un clic, peut afficher le style de jeu des
+bots à la table, et donne à l'application empaquetée son propre dossier de
+données.
+
+## Fonctionnalités
+
+### ♥ Spin & Go en un clic
+
+* La fenêtre Spin & Go s'ouvre désormais sur une grille de **buy-ins** : 1,
+  2, 5, 10, 20, 25, 50, 100, 500, 1 000, 2 000, 2 500, 5 000, 10 000,
+  25 000, 50 000 et 100 000. Un clic paie le buy-in et lance la partie : No
+  Limit, sans limite de relances, niveaux au temps, multiplicateurs
+  équitables et horloge Standard.
+* **Opponents** (adversaires) : *Easy* (par défaut), *Normal* ou *Hard*. Les
+  deux bots sont tirés au hasard selon la difficulté, comme pour un tournoi
+  (*Easy* ne tire jamais de Shark ni d'Adaptive).
+* Un buy-in que la bankroll ne peut pas payer est désactivé ; un buy-in élevé
+  le signale dans son info-bulle (conseils de bankroll).
+* **Play again** garde le buy-in et tire deux nouveaux bots.
+* **Custom Spin & Go…** ouvre l'écran des versions précédentes (bots, buy-in,
+  jeu, multiplicateurs, horloge) ; **Back** revient aux buy-ins.
+
+### 🎭 Le style de jeu des bots
+
+* **Styles**, une case de la barre du haut de chaque table (et de la fenêtre
+  Paramètres, Tables), écrit le style de chaque bot sous son nom : TAG,
+  Calling Station, Shark… Elle est **décochée par défaut**, pour essayer de
+  deviner les styles d'abord, puis vérifier. Le choix est retenu et vaut pour
+  toutes les tables, et pour les tables regardées.
+
+### 💾 Un dossier de données pour l'application empaquetée
+
+Ce qui est sauvegardé, et où :
+
+| Données | Lancée depuis les sources | Application empaquetée (PyInstaller) |
+| --- | --- | --- |
+| Profil : nom, réglages, bankroll et son historique | `%APPDATA%\Poker\profile.json` | `%APPDATA%\PokerApp\profile.json` |
+| Sessions sauvegardées (les mains de chaque partie) | `backend/data/sessions/` | `%APPDATA%\PokerApp\sessions\` |
+| Historiques importés | `backend/data/sessions/imports/` | `%APPDATA%\PokerApp\sessions\imports\` |
+
+(macOS : `~/Library/Application Support/PokerApp` ; Linux :
+`~/.local/share/PokerApp`.) Les exports de la Bot Arena vont où vous le
+choisissez, et la ligne de commande des simulations écrit dans
+`backend/data/simulations/`.
+
+* Avant la V3.2, une version empaquetée partageait le profil de la copie de
+  développement (même bankroll, même nom) et gardait ses sessions dans son
+  propre dossier ; une version `--onefile` les perdait même à la fermeture,
+  car elle se décompresse dans un dossier temporaire.
+* Une version empaquetée utilise désormais **son propre dossier** : elle
+  démarre vierge pour un nouvel utilisateur (bankroll de 100 000, nom Hero,
+  réglages par défaut, aucune session). La copie de développement garde ses
+  données où elles étaient.
+* **Delete all data…** (Paramètres) vide le dossier de la copie utilisée.
+
+> 📸 *Emplacement de capture : les buy-ins du Spin & Go, et une table
+> affichant les styles.*
+
+## Changements de l'application
+
+* `PlayerController.style` : la clé du type de bot avec lequel un bot a été
+  créé (None pour un humain), posée par `BotType.create`.
+* `QUICK_SPIN_BUY_INS`, `QUICK_SPIN_CLOCK`, `DEFAULT_QUICK_SPIN_DIFFICULTY`
+  et `quick_spin_settings(buy_in, difficulty, player_name, rng)` dans
+  `backend/application/setup.py`.
+* `UserSettings.show_bot_styles` (faux par défaut) ; les anciens profils se
+  chargent sans changement.
+* `frontend/main.py` : `is_built()`, `data_folder()`, `session_folder()` ;
+  l'application s'appelle `PokerApp` une fois empaquetée, `Poker` depuis les
+  sources.
+* Aucun changement du moteur.
+
+## Objectifs
+
+* [x] Spin & Go lancé en un clic, 17 buy-ins, Easy / Normal / Hard
+* [x] Spin & Go personnalisé conservé
+* [x] Le style de jeu des bots à la table, à la demande
+* [x] Un dossier de données propre à l'application empaquetée
+
+## Tests
+
+```text
+1906 passed
 ```
 
 [↑ Retour au sommaire](#sommaire)

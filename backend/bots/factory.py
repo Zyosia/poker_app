@@ -59,11 +59,10 @@ class BotType:
         self, rng: random.Random, overrides: ProfileOverrides = ()
     ) -> PlayerController:
         profile = self.build_profile(overrides)
+        bot = self.build(rng) if profile is None else BasicBot(rng, profile=profile)
+        bot.style = self.key
 
-        if profile is None:
-            return self.build(rng)
-
-        return BasicBot(rng, profile=profile)
+        return bot
 
 
 BOT_TYPES: dict[str, BotType] = {

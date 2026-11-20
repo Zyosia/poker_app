@@ -123,6 +123,14 @@ class SettingsDialog(QDialog):
                 "bot_cards", self.bot_cards_combo.currentData()
             )
         )
+        self.styles_check = QCheckBox("Show the bots' play styles at the table")
+        self.styles_check.setToolTip(
+            "Each bot's style under its name. Off: try to spot the styles "
+            "from how they play."
+        )
+        self.styles_check.toggled.connect(
+            lambda checked: self.setting_changed.emit("show_bot_styles", checked)
+        )
         self.speed_combo = QComboBox()
 
         for speed in TABLE_SPEEDS:
@@ -197,6 +205,7 @@ class SettingsDialog(QDialog):
 
         tables = QFormLayout()
         tables.addRow("Bots' cards", self.bot_cards_combo)
+        tables.addRow(self.styles_check)
         tables.addRow("Table speed", self.speed_combo)
         tables.addRow(self.auto_next_check)
         tables.addRow(self.big_blinds_check)
@@ -241,6 +250,7 @@ class SettingsDialog(QDialog):
             self.volume_slider,
             self.turn_alert_check,
             self.bot_cards_combo,
+            self.styles_check,
             self.speed_combo,
             self.auto_next_check,
             self.big_blinds_check,
@@ -260,6 +270,7 @@ class SettingsDialog(QDialog):
         self.bot_cards_combo.setCurrentIndex(
             self.bot_cards_combo.findData(settings.bot_cards)
         )
+        self.styles_check.setChecked(settings.show_bot_styles)
         self.speed_combo.setCurrentIndex(self.speed_combo.findData(speed))
         self.auto_next_check.setChecked(settings.auto_next_hand)
         self.big_blinds_check.setChecked(settings.show_in_big_blinds)

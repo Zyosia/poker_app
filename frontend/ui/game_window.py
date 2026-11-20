@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QLabel, QWidget
 
+from backend.application.action_clock import ClockPreset, clock_preset
 from backend.application.bankroll import GameAccount, InsufficientFundsError
 from backend.application.controllers import HumanController
 from backend.application.game import PokerGame
@@ -20,6 +21,7 @@ from backend.application.game_modes import MODE_LABELS, GameMode
 from backend.application.hand_records import live_session_record
 from backend.application.profile import BotCards, UserSettings
 from backend.application.setup import (
+    QUICK_SPIN_CLOCK,
     GameSettings,
     SpinSettings,
     TournamentSettings,
@@ -35,6 +37,7 @@ from .cash_setup_screen import CashSetupScreen
 from .game_screen import GameScreen
 from .navigation_window import NavigationWindow
 from .replayer_window import ReplayerWindow, last_replayable_hand
+from .spin_quick_screen import SpinQuickScreen
 from .table_spectator_window import TableSpectatorWindow
 from .tournament_lobby import TournamentLobbyWindow
 from .tournament_results_screen import TournamentResultsScreen
@@ -79,11 +82,18 @@ class GameWindow(NavigationWindow):
         """Table 1, 2...: the lowest number free when the window opened."""
         self.game_name = MODE_LABELS[mode]
         self._played_settings: PlayedSettings | None = None
+        self._played_clock: ClockPreset | None = None
+        self._quick_buy_in: int | None = None
+        """The buy-in of a Spin & Go started in one click (None: set up)."""
         self.replayer_window: ReplayerWindow | None = None
         self.lobby_window: TournamentLobbyWindow | None = None
         self.spectator_windows: dict[int, TableSpectatorWindow] = {}
         """The other tables of the tournament watched, by number (V3.1.1)."""
 
+        self.quick_screen: SpinQuickScreen | None = (
+            SpinQuickScreen() if mode == GameMode.SPIN else None
+        )
+        """The Spin & Go started in one click, before the custom setup (V3.2)."""
         self.setup_screen = self._create_setup_screen()
         self.table_screen: GameScreen = (
             GameScreen() if mode == GameMode.CASH else TournamentScreen()
@@ -92,12 +102,13 @@ class GameWindow(NavigationWindow):
         self.bankroll_screen = BankrollScreen()
         self.screens.setObjectName("tableFrame")
         self.add_screens(
+            *([self.quick_screen] if self.quick_screen is not None else []),
             self.setup_screen,
             self.table_screen,
             self.results_screen,
             self.bankroll_screen,
         )
-        self.show_first(self.setup_screen)
+        self.show_first(self.quick_screen or self.setup_screen)
         self._connect()
         self.apply_settings(lobby.profile.settings)
         self._update_title()
@@ -132,9 +143,19 @@ class GameWindow(NavigationWindow):
         setup = self.setup_screen
         table = self.table_screen
 
-        setup.back_requested.connect(self.close)
+        quick = self.quick_screen
         setup.bankroll_bar.bankroll_requested.connect(self.open_bankroll)
         setup.bankroll_bar.reload_requested.connect(lobby.reload_bankroll)
+
+        if quick is None:
+            setup.back_requested.connect(self.close)
+        else:
+            setup.back_requested.connect(self.back)
+            quick.back_requested.connect(self.close)
+            quick.custom_requested.connect(lambda: self.push(self.setup_screen))
+            quick.start_requested.connect(self.play_quick_spin)
+            quick.bankroll_bar.bankroll_requested.connect(self.open_bankroll)
+            quick.bankroll_bar.reload_requested.connect(lobby.reload_bankroll)
         self.bankroll_screen.back_requested.connect(self.back)
         self.bankroll_screen.changed.connect(
             lambda: lobby.on_bankroll_screen_changed(self.bankroll_screen)
@@ -142,6 +163,7 @@ class GameWindow(NavigationWindow):
 
         table.sounds = lobby.sounds
         table.show_in_big_blinds_changed.connect(lobby.set_show_in_big_blinds)
+        table.show_bot_styles_changed.connect(lobby.set_show_bot_styles)
         table.speed_changed.connect(lobby.set_table_speed)
         table.auto_next_hand_changed.connect(lobby.set_auto_next_hand)
         table.history_shown_changed.connect(lobby.set_show_history)
@@ -172,7 +194,12 @@ class GameWindow(NavigationWindow):
         table.set_history_shown(settings.show_history)
         table.turn_alert = settings.turn_alert
         table.set_bot_cards(BotCards(settings.bot_cards))
+        table.set_show_bot_styles(settings.show_bot_styles)
         self.setup_screen.set_player_name(settings.player_name)
+
+        if self.quick_screen is not None:
+            self.quick_screen.set_player_name(settings.player_name)
+
         self.refresh_bankroll()
 
     def refresh_bankroll(self) -> None:
@@ -182,6 +209,12 @@ class GameWindow(NavigationWindow):
             bankroll.balance, bankroll.can_reload
         )
         self.setup_screen.set_bankroll(bankroll.balance, hints)
+
+        if self.quick_screen is not None:
+            self.quick_screen.bankroll_bar.set_balance(
+                bankroll.balance, bankroll.can_reload
+            )
+            self.quick_screen.set_bankroll(bankroll.balance, hints)
 
         if self.current_screen is self.bankroll_screen:
             self.bankroll_screen.refresh()
@@ -273,25 +306,50 @@ class GameWindow(NavigationWindow):
 
     def play_tournament(self, settings: PlayedSettings) -> None:
         """Pay the buy-in, start a tournament or a Spin & Go, show its table."""
+        setup = self.setup_screen
+        self._play(settings, setup.clock_combo.preset(), setup.error_label)
+        self._quick_buy_in = None
+
+    def play_quick_spin(self, settings: SpinSettings) -> None:
+        """A Spin & Go started in one click, on the Standard clock (V3.2)."""
+        assert self.quick_screen is not None
+
+        if self._play(
+            settings, clock_preset(QUICK_SPIN_CLOCK), self.quick_screen.error_label
+        ):
+            self._quick_buy_in = settings.buy_in
+
+    def _play(
+        self, settings: PlayedSettings, clock: ClockPreset | None, errors: QLabel
+    ) -> bool:
         account = self._pay_buy_in(settings)
 
         if account is None:
-            self.setup_screen.error_label.setText("Not enough money in your bankroll.")
-            return
+            errors.setText("Not enough money in your bankroll.")
+            return False
 
         self._played_settings = settings
+        self._played_clock = clock
         self.push(self.table_screen)
         self._start_played(settings, account)
 
+        return True
+
     def play_again(self) -> None:
+        """The same game again; a Spin & Go started in one click draws two
+        new bots."""
         settings = self._played_settings
 
         if settings is None:
             return
 
+        if self._quick_buy_in is not None and self.quick_screen is not None:
+            settings = self.quick_screen.settings_for(self._quick_buy_in)
+
         account = self._pay_buy_in(settings)
 
         if account is not None:
+            self._played_settings = settings
             self.replace(self.table_screen)
             self._start_played(settings, account)
 
@@ -323,7 +381,7 @@ class GameWindow(NavigationWindow):
             tournament,
             human_name=settings.player_name,
             save_path=self.lobby.new_save_path(),
-            clock=self.setup_screen.clock_combo.preset(),
+            clock=self._played_clock,
             account=account,
         )
 
@@ -364,7 +422,9 @@ class GameWindow(NavigationWindow):
             window = TableSpectatorWindow(table.tournament, number, self.title)
             self.spectator_windows[number] = window
 
-        window.set_display(table.bot_cards, table.show_in_big_blinds)
+        window.set_display(
+            table.bot_cards, table.show_in_big_blinds, table.show_bot_styles
+        )
         window.refresh()
         window.show()
         window.raise_()
@@ -376,7 +436,9 @@ class GameWindow(NavigationWindow):
 
         for window in self.spectator_windows.values():
             if window.isVisible():
-                window.set_display(table.bot_cards, table.show_in_big_blinds)
+                window.set_display(
+                    table.bot_cards, table.show_in_big_blinds, table.show_bot_styles
+                )
                 window.refresh()
 
     def _close_spectators(self) -> None:

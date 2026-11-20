@@ -70,6 +70,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V3.1.1 — Limit Hold'em, Live Tables](#v311--limit-holdem-live-tables)
 
+- [V3.2 — Quick Spin & Go, Bot Styles](#v32--quick-spin--go-bot-styles)
+
 - [Later / Maybe](#later--maybe)
 
 - [Development Principles](#development-principles)
@@ -662,6 +664,7 @@ frontend/
 │   ├── replayer_window.py The replayer beside a table (V2.1)
 │   ├── tournament_lobby.py, bot_manager_dialog.py  Lobby and bots (V3.1)
 │   ├── table_spectator_window.py  Watch another table (V3.1.1)
+│   ├── spin_quick_screen.py  Spin & Go in one click (V3.2)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -1801,6 +1804,9 @@ operating system's application data folder:
 | Windows | `%APPDATA%\Poker\profile.json` |
 | macOS | `~/Library/Application Support/Poker/profile.json` |
 | Linux | `~/.local/share/Poker/profile.json` |
+
+Run from the sources; a built application uses a `PokerApp` folder of its
+own (see [V3.2](#v32--quick-spin--go-bot-styles)).
 
 The file has a `format_version`. Each save writes a temporary file, keeps the
 previous version as `profile.bak`, then renames the new file into place. A
@@ -3008,6 +3014,92 @@ of a multi-table tournament play **live**, and lets you **watch** them.
 
 ---
 
+# V3.2 — Quick Spin & Go, Bot Styles
+
+**V3.2** starts a Spin & Go in one click, can show the bots' play styles at
+the table, and gives the packaged application a data folder of its own.
+
+## Features
+
+### ♥ Spin & Go in one click
+
+- The Spin & Go window now opens on a **buy-in** grid: 1, 2, 5, 10, 20, 25,
+  50, 100, 500, 1,000, 2,000, 2,500, 5,000, 10,000, 25,000, 50,000 and
+  100,000. A click pays the buy-in and starts the game: No Limit, no cap,
+  levels by time, the fair multipliers and the Standard action clock.
+- **Opponents**: *Easy* (the default), *Normal* or *Hard*. The two bots are
+  drawn at random for the difficulty, as for a tournament field (*Easy*
+  never draws a Shark or an Adaptive).
+- A buy-in the bankroll cannot pay is disabled; a large one warns in its
+  tooltip (bankroll hints).
+- **Play again** keeps the buy-in and draws two new bots.
+- **Custom Spin & Go…** opens the setup of earlier versions (bots, buy-in,
+  game, multipliers, clock); **Back** returns to the buy-ins.
+
+### 🎭 The bots' play styles
+
+- **Styles**, a box in the top bar of every table (and in the Settings
+  window, Tables), writes each bot's style under its name: TAG, Calling
+  Station, Shark... It is **off by default**, so you can try to spot the
+  styles first, then check. The choice is remembered and applies to every
+  table, and to the tables you watch.
+
+### 💾 A data folder for the built application
+
+What is saved, and where:
+
+| Data | Run from the sources | Built application (PyInstaller) |
+| --- | --- | --- |
+| Profile: name, settings, bankroll and its history | `%APPDATA%\Poker\profile.json` | `%APPDATA%\PokerApp\profile.json` |
+| Saved sessions (the hands of every game) | `backend/data/sessions/` | `%APPDATA%\PokerApp\sessions\` |
+| Imported hand histories | `backend/data/sessions/imports/` | `%APPDATA%\PokerApp\sessions\imports\` |
+
+(macOS: `~/Library/Application Support/PokerApp`; Linux:
+`~/.local/share/PokerApp`.) The Bot Arena exports go where you choose, and
+the simulation command line writes to `backend/data/simulations/`.
+
+- Before V3.2, a build shared the profile of the development copy (same
+  bankroll, same name), and kept its sessions inside its own folder; a
+  `--onefile` build even lost them at exit, since it unpacks to a temporary
+  folder.
+- A build now uses **its own folder**, so it starts fresh for a new user: a
+  100,000 bankroll, the name Hero, the default settings and no sessions. The
+  development copy keeps its data where they were.
+- **Delete all data…** (Settings) clears the folder of the copy in use.
+
+> 📸 *Screenshot placeholder: the Spin & Go buy-ins, and a table showing the
+> styles.*
+
+## Application changes
+
+- `PlayerController.style`: the bot type key a bot was created with (None
+  for a human), set by `BotType.create`.
+- `QUICK_SPIN_BUY_INS`, `QUICK_SPIN_CLOCK`, `DEFAULT_QUICK_SPIN_DIFFICULTY`
+  and `quick_spin_settings(buy_in, difficulty, player_name, rng)` in
+  `backend/application/setup.py`.
+- `UserSettings.show_bot_styles` (false by default); older profiles load
+  unchanged.
+- `frontend/main.py`: `is_built()`, `data_folder()`, `session_folder()`; the
+  application is named `PokerApp` when built, `Poker` from the sources.
+- No change to the engine.
+
+## Objectives
+
+- [x] Spin & Go started in one click, 17 buy-ins, Easy / Normal / Hard
+- [x] Custom Spin & Go kept
+- [x] The bots' play styles at the table, on demand
+- [x] A data folder of its own for the built application
+
+## Tests
+
+```text
+1906 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
 # Later / Maybe
 
 - [ ] Watch mode for Bot Arena tournament runs: moved from V1.0, a tournament
@@ -3093,7 +3185,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1864 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1906 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

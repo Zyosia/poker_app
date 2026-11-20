@@ -293,6 +293,11 @@ SECTIONS: tuple[Section, ...] = (
                     "A fast three-player tournament. Before it starts, a random "
                     "multiplier sets the prize: usually twice the buy-in, sometimes "
                     "much more.",
+                    "Click a <b>buy-in</b> (1 to 100,000) and the game starts at "
+                    "once: No Limit, levels by time, fair multipliers, the "
+                    "Standard clock, and two bots drawn for the difficulty "
+                    "(<i>Easy</i> by default). <b>Custom Spin & Go…</b> chooses "
+                    "everything yourself.",
                 ),
             ),
             Topic(
@@ -336,7 +341,9 @@ SECTIONS: tuple[Section, ...] = (
             Topic(
                 "Reading the table",
                 (
-                    "<b>Show in BB</b> shows every amount in big blinds. Once an "
+                    "<b>Show in BB</b> shows every amount in big blinds. "
+                    "<b>Styles</b> writes each bot's play style under its name: "
+                    "leave it off to guess the styles from how they play. Once an "
                     "all-in is called, the cards are turned face up with each "
                     "player's chance of winning.",
                     "The <b>hand history</b> on the right shows every hand with its "

@@ -16,7 +16,7 @@ from frontend.components.hand_history import HISTORY_WIDTH, HandHistoryView, Ton
 from frontend.components.table_widget import TableWidget
 from frontend.formatting import describe_result, format_cards
 
-from .game_screen import build_table_state
+from .game_screen import bot_styles, build_table_state
 
 WINDOW_SIZE = (900, 560)
 
@@ -34,6 +34,7 @@ class TableSpectatorWindow(QWidget):
         self.number = number
         self.bot_cards = BotCards.SHOWDOWN
         self.in_big_blinds = False
+        self.show_styles = False
         self._hand: Hand | None = None
         self._logged_actions = 0
         self._logged_streets = 0
@@ -72,11 +73,14 @@ class TableSpectatorWindow(QWidget):
         self.history_view.clear()
         self.refresh()
 
-    def set_display(self, bot_cards: BotCards, in_big_blinds: bool) -> None:
+    def set_display(
+        self, bot_cards: BotCards, in_big_blinds: bool, show_styles: bool = False
+    ) -> None:
         """The table settings of your own table."""
-        if (bot_cards, in_big_blinds) != (self.bot_cards, self.in_big_blinds):
-            self.bot_cards = bot_cards
-            self.in_big_blinds = in_big_blinds
+        display = (bot_cards, in_big_blinds, show_styles)
+
+        if display != (self.bot_cards, self.in_big_blinds, self.show_styles):
+            self.bot_cards, self.in_big_blinds, self.show_styles = display
             self._state = None
             self.refresh()
 
@@ -128,6 +132,11 @@ class TableSpectatorWindow(QWidget):
                 human_name=None,
                 in_big_blinds=self.in_big_blinds,
                 bot_cards=self.bot_cards,
+                styles=(
+                    bot_styles(self.tournament.controllers)
+                    if self.show_styles
+                    else None
+                ),
             )
         )
 
