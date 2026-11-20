@@ -80,6 +80,8 @@ def start_hand(session: GameSession, deck: Deck | None = None) -> Hand:
         deck=deck or Deck(),
         min_bet=level.big_blind,
         blind_level=level,
+        betting=session.config.betting.structure,
+        bet_cap=session.config.betting.table_cap,
     )
     session.hands.append(hand)
 
@@ -252,6 +254,8 @@ def _post_straddle(hand: Hand, amount: int) -> None:
     put_chips_in_pot(player=straddler, hand=hand, amount=amount - bet_before)
     hand.current_bet = amount
     hand.last_raise_size = amount
+    hand.full_bet = amount
+    hand.bets_this_street += 1  # A raise: in Fixed Limit, the next is to 3 BB.
     record_action(
         hand=hand,
         player=straddler,

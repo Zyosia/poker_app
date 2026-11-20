@@ -705,8 +705,8 @@ class StrategyBot(PlayerController):
         raise_action = legal.get(ActionType.RAISE)
 
         if target >= me.stack + me.current_bet or raise_action is None:
-            if ActionType.ALL_IN in legal:
-                return Action(type=ActionType.ALL_IN)
+            if ActionType.ALL_IN in legal or raise_action is not None:
+                return _shove(legal)
             return (
                 Action(type=ActionType.CALL)
                 if ActionType.CALL in legal
@@ -830,7 +830,17 @@ def _call_amount(legal: dict[ActionType, LegalAction]) -> int:
 
 
 def _shove(legal: dict[ActionType, LegalAction]) -> Action:
-    for action_type in (ActionType.ALL_IN, ActionType.CALL, ActionType.CHECK):
+    """All-in, or the biggest raise when the limit forbids it (Pot Limit and
+    Fixed Limit), else a call."""
+    if ActionType.ALL_IN in legal:
+        return Action(type=ActionType.ALL_IN)
+
+    raise_action = legal.get(ActionType.RAISE)
+
+    if raise_action is not None:
+        return Action(type=ActionType.RAISE, amount=raise_action.max_amount)
+
+    for action_type in (ActionType.CALL, ActionType.CHECK):
         if action_type in legal:
             return Action(type=action_type)
 

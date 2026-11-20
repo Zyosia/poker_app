@@ -37,6 +37,15 @@ one player holds every chip. Rules and choices:
   is never broken, and the ``featured`` player (you) sits there and is never
   moved: it is the table played step by step, the others are played at once
   when its hand ends.
+- **Live tables** (V3.1.1, ``live``): the application plays the other tables
+  at their own pace with ``step_table``, as in a real tournament: they never
+  wait for your hand. A busted player is ranked as soon as their table's
+  hand ends. A moved player sits down at the new table's next hand. The
+  tables only play **hand-for-hand** (one hand each, together, the busts of
+  the round ranked together) one player away from the money (the bubble)
+  and one player away from the final table. Before the final table, and
+  during hand-for-hand, your table waits for the others to finish their
+  hand. ``stop_live`` goes back to rounds (simulated play-out once out).
 """
 
 import math
@@ -47,7 +56,7 @@ from dataclasses import dataclass, field
 
 from backend.poker_engine.betting import apply_action
 from backend.poker_engine.blinds import BlindLevel, BlindStructure
-from backend.poker_engine.constants import MAX_TABLE_SEATS
+from backend.poker_engine.constants import MAX_TABLE_SEATS, NO_LIMIT, BettingRules
 from backend.poker_engine.deck import Deck
 from backend.poker_engine.hand import advance_hand, start_hand
 from backend.poker_engine.models import ActionEvent, Hand, Player
@@ -118,6 +127,7 @@ class TournamentConfig:
     """Seats per table when there are several tables."""
     final_table_size: int = MAX_TABLE_SEATS
     """The players left gather at one table once they are this many."""
+    betting: BettingRules = NO_LIMIT
 
     def __post_init__(self) -> None:
         if self.starting_stack <= 0:
@@ -267,6 +277,21 @@ class TournamentTable:
 
     number: int
     session: GameSession
+    hand: Hand | None = None
+    """Live tables: the hand in progress, or the last one."""
+    hands_played: int = 0
+    stacks_before: dict[str, int] = field(default_factory=dict)
+    """The stacks at the start of the table's last hand (live tables)."""
+    incoming: list[Player] = field(default_factory=list)
+    """Live tables: players moved here, seated at the next hand."""
+    round_due: bool = False
+    """Hand-for-hand: the table still has to play the round's hand."""
+    in_round: bool = False
+    """Hand-for-hand: the hand in progress belongs to the round."""
+
+    @property
+    def is_hand_in_progress(self) -> bool:
+        return self.hand is not None and not self.hand.finished
 
 
 @dataclass
@@ -280,6 +305,15 @@ class _Entry:
     tie_order: int = 0
     """Order among the players ranked with them (clockwise from the button
     then), kept for the players no longer seated at the end."""
+
+
+@dataclass
+class _Round:
+    """A hand-for-hand round of live tables: its busts are ranked together."""
+
+    hand_number: int
+    stacks_before: dict[str, int] = field(default_factory=dict)
+    busted: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -306,6 +340,7 @@ class Tournament:
         keep_hands: bool = False,
         on_hand_end: HandEndCallback | None = None,
         featured: str | None = None,
+        live: bool = False,
     ) -> None:
         """Seat the players; the first hand is dealt by ``start_hand``.
 
@@ -317,7 +352,8 @@ class Tournament:
         its start, before any rebuy or elimination (chip checks).
         With several tables, ``featured`` (the human) sits at table 1 and
         is never moved; only that player may be a human. Every table's
-        first button is at ``dealer_index`` (modulo its size).
+        first button is at ``dealer_index`` (modulo its size). ``live``
+        lets the application play the other tables at their own pace.
         """
         if not MIN_PLAYERS <= len(seat_names) <= MAX_ENTRANTS:
             raise ValueError(
@@ -346,6 +382,7 @@ class Tournament:
             ),
             small_blind=first_level.small_blind,
             big_blind=first_level.big_blind,
+            betting=config.betting,
         )
         self._players = players
         self._by_name = {player.name: player for player in players}
@@ -368,6 +405,11 @@ class Tournament:
         self.table_moves: list[TableMove] = []
         self.final_table_hand: int | None = None
         """The first round played at the final table (several tables only)."""
+        self.live = live and self.multi_table
+        """The other tables play at their own pace (``step_table``)."""
+        self._round: _Round | None = None
+        self._late_add_ons: set[str] = set()
+        """Live: bots taking the add-on once their table's hand is over."""
 
         if self.multi_table:
             humans = [
@@ -409,12 +451,14 @@ class Tournament:
         return self._by_name[name]
 
     def table_of(self, name: str) -> TournamentTable | None:
-        """The table a player sits at; None once they left it (several tables)."""
+        """The table a player sits at, or moves to (live tables); None once
+        they left it (several tables)."""
         return next(
             (
                 table
                 for table in self.tables
                 if any(player.name == name for player in table.session.players)
+                or any(player.name == name for player in table.incoming)
             ),
             None,
         )
@@ -602,6 +646,16 @@ class Tournament:
 
     # --- Rebuys and add-on ------------------------------------------------
 
+    def _between_hands(self, name: str) -> bool:
+        """Whether the player's table is between two hands (chips may be
+        added): your table, or the player's own one with live tables."""
+        if not self.live:
+            return not self.is_hand_in_progress
+
+        table = self.table_of(name)
+
+        return table is None or not table.is_hand_in_progress
+
     @property
     def rebuy_period_open(self) -> bool:
         rules = self.config.rebuys
@@ -612,7 +666,7 @@ class Tournament:
         rules = self.config.rebuys
         entry = self._entries[name]
 
-        if rules is None or self.is_hand_in_progress or entry.place is not None:
+        if rules is None or not self._between_hands(name) or entry.place is not None:
             return False
 
         if not self.rebuy_period_open:
@@ -657,7 +711,7 @@ class Tournament:
             rules is not None
             and rules.add_on_stack is not None
             and self._add_on_open
-            and not self.is_hand_in_progress
+            and self._between_hands(name)
             and self._entries[name].place is None
             and self._entries[name].add_ons == 0
         )
@@ -666,6 +720,9 @@ class Tournament:
         if not self.can_add_on(name):
             raise RuntimeError(f"{name} cannot take the add-on now.")
 
+        self._give_add_on(name)
+
+    def _give_add_on(self, name: str) -> None:
         rules = self.config.rebuys
         assert rules is not None and rules.add_on_stack is not None
         self._player(name).stack += rules.add_on_stack
@@ -692,6 +749,10 @@ class Tournament:
                 raise RuntimeError("The tournament is over.")
 
         self._add_on_open = False
+
+        if self.live:
+            return self._start_live_hand(deck)
+
         self.level_index = self._next_level_index()
 
         if self.multi_table and self.hands_played > 0:
@@ -774,6 +835,8 @@ class Tournament:
     def play_round(self) -> None:
         """Settle the busts of the last hand, or play the next round (every
         table's hand); only for tables with no human deciding."""
+        self.stop_live()
+
         if self._pending is not None:
             self._settle_pending()
         else:
@@ -782,10 +845,14 @@ class Tournament:
     # --- End of a hand ----------------------------------------------------
 
     def _on_hand_finished(self) -> None:
+        if self.live:
+            self._end_live_featured_hand()
+            return
+
         self.hands_played += 1
 
         if self.hand is not None:
-            self._end_table_hand(self.session, self.hand)
+            self._end_table_hand(self.session, self.hand, self.stacks_before)
 
         if not self.keep_hands:
             self.session.hands.clear()  # Millions of hands would fill the memory.
@@ -829,20 +896,23 @@ class Tournament:
         if pending is None:
             return
 
-        busted = [name for name in pending.busted if self._player(name).stack == 0]
-        left = sum(
-            1
-            for player in self.players
-            if self._entries[player.name].place is None and player.stack > 0
-        )
-        self._rank_out(busted, pending.stacks_before, first_place=left + 1)
+        self._settle_busts(pending.busted, pending.stacks_before, pending.hand_number)
+
+    def _settle_busts(
+        self, names: list[str], stacks: Mapping[str, int], hand_number: int
+    ) -> None:
+        """Rank out the players of ``names`` still without chips (the others
+        rebought), and end the tournament once one player is left."""
+        busted = [name for name in names if self._player(name).stack == 0]
+        left = len(self.players_left()) - len(busted)
+        self._rank_out(busted, stacks, first_place=left + 1)
 
         for name in busted:
-            self._entries[name].eliminated_on_hand = pending.hand_number
+            self._entries[name].eliminated_on_hand = hand_number
             self._session_of(name).eliminate_player(self._player(name))
 
         if busted:
-            self._announce(pending.hand_number, busted)
+            self._announce(hand_number, busted)
 
         if left == 1:
             self._finish()
@@ -913,6 +983,8 @@ class Tournament:
 
             if wants_add_on and self.can_add_on(player.name):
                 self.add_on(player.name)
+            elif wants_add_on and self.live:
+                self._late_add_ons.add(player.name)
 
     def _finish(self) -> None:
         survivors = [
@@ -1023,7 +1095,9 @@ class Tournament:
 
     # --- Several tables ---------------------------------------------------
 
-    def _end_table_hand(self, session: GameSession, hand: Hand) -> None:
+    def _end_table_hand(
+        self, session: GameSession, hand: Hand, stacks_before: Mapping[str, int]
+    ) -> None:
         """Tell the players of the table how the hand went; chip checks."""
         notify_hand_end(
             [self.controllers[player.name] for player in session.players],
@@ -1032,7 +1106,7 @@ class Tournament:
 
         if self.on_hand_end is not None:
             self.on_hand_end(
-                hand, {seat.name: self.stacks_before[seat.name] for seat in hand.seats}
+                hand, {seat.name: stacks_before[seat.name] for seat in hand.seats}
             )
 
     def _play_other_tables(self) -> None:
@@ -1048,7 +1122,7 @@ class Tournament:
             while not hand.finished:
                 self._advance(hand)
 
-            self._end_table_hand(session, hand)
+            self._end_table_hand(session, hand, self.stacks_before)
             session.hands.clear()
 
     def _arrange_tables(self) -> None:
@@ -1118,6 +1192,338 @@ class Tournament:
             TableMove(self.hands_played + 1, name, from_table, to_table)
         )
 
+    # --- Live tables ------------------------------------------------------
+
+    @property
+    def hand_for_hand(self) -> bool:
+        """Live: the tables play together, one hand each, one player away
+        from the money (the bubble) or from the final table."""
+        if not self.live or len(self.tables) < 2:
+            return False
+
+        left = len(self.players_left())
+
+        return left in (
+            self.payout.places_paid + 1,
+            self.config.final_table_size + 1,
+        )
+
+    @property
+    def final_table_forming(self) -> bool:
+        """Live: the players left fit at the final table, but some still
+        play at (or come from) other tables."""
+        return (
+            self.live
+            and len(self.tables) > 1
+            and len(self.players_left()) <= self.config.final_table_size
+        )
+
+    def ready_to_deal(self) -> bool:
+        """Whether your table may deal its next hand now.
+
+        Live tables: it waits for the other tables to finish their hand at
+        hand-for-hand and before the final table, and for players when two
+        are not seated.
+        """
+        if not self.live:
+            return True
+
+        if self.is_finished or self.is_hand_in_progress or self._pending is not None:
+            return False
+
+        others = self.tables[1:]
+
+        if (self.hand_for_hand or self.final_table_forming) and any(
+            table.is_hand_in_progress for table in others
+        ):
+            return False
+
+        for table in list(others):  # Idle tables send their players on.
+            if not table.is_hand_in_progress:
+                self._prepare_table(table)
+
+        if self.final_table_forming:
+            return False
+
+        self._prepare_table(self.tables[0])
+
+        return len(self.session.get_players_with_chips()) >= MIN_PLAYERS
+
+    def step_table(self, table: TournamentTable) -> ActionEvent | None:
+        """Live: one step at another table: deal its next hand when it may,
+        else play one decision or deal one street (bots only)."""
+        if not self.live or table is self.tables[0] or table not in self.tables:
+            raise RuntimeError("Only the other live tables are stepped.")
+
+        if self.is_finished or self._pending is not None:
+            return None
+
+        hand = table.hand
+
+        if hand is not None and not hand.finished:
+            event = self._advance(hand)
+
+            if hand.finished:
+                self._end_live_table_hand(table)
+
+            return event
+
+        self._prepare_table(table)
+
+        if table not in self.tables or not self._may_deal(table):
+            return None
+
+        hand = self._deal_table(table)
+
+        if hand.finished:  # Everyone all-in from the blinds.
+            self._end_live_table_hand(table)
+
+        return None
+
+    def stop_live(self) -> None:
+        """Go back to rounds, every table playing one hand per round: the
+        hands in progress are finished first (bots only, you are out)."""
+        if not self.live:
+            return
+
+        while self.is_hand_in_progress:
+            self.step()
+
+        for table in list(self.tables[1:]):
+            while table.is_hand_in_progress:
+                self.step_table(table)
+
+        if self._pending is not None:
+            self._settle_pending()
+
+        for table in self.tables:
+            table.round_due = False
+            table.in_round = False
+
+        self._close_round_if_done()
+
+        for table in self.tables:
+            seated = self._seated(table) + table.incoming
+            table.incoming = []
+
+            if seated:
+                _reseat(table.session, seated)
+
+        self.live = False
+
+    def _may_deal(self, table: TournamentTable) -> bool:
+        """Whether another live table may deal its next hand now."""
+        if self.final_table_forming:
+            return False
+
+        enough = len(table.session.get_players_with_chips()) >= MIN_PLAYERS
+
+        if self._round is not None:
+            if not table.round_due:
+                return False
+
+            table.round_due = False
+
+            if not enough:
+                self._close_round_if_done()
+                return False
+
+            table.in_round = True
+            return True
+
+        return enough and not self.hand_for_hand
+
+    def _start_live_hand(self, deck: Deck | None) -> Hand:
+        """Deal your table's next hand; hand-for-hand, it opens the round."""
+        if not self.ready_to_deal():
+            raise RuntimeError("Your table waits for the other tables.")
+
+        table = self.tables[0]
+
+        if self.hand_for_hand:
+            self._round = _Round(self.hands_played + 1)
+            table.in_round = True
+
+            for other in self.tables[1:]:
+                other.round_due = True
+
+        if len(self.tables) == 1 and self.final_table_hand is None:
+            self.final_table_hand = self.hands_played + 1
+
+        self.hand = self._deal_table(table, deck)
+        self.stacks_before = table.stacks_before
+
+        if self.hand.finished:
+            self._on_hand_finished()
+
+        return self.hand
+
+    def _deal_table(self, table: TournamentTable, deck: Deck | None = None) -> Hand:
+        self.level_index = self._next_level_index()
+        session = table.session
+        session.set_blind_level(self.level)
+
+        if table.hands_played > 0:
+            session.table.move_dealer()
+
+        table.stacks_before = {
+            player.name: player.stack for player in session.get_players_with_chips()
+        }
+        table.hand = start_hand(session, deck or self._next_deck())
+
+        return table.hand
+
+    def _end_live_featured_hand(self) -> None:
+        """Your table's hand is over: its busts are ranked at once (or with
+        the round's, hand-for-hand); a busted human may first rebuy."""
+        self.hands_played += 1
+        table = self.tables[0]
+        hand = table.hand
+        assert hand is not None
+        table.hands_played += 1
+        self._end_table_hand(table.session, hand, table.stacks_before)
+
+        if not self.keep_hands:
+            self.session.hands.clear()
+
+        busted = self._rebuy_or_bust(table)
+
+        if any(self.can_rebuy(name) for name in busted):
+            table.in_round = False
+            self._pending = _PendingHand(
+                self.hands_played, dict(table.stacks_before), busted
+            )
+            self._close_round_if_done()
+        else:
+            self._end_busts(table, busted)
+
+        self._open_add_on_if_due()
+
+    def _end_live_table_hand(self, table: TournamentTable) -> None:
+        hand = table.hand
+        assert hand is not None
+        table.hands_played += 1
+        self._end_table_hand(table.session, hand, table.stacks_before)
+        table.session.hands.clear()
+
+        for player in table.session.players:
+            if player.name in self._late_add_ons:
+                self._late_add_ons.discard(player.name)
+
+                if self._entries[player.name].place is None and (
+                    player.stack <= self.config.starting_stack
+                ):
+                    self._give_add_on(player.name)
+
+        self._end_busts(table, self._rebuy_or_bust(table))
+
+    def _rebuy_or_bust(self, table: TournamentTable) -> list[str]:
+        """Bots of the table rebuy when they may; the players left without
+        chips are busted."""
+        busted = []
+
+        for player in table.session.players:
+            name = player.name
+
+            if self._entries[name].place is not None:
+                continue
+
+            if not self.controllers[name].is_human and self.can_rebuy(name):
+                self.rebuy(name)
+
+            if player.stack == 0:
+                busted.append(name)
+
+        return busted
+
+    def _end_busts(self, table: TournamentTable, busted: list[str]) -> None:
+        if table.in_round and self._round is not None:
+            table.in_round = False
+            self._round.busted.extend(busted)
+            self._round.stacks_before.update(table.stacks_before)
+            self._close_round_if_done()
+        elif busted:
+            table.in_round = False
+            self._settle_busts(busted, table.stacks_before, self.hands_played)
+
+    def _close_round_if_done(self) -> None:
+        """Rank the busts of a hand-for-hand round once every table played it."""
+        done = self._round
+
+        if done is None or any(t.round_due or t.in_round for t in self.tables):
+            return
+
+        self._round = None
+        self._settle_busts(done.busted, done.stacks_before, done.hand_number)
+
+    def _seated(self, table: TournamentTable) -> list[Player]:
+        return [
+            player
+            for player in table.session.players
+            if self._entries[player.name].place is None
+        ]
+
+    def _prepare_table(self, table: TournamentTable) -> None:
+        """Between two hands of a live table: the players out leave, those
+        moved here sit down, and the table breaks (the highest number
+        first, all of them for the final table) or sends players to the
+        emptiest tables until the tables are at most one player apart."""
+        seated = self._seated(table) + table.incoming
+        table.incoming = []
+        featured_table = self.tables[0]
+
+        if table is not featured_table:
+            left = len(self.players_left())
+            wanted = math.ceil(left / self.config.table_size)
+            final = left <= self.config.final_table_size
+
+            if final or (len(self.tables) > wanted and table is self.tables[-1]):
+                self.tables.remove(table)
+                board = table.session.table
+                # Clockwise from the button's left, then those who just came.
+                clockwise = [
+                    p for p in board.players_after(board.dealer) if p in seated
+                ]
+                clockwise += [p for p in seated if p not in clockwise]
+
+                for player in clockwise:
+                    target = self._emptiest_table() if not final else featured_table
+                    assert target is not None  # Table 1 is never broken.
+                    target.incoming.append(player)
+                    self._record_move(player.name, table.number, target.number)
+
+                return
+
+        while seated:
+            target = self._emptiest_table(excluding=table)
+
+            if target is None or len(seated) - self._table_size(target) <= 1:
+                break
+
+            mover = self._next_to_move(table, seated)
+            seated.remove(mover)
+            target.incoming.append(mover)
+            self._record_move(mover.name, table.number, target.number)
+
+        if seated:
+            _reseat(table.session, seated)
+
+    def _table_size(self, table: TournamentTable) -> int:
+        """Players at a table once those moving there sit down."""
+        return len(self._seated(table)) + len(table.incoming)
+
+    def _emptiest_table(
+        self, excluding: TournamentTable | None = None
+    ) -> TournamentTable | None:
+        candidates = [table for table in self.tables if table is not excluding]
+
+        if not candidates:
+            return None
+
+        return min(
+            candidates, key=lambda table: (self._table_size(table), table.number)
+        )
+
 
 def _initial_seating(
     players: list[Player], config: TournamentConfig, featured: str | None
@@ -1165,6 +1571,7 @@ class SpinConfig:
     structure: BlindStructure = SPIN_HYPER_TURBO
     starting_stack: int = SPIN_STARTING_STACK
     max_hands: int | None = None
+    betting: BettingRules = NO_LIMIT
 
     def tournament_config(self) -> TournamentConfig:
         return TournamentConfig(
@@ -1172,6 +1579,7 @@ class SpinConfig:
             starting_stack=self.starting_stack,
             buy_in=self.buy_in,
             max_hands=self.max_hands,
+            betting=self.betting,
         )
 
 

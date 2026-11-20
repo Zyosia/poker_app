@@ -379,6 +379,7 @@ class BatchSchedule:
                 rebuy_stack=config.starting_stack,
                 small_blind=config.small_blind,
                 big_blind=config.big_blind,
+                betting=config.betting,
             ),
             observers=[self.collector],
         )

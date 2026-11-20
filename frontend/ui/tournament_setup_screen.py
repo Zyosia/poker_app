@@ -38,6 +38,7 @@ from backend.application.tournament import MIN_TABLE_SIZE
 from backend.bots.factory import Difficulty
 from backend.poker_engine.constants import MAX_TABLE_SEATS
 from frontend.components.bankroll_bar import BankrollBar
+from frontend.components.betting_picker import BettingPicker
 from frontend.components.bot_picker import bot_combo, help_button
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
@@ -58,9 +59,11 @@ DEFAULT_SPIN = SpinSettings()
 
 
 def level_speed_combo() -> QComboBox:
+    """Levels by time, as in a real tournament, unless the user picks hands."""
     combo = QComboBox()
     combo.addItem("By hands", LEVELS_BY_HANDS)
     combo.addItem("By time (Pause freezes the clock)", LEVELS_BY_TIME)
+    combo.setCurrentIndex(combo.findData(LEVELS_BY_TIME))
 
     return combo
 
@@ -237,6 +240,7 @@ class TournamentSetupScreen(QWidget):
             )
 
         self.speed_combo = level_speed_combo()
+        self.betting_picker = BettingPicker()
         self.buy_in_choice = BuyInChoice(TOURNAMENT_BUY_INS, DEFAULT_TOURNAMENT.buy_in)
         self.buy_in_spin = self.buy_in_choice.spin
         self.payout_combo = QComboBox()
@@ -287,6 +291,7 @@ class TournamentSetupScreen(QWidget):
         form.addRow("Random bots", random_row)
         form.addRow("Seating", tables)
         form.addRow("", self.tables_label)
+        form.addRow("Game", self.betting_picker)
         form.addRow("Starting stack", self.stack_spin)
         form.addRow("Blind structure", self.structure_combo)
         form.addRow("Level speed", self.speed_combo)
@@ -423,6 +428,7 @@ class TournamentSetupScreen(QWidget):
             rebuys=self.rebuys_check.isChecked(),
             table_size=self.table_size_spin.value(),
             final_table_size=self.final_table_spin.value(),
+            betting=self.betting_picker.rules(),
         )
 
     def _on_start_clicked(self) -> None:
@@ -459,6 +465,7 @@ class SpinSetupScreen(QWidget):
         self.buy_in_choice = BuyInChoice(SPIN_BUY_INS, DEFAULT_SPIN.buy_in)
         self.buy_in_spin = self.buy_in_choice.spin
         self.speed_combo = level_speed_combo()
+        self.betting_picker = BettingPicker()
         self.multipliers_combo = QComboBox()
 
         for table in MULTIPLIER_TABLES:
@@ -482,6 +489,7 @@ class SpinSetupScreen(QWidget):
         form.setHorizontalSpacing(18)
         form.addRow("Your name", self.name_label)
         form.addRow("Opponents", bots)
+        form.addRow("Game", self.betting_picker)
         form.addRow("Buy-in", self.buy_in_choice)
         form.addRow("Level speed", self.speed_combo)
         form.addRow("Multipliers", self.multipliers_combo)
@@ -528,6 +536,7 @@ class SpinSetupScreen(QWidget):
             buy_in=self.buy_in_spin.value(),
             levels_by=self.speed_combo.currentData(),
             multipliers=self.multipliers_combo.currentData(),
+            betting=self.betting_picker.rules(),
         )
 
     def _on_start_clicked(self) -> None:

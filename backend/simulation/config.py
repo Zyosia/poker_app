@@ -3,11 +3,12 @@
 import hashlib
 import math
 import random
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
+from typing import Any
 
 from backend.bots.factory import get_bot_type
-from backend.poker_engine.constants import MAX_TABLE_SEATS
+from backend.poker_engine.constants import MAX_TABLE_SEATS, NO_LIMIT, BettingRules
 
 MIN_TABLE_SEATS = 2
 
@@ -15,6 +16,20 @@ CHART_SAMPLES = 1000
 """Chip graph samples taken over a run, before downsampling for display."""
 
 ESTIMATED_HANDS_PER_SESSION = 200
+
+
+def exported_config(config: object) -> dict[str, Any]:
+    """A run configuration as exported with its results.
+
+    ``betting`` (V3.1.1) is left out when it is plain No Limit, as every run
+    before it: the exports, and the golden fingerprints, stay the same.
+    """
+    data = asdict(config)  # type: ignore[call-overload]
+
+    if data.get("betting") == asdict(NO_LIMIT):
+        del data["betting"]
+
+    return data
 
 
 class StackPolicy(StrEnum):
@@ -76,6 +91,8 @@ class SimulationConfig:
     duplicate: bool = False
     record_history: bool = False
     check_invariants: bool = True
+    betting: BettingRules = NO_LIMIT
+    """No Limit, Pot Limit or Fixed Limit, and the betting cap (V3.1.1)."""
 
     def __post_init__(self) -> None:
         if not MIN_TABLE_SEATS <= len(self.seats) <= MAX_TABLE_SEATS:

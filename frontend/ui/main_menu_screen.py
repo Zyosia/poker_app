@@ -145,7 +145,7 @@ class MainMenuScreen(QWidget):
         title = QLabel("♠ ♥  POKER  ♦ ♣")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle = QLabel("No Limit Texas Hold'em")
+        subtitle = QLabel("Texas Hold'em: No Limit, Pot Limit, Fixed Limit")
         subtitle.setObjectName("subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
 

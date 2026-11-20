@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config import SimulationConfig, StackPolicy
+from .config import SimulationConfig, StackPolicy, exported_config
 from .stats import (
     STREETS,
     ChartPoint,
@@ -171,7 +171,7 @@ class SimulationResult:
         engine = self.engine
 
         return {
-            "config": asdict(self.config),
+            "config": exported_config(self.config),
             "seed": self.config.seed,
             "batch_size": self.config.batch_size,
             "batch_count": self.batch_count,

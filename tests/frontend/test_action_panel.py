@@ -151,3 +151,36 @@ def test_raise_is_disabled_when_only_call_or_fold_is_legal(qapp: QApplication) -
     assert panel.call_button.isEnabled()
     assert not panel.raise_button.isEnabled()
     assert not panel.amount_spin.isEnabled()
+
+
+def test_pot_limit_max_is_the_pot_and_not_an_all_in(qapp: QApplication) -> None:
+    legal_actions = (
+        LegalAction(type=ActionType.FOLD),
+        LegalAction(type=ActionType.CALL, amount=20),
+        LegalAction(type=ActionType.RAISE, min_amount=40, max_amount=90),
+    )
+    panel = make_panel(legal_actions, pot=50, current_bet=20, player_bet=0)
+
+    panel.preset_buttons["Max"].click()
+
+    assert panel.amount == 90
+    assert panel.raise_button.text() == "Raise to 90"
+
+
+def test_fixed_limit_has_one_size_and_nothing_to_choose(qapp: QApplication) -> None:
+    legal_actions = (
+        LegalAction(type=ActionType.FOLD),
+        LegalAction(type=ActionType.CALL, amount=10),
+        LegalAction(type=ActionType.RAISE, min_amount=20, max_amount=20),
+    )
+    panel = make_panel(legal_actions, pot=15, current_bet=10, player_bet=0)
+    actions = collect_actions(panel)
+
+    assert panel.raise_button.isEnabled()
+    assert panel.raise_button.text() == "Raise to 20"
+    assert not panel.amount_slider.isEnabled()
+    assert not panel.preset_buttons["Pot"].isEnabled()
+
+    panel.raise_button.click()
+
+    assert actions == [Action(type=ActionType.RAISE, amount=20)]

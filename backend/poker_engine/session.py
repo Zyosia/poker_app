@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from .blinds import BlindLevel
-from .constants import MAX_TABLE_SEATS
+from .constants import MAX_TABLE_SEATS, NO_LIMIT, BettingRules
 from .models import Hand, Player, Table
 
 
@@ -19,6 +19,8 @@ class GameConfig:
     straddle: bool = False
     """The player under the gun posts a straddle (two big blinds) every hand,
     with three players or more (V3.0, cash games)."""
+    betting: BettingRules = NO_LIMIT
+    """No Limit, Pot Limit or Fixed Limit, and the betting cap (V3.1.1)."""
 
     def __post_init__(self) -> None:
         if self.starting_stack <= 0:

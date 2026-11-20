@@ -178,6 +178,16 @@ def test_the_sound_settings_apply_at_once_and_are_kept(
     )
 
 
+def test_missing_sound_files_are_reported_in_the_settings(window: MainWindow) -> None:
+    assert window.open_settings().missing_sounds_label.isHidden()
+
+    window.sounds.missing = [Sound.DEAL, Sound.POT]
+    dialog = SettingsDialog(window.profile.settings, window.sounds)
+
+    assert not dialog.missing_sounds_label.isHidden()
+    assert dialog.missing_sounds_label.text().startswith("2 sound file(s) not found")
+
+
 def test_the_saved_sound_settings_are_applied_at_launch(store: ProfileStore) -> None:
     store.settings.sound_effects = False
     store.settings.sound_volume = 25

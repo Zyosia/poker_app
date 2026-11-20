@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from backend.application.profile import MAX_VOLUME, BotCards, UserSettings
 from backend.application.setup import MAX_PLAYER_NAME_LENGTH, check_player_name
 from frontend.pacing import DEFAULT_TABLE_SPEED, TABLE_SPEEDS
-from frontend.sounds import Sound, SoundPlayer
+from frontend.sounds import SOUND_DIR, Sound, SoundPlayer
 
 BOT_CARDS_LABELS = {
     BotCards.SHOWDOWN: "At showdown only (as in a real game)",
@@ -98,6 +98,13 @@ class SettingsDialog(QDialog):
         self.volume_label.setMinimumWidth(42)
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
         self.volume_slider.sliderReleased.connect(self.play_preview)
+        self.missing_sounds_label = QLabel(
+            f"{len(sounds.missing)} sound file(s) not found in {SOUND_DIR}: "
+            "this copy of the application was built without them."
+        )
+        self.missing_sounds_label.setObjectName("errorText")
+        self.missing_sounds_label.setWordWrap(True)
+        self.missing_sounds_label.setVisible(bool(sounds.missing))
         self.turn_alert_check = QCheckBox("A sound when it is your turn")
         self.turn_alert_check.toggled.connect(
             lambda checked: self.setting_changed.emit("turn_alert", checked)
@@ -186,6 +193,7 @@ class SettingsDialog(QDialog):
         sound.addRow(self.sound_check)
         sound.addRow("Volume", volume)
         sound.addRow(self.turn_alert_check)
+        sound.addRow(self.missing_sounds_label)
 
         tables = QFormLayout()
         tables.addRow("Bots' cards", self.bot_cards_combo)

@@ -13,6 +13,8 @@ Examples::
     uv run python -m backend.simulation tournament --seats nit,tag,lag,maniac \\
         --tournaments 1000 --structure turbo --payout 65-35
     uv run python -m backend.simulation spin --seats tag,lag,maniac
+    uv run python -m backend.simulation run --seats tag,lag,nit --betting fl
+    uv run python -m backend.simulation run --seats tag,lag --betting nl --cap 3
 """
 
 import argparse
@@ -24,7 +26,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
+from backend.application.game_modes import betting_label
 from backend.bots.factory import BOT_TYPES
+from backend.poker_engine.constants import BettingRules, BettingStructure
 
 from .bench import BENCH_SEED, BenchResult, run_bench
 from .config import SeatSpec, SimulationConfig, StackPolicy
@@ -45,6 +49,11 @@ from .tournament_runner import (
 )
 
 EXPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "simulations"
+BETTING_CHOICES = {
+    "nl": BettingStructure.NO_LIMIT,
+    "pl": BettingStructure.POT_LIMIT,
+    "fl": BettingStructure.FIXED_LIMIT,
+}
 
 
 def parse_seats(text: str) -> tuple[SeatSpec, ...]:
@@ -78,7 +87,7 @@ def parse_values(text: str) -> list[float]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m backend.simulation",
-        description="Headless No Limit Hold'em simulations between bots.",
+        description="Headless Hold'em simulations between bots.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -144,9 +153,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_betting_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--betting",
+        choices=list(BETTING_CHOICES),
+        default="nl",
+        help="No Limit, Pot Limit or Fixed Limit (default: nl).",
+    )
+    parser.add_argument(
+        "--cap",
+        type=int,
+        default=None,
+        help="Most bets and raises per round (default: none; 4 in Fixed Limit).",
+    )
+
+
+def betting_from_args(args: argparse.Namespace) -> BettingRules:
+    return BettingRules(BETTING_CHOICES[args.betting], args.cap)
+
+
 def _add_table_options(
     parser: argparse.ArgumentParser, default_hands: int = 10_000
 ) -> None:
+    _add_betting_options(parser)
     parser.add_argument("--hands", type=int, default=default_hands)
     parser.add_argument("--sessions", type=int, default=100)
     parser.add_argument("--blinds", type=parse_blinds, default=(5, 10))
@@ -178,6 +207,7 @@ def _add_table_options(
 
 
 def _add_tournament_options(parser: argparse.ArgumentParser) -> None:
+    _add_betting_options(parser)
     parser.add_argument("--tournaments", type=int, default=1000)
     parser.add_argument("--stack", type=int, default=None, help="Starting stack.")
     parser.add_argument("--buy-in", type=int, default=None)
@@ -216,6 +246,7 @@ def tournament_config_from_args(
         seed=args.seed,
         workers=args.workers,
         check_invariants=not args.no_invariants,
+        betting=betting_from_args(args),
     )
 
 
@@ -239,6 +270,7 @@ def config_from_args(
         duplicate=args.duplicate,
         record_history=args.history,
         check_invariants=not args.no_invariants,
+        betting=betting_from_args(args),
     )
 
 
@@ -371,7 +403,8 @@ def print_result(result: SimulationResult, out: TextIO) -> None:
     config = result.config
     print(
         f"\n{result.totals.hands:,} hands in {result.duration_seconds:.1f}s "
-        f"({result.hands_per_second:,.0f} hands/s) — seed {config.seed}, "
+        f"({result.hands_per_second:,.0f} hands/s) — "
+        f"{betting_label(config.betting)}, seed {config.seed}, "
         f"policy {config.stack_policy.value}"
         + (", duplicate" if config.duplicate else ""),
         file=out,
@@ -440,7 +473,8 @@ def print_tournaments(result: TournamentRunResult, out: TextIO) -> None:
     print(
         f"\n{totals.tournaments:,} {config.run_type.value} games in "
         f"{result.duration_seconds:.1f}s ({result.tournaments_per_second:,.1f}/s) "
-        f"— seed {config.seed}, structure {config.blind_structure.name}, "
+        f"— {betting_label(config.betting)}, seed {config.seed}, "
+        f"structure {config.blind_structure.name}, "
         f"buy-in {config.entry_fee}",
         file=out,
     )

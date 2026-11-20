@@ -35,6 +35,7 @@ from .cash_setup_screen import CashSetupScreen
 from .game_screen import GameScreen
 from .navigation_window import NavigationWindow
 from .replayer_window import ReplayerWindow, last_replayable_hand
+from .table_spectator_window import TableSpectatorWindow
 from .tournament_lobby import TournamentLobbyWindow
 from .tournament_results_screen import TournamentResultsScreen
 from .tournament_screen import TournamentScreen
@@ -80,6 +81,8 @@ class GameWindow(NavigationWindow):
         self._played_settings: PlayedSettings | None = None
         self.replayer_window: ReplayerWindow | None = None
         self.lobby_window: TournamentLobbyWindow | None = None
+        self.spectator_windows: dict[int, TableSpectatorWindow] = {}
+        """The other tables of the tournament watched, by number (V3.1.1)."""
 
         self.setup_screen = self._create_setup_screen()
         self.table_screen: GameScreen = (
@@ -152,6 +155,7 @@ class GameWindow(NavigationWindow):
             table.finished.connect(self.show_tournament_results)
             table.lobby_requested.connect(self.open_lobby)
             table.standings_changed.connect(self._refresh_lobby)
+            table.live_tables_stepped.connect(self._refresh_spectators)
             self.results_screen.play_again_requested.connect(self.play_again)
             self.results_screen.menu_requested.connect(self.back_to_first)
         else:
@@ -323,6 +327,8 @@ class GameWindow(NavigationWindow):
             account=account,
         )
 
+        self._close_spectators()
+
         if tournament.multi_table:
             self.open_lobby()
         elif self.lobby_window is not None:
@@ -339,10 +345,46 @@ class GameWindow(NavigationWindow):
 
         if self.lobby_window is None:
             self.lobby_window = TournamentLobbyWindow(self.title)
+            self.lobby_window.watch_requested.connect(self.watch_table)
 
         self.lobby_window.show_tournament(table.tournament, table.human_name)
 
         return self.lobby_window
+
+    def watch_table(self, number: int) -> TableSpectatorWindow | None:
+        """Watch another table of the tournament in a window of its own."""
+        table = self.table_screen
+
+        if not isinstance(table, TournamentScreen) or table.game is None:
+            return None
+
+        window = self.spectator_windows.get(number)
+
+        if window is None:
+            window = TableSpectatorWindow(table.tournament, number, self.title)
+            self.spectator_windows[number] = window
+
+        window.set_display(table.bot_cards, table.show_in_big_blinds)
+        window.refresh()
+        window.show()
+        window.raise_()
+
+        return window
+
+    def _refresh_spectators(self) -> None:
+        table = self.table_screen
+
+        for window in self.spectator_windows.values():
+            if window.isVisible():
+                window.set_display(table.bot_cards, table.show_in_big_blinds)
+                window.refresh()
+
+    def _close_spectators(self) -> None:
+        for window in self.spectator_windows.values():
+            window.close()
+            window.deleteLater()
+
+        self.spectator_windows.clear()
 
     def _refresh_lobby(self) -> None:
         lobby = self.lobby_window
@@ -421,6 +463,7 @@ class GameWindow(NavigationWindow):
 
         self.replayer_window = None
         self.lobby_window = None
+        self._close_spectators()
 
         table.stop()
         self.closed.emit(self)

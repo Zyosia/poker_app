@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QPushButton
 
 from backend.application.controllers import HumanController
 from backend.application.setup import (
+    LEVELS_BY_HANDS,
     LEVELS_BY_TIME,
     SpinSettings,
     TournamentSettings,
@@ -26,7 +27,7 @@ from frontend.ui.main_window import MainWindow
 from frontend.ui.tournament_results_screen import TournamentResultsScreen
 from frontend.ui.tournament_screen import TournamentScreen
 from frontend.ui.tournament_setup_screen import SpinSetupScreen, TournamentSetupScreen
-from tests.frontend.windows import open_table, tournament_screen
+from tests.frontend.windows import open_table, played_setup, tournament_screen
 
 TIMEOUT_SECONDS = 60
 
@@ -123,12 +124,10 @@ def start(window: MainWindow, mode: str, **fields: object) -> TournamentScreen:
         setup.stack_spin.setValue(int(fields.get("stack", 200)))  # type: ignore[arg-type]
         setup.rebuys_check.setChecked(bool(fields.get("rebuys", False)))
 
-        if fields.get("by_time"):
-            setup.speed_combo.setCurrentIndex(
-                setup.speed_combo.findData(LEVELS_BY_TIME)
-            )
-
     assert isinstance(setup, TournamentSetupScreen | SpinSetupScreen)
+    # Levels by hands unless asked: the tests count hands, not seconds.
+    levels_by = LEVELS_BY_TIME if fields.get("by_time") else LEVELS_BY_HANDS
+    setup.speed_combo.setCurrentIndex(setup.speed_combo.findData(levels_by))
     setup.start_button.click()
     assert table.current_screen is table.table_screen
 
@@ -148,6 +147,14 @@ def test_the_menu_opens_both_tournament_modes(window: MainWindow) -> None:
     spin = open_table(window, "spin")
     assert isinstance(spin.setup_screen, SpinSetupScreen)
     assert window.current_screen is window.main_menu
+
+
+@pytest.mark.parametrize("mode", ["tournament", "spin"])
+def test_the_levels_go_up_by_time_by_default(window: MainWindow, mode: str) -> None:
+    setup = played_setup(open_table(window, mode))
+
+    assert setup.speed_combo.currentData() == LEVELS_BY_TIME
+    assert setup.current_settings().levels_by == LEVELS_BY_TIME
 
 
 def test_the_setup_builds_the_settings(window: MainWindow) -> None:

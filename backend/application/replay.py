@@ -71,9 +71,11 @@ class HandReplay:
 
         session = GameSession(
             players=[Player(name=seat.name, stack=seat.stack) for seat in seats],
-            # A straddled hand is dealt again with its straddle.
+            # A straddled hand is dealt again with its straddle, and every
+            # hand with its betting structure.
             config=GameConfig(
-                straddle=any(e.action == "post_straddle" for e in record.actions)
+                straddle=any(e.action == "post_straddle" for e in record.actions),
+                betting=record.betting,
             ),
         )
         session.set_blind_level(record.blind_level)
