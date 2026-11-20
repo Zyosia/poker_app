@@ -8,7 +8,7 @@ multi-table tournament starts, from the table's Lobby button too, and
 follows the tournament between hands while the table goes on.
 """
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QPushButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -95,6 +96,9 @@ class InfoCard(QFrame):
 class TournamentLobbyWindow(QWidget):
     """Everything about a running tournament, beside its table."""
 
+    watch_requested = Signal(int)
+    """The number of another table to watch in a window of its own."""
+
     def __init__(self, title: str) -> None:
         super().__init__()
         self.setObjectName("guideWindow")  # The application's dark background.
@@ -148,10 +152,22 @@ class TournamentLobbyWindow(QWidget):
 
         self.tables_table = read_only_table(["Table", "Players", "Biggest", "Smallest"])
         self.tables_table.itemSelectionChanged.connect(self._show_selected_table)
+        self.tables_table.cellDoubleClicked.connect(lambda: self._watch_selected())
         self.seats_table = read_only_table(["Seat", "Name", "Stack"])
+        self.watch_button = QPushButton("Watch table")
+        self.watch_button.setToolTip(
+            "Watch the selected table play in a window of its own (or "
+            "double-click a table)."
+        )
+        self.watch_button.clicked.connect(self._watch_selected)
+        seats_page = QWidget()
+        seats_layout = QVBoxLayout(seats_page)
+        seats_layout.setContentsMargins(0, 0, 0, 0)
+        seats_layout.addWidget(self.seats_table, stretch=1)
+        seats_layout.addWidget(self.watch_button, alignment=Qt.AlignmentFlag.AlignRight)
         tables_page = QSplitter(Qt.Orientation.Vertical)
         tables_page.addWidget(self.tables_table)
-        tables_page.addWidget(self.seats_table)
+        tables_page.addWidget(seats_page)
 
         right_tabs = QTabWidget()
         right_tabs.addTab(players_page, "Players")
@@ -284,7 +300,7 @@ class TournamentLobbyWindow(QWidget):
         seated = {
             player.name: seat_table.number
             for seat_table in tournament.tables
-            for player in seat_table.session.players
+            for player in (*seat_table.session.players, *seat_table.incoming)
         }
         table = self.players_table
         table.setRowCount(len(left) + len(out))
@@ -355,6 +371,21 @@ class TournamentLobbyWindow(QWidget):
             seat = str(index + 1) + ("  (button)" if player is dealer else "")
             cells = (seat, player.name, stack_text(player.stack, big_blind))
             fill_row(table, index, cells, self._color(player))
+
+        # Your own table is the one you play; the others can be watched live.
+        self.watch_button.setEnabled(tournament.live and seat_table.number != 1)
+
+    def _watch_selected(self) -> None:
+        tournament = self.tournament
+
+        if tournament is None or not tournament.tables or not tournament.live:
+            return
+
+        row = min(self._selected_table_row(), len(tournament.tables) - 1)
+        number = tournament.tables[row].number
+
+        if number != 1:
+            self.watch_requested.emit(number)
 
     def _selected_table_row(self) -> int:
         rows = {index.row() for index in self.tables_table.selectedIndexes()}

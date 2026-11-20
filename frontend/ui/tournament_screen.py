@@ -10,8 +10,14 @@ On several tables (V3.1) it shows table 1, yours, with the players moving
 in and out, and a Lobby button opens the tournament's lobby. Once you are
 out, the rest is played in short steps (the window stays responsive), and
 leaving keeps your place and prize when nothing can change them anymore.
+
+Since V3.1.1 the other tables play live, at the table speed with some
+variety, rather than one hand each when yours ends. Your table waits for
+them at hand-for-hand (one player from the money or from the final table)
+and before the final table, and says so.
 """
 
+import random
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -48,6 +54,12 @@ PLAY_OUT_TICK_SECONDS = 0.04
 """Rounds played per step of a play-out, before the window repaints."""
 PLAY_OUT_REFRESH_SECONDS = 0.5
 """How often the lobby follows a play-out."""
+LIVE_TICK_MS = 50
+"""How often the other tables are looked at; each acts at its own pace."""
+LIVE_PACE = (0.6, 1.4)
+"""Each step of another table waits the table speed's delay times this."""
+LIVE_REFRESH_SECONDS = 1.0
+"""How often the lobby follows the other tables."""
 
 
 def ordinal(place: int) -> str:
@@ -116,6 +128,8 @@ class TournamentScreen(GameScreen):
     lobby_requested = Signal()
     standings_changed = Signal()
     """The stacks, places or tables changed (between hands): for the lobby."""
+    live_tables_stepped = Signal()
+    """The other tables played (live tables): for the windows watching them."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -169,6 +183,15 @@ class TournamentScreen(GameScreen):
         self._play_out_timer.setInterval(0)
         self._play_out_timer.timeout.connect(self._play_out_tick)
         self._play_out_refreshed = 0.0
+        self._live_timer = QTimer(self)
+        """Plays the other tables at their own pace (live tables)."""
+        self._live_timer.setInterval(LIVE_TICK_MS)
+        self._live_timer.timeout.connect(self._live_tick)
+        self._live_due: dict[int, float] = {}
+        self._live_rng = random.Random()
+        self._live_refreshed = 0.0
+        self._waiting_to_deal = False
+        self._hand_for_hand_announced = False
 
         self.lobby_button = QPushButton("Lobby")
         self.lobby_button.setObjectName("small")
@@ -278,6 +301,9 @@ class TournamentScreen(GameScreen):
         self._announced = 0
         self._announced_moves = 0
         self._final_table_announced = False
+        self._live_due.clear()
+        self._waiting_to_deal = False
+        self._hand_for_hand_announced = False
         self.lobby_button.setVisible(tournament.multiplier is None)
         self._notice_timer.stop()
         self.notice_label.hide()
@@ -294,6 +320,8 @@ class TournamentScreen(GameScreen):
 
         if tournament.clock is not None:
             self._level_timer.start()
+
+        self._update_live_timer()
 
     def stop(self) -> None:
         """Stop every timer; an unfinished tournament is forfeited, a finished
@@ -381,6 +409,11 @@ class TournamentScreen(GameScreen):
             self._show_finished()
             return
 
+        if not tournament.is_hand_in_progress and not tournament.ready_to_deal():
+            self._wait_for_tables()
+            return
+
+        self._waiting_to_deal = False
         super()._start_next_hand()
         self._log_new_eliminations()
         self._log_table_changes()
@@ -452,6 +485,7 @@ class TournamentScreen(GameScreen):
             self._schedule_next_hand()
 
     def _show_bust(self, lines: list[str]) -> None:
+        self._update_live_timer()  # The tables wait for your choice.
         tournament = self.tournament
         place = tournament.current_place(self._human_name)
         prize = tournament.prize_for_place(place)
@@ -544,6 +578,7 @@ class TournamentScreen(GameScreen):
         """Keep the table playing without you, at the chosen speed."""
         self.spectating = True
         self._set_buttons(self.skip_button, self.leave_button)
+        self._update_live_timer()
         self._continue_watching()
 
     def _continue_watching(self) -> None:
@@ -647,6 +682,7 @@ class TournamentScreen(GameScreen):
         self._reveal_hold_timer.stop()
         self._watch_timer.stop()
         self._play_out_timer.stop()
+        self._live_timer.stop()
 
     def _on_pause_changed(self) -> None:
         """Also freeze the level clock; resume watching once restarted."""
@@ -663,6 +699,7 @@ class TournamentScreen(GameScreen):
         if not self.paused and not tournament.is_hand_in_progress:
             self._continue_watching()
 
+        self._update_live_timer()
         self._refresh_status()
 
     # --- Display ------------------------------------------------------------
@@ -686,6 +723,9 @@ class TournamentScreen(GameScreen):
             parts.append(f"{len(left)}/{tournament.entrants} left")
         else:
             parts.append(f"{len(left)} players left")
+
+        if tournament.hand_for_hand:
+            parts.insert(0, "HAND-FOR-HAND")
 
         if not self._human_player().is_eliminated:
             place = tournament.current_place(self._human_name)
@@ -752,6 +792,116 @@ class TournamentScreen(GameScreen):
             self.show_notice(
                 f"FINAL TABLE — {len(tournament.players_left())} players left"
             )
+
+    # --- Live tables (V3.1.1) ---------------------------------------------------
+
+    @property
+    def is_playing_live_tables(self) -> bool:
+        """The other tables are being played (not paused, not out)."""
+        return self._live_timer.isActive()
+
+    @property
+    def is_waiting_for_tables(self) -> bool:
+        """Your table waits for the other tables before dealing."""
+        return self._waiting_to_deal
+
+    def _live_should_run(self) -> bool:
+        game = self._game
+
+        if not isinstance(game, Tournament) or not game.live or game.is_finished:
+            return False
+
+        playing = self.spectating or not self._human_player().is_eliminated
+
+        return playing and not self.paused and not self.is_playing_out
+
+    def _update_live_timer(self) -> None:
+        if self._live_should_run():
+            if not self._live_timer.isActive():
+                self._live_timer.start()
+        else:
+            self._live_timer.stop()
+
+    def play_live_tables(self, now: float | None = None) -> None:
+        """One look at the other tables: each one due acts once (deals,
+        decides or turns a card), then waits for its next step."""
+        tournament = self.tournament
+        now = time.monotonic() if now is None else now
+        changed = False
+
+        for table in list(tournament.tables[1:]):
+            if now < self._live_due.get(table.number, 0.0):
+                continue
+
+            hand = table.hand
+            busy = table.is_hand_in_progress
+            tournament.step_table(table)
+            changed |= busy != table.is_hand_in_progress or hand is not table.hand
+            delay = (
+                self.step_delay_ms if table.is_hand_in_progress else self.hand_pause_ms
+            )
+            pace = self._live_rng.uniform(*LIVE_PACE)
+            self._live_due[table.number] = now + delay * pace / 1000
+
+        self.live_tables_stepped.emit()
+
+        if changed:
+            self._on_live_tables_changed()
+
+        if self._waiting_to_deal and tournament.ready_to_deal():
+            self._waiting_to_deal = False
+            self._start_next_hand()
+
+    def _live_tick(self) -> None:
+        if not self._live_should_run():
+            self._live_timer.stop()
+            return
+
+        self.play_live_tables()
+
+    def _on_live_tables_changed(self) -> None:
+        """A hand started or ended at another table: eliminations in the
+        money, hand-for-hand, and the lobby now and then."""
+        tournament = self.tournament
+        self._log_new_eliminations()
+        hand_for_hand = tournament.hand_for_hand
+
+        if hand_for_hand and not self._hand_for_hand_announced:
+            left = len(tournament.players_left())
+            reason = (
+                "one player from the final table"
+                if left == tournament.config.final_table_size + 1
+                else "one player from the money"
+            )
+            self._log(f"Hand-for-hand: {reason}", Tone.ALERT)
+            self.show_notice(f"HAND-FOR-HAND — {reason}")
+
+        self._hand_for_hand_announced = hand_for_hand
+        self._refresh_status()
+
+        if time.monotonic() - self._live_refreshed >= LIVE_REFRESH_SECONDS:
+            self._live_refreshed = time.monotonic()
+            self.standings_changed.emit()
+
+        if tournament.is_finished:
+            self._show_finished()
+
+    def _wait_for_tables(self) -> None:
+        """Your table cannot deal yet: say why, and deal once it can."""
+        tournament = self.tournament
+        self._waiting_to_deal = True
+        self._cancel_next_hand()
+
+        if tournament.final_table_forming:
+            text = "The final table is forming: waiting for the other tables…"
+        elif tournament.hand_for_hand:
+            text = "Hand-for-hand: waiting for the other tables to finish their hand…"
+        else:
+            text = "Waiting for players to join your table…"
+
+        buttons = [self.skip_button, self.leave_button] if self.spectating else []
+        self._show_page([text], *buttons)
+        self._update_live_timer()
 
     def show_notice(self, text: str) -> None:
         """A short message above the table that hides itself."""

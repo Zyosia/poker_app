@@ -38,6 +38,7 @@ from backend.application.bankroll import GameAccount, TransactionType
 from backend.application.cash_rules import BuyInRange
 from backend.application.controllers import HumanController, PlayerController
 from backend.application.game import PokerGame
+from backend.application.game_modes import betting_short_label
 from backend.application.profile import BotCards
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, get_legal_actions
@@ -742,7 +743,9 @@ class GameScreen(QWidget):
         self._logged_street_count = 0
         self._reveal_logged = False
         self.info_label.setText(
-            f"HAND #{game.session.hand_number}   ·   BLINDS {level.describe()}"
+            f"HAND #{game.session.hand_number}   ·   "
+            f"{betting_short_label(game.session.config.betting)}   ·   "
+            f"BLINDS {level.describe()}"
         )
         history = self.history_view
         history.start_hand(game.session.hand_number, level.describe())

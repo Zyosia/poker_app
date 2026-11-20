@@ -20,6 +20,11 @@ File format versions:
   session records the ``human`` player's name and the ``mode`` (cash,
   tournament or spin).
 
+Since V3.1.1, a hand played in Pot Limit, in Fixed Limit or with a betting
+cap also records its ``betting``: the structure and the cap of its table
+(``{"structure": "fixed_limit", "cap": 4}``). A hand without it is No
+Limit without a cap, as every hand before; the format version is unchanged.
+
 ``load_session_file`` reads every version and returns version 4 data; older
 hands get ``revealed_after_action`` null (not recorded), no timeouts and
 ``seats`` null, and older sessions a null ``human`` and ``mode``.
@@ -32,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.poker_engine.blinds import BlindLevel
-from backend.poker_engine.constants import Position
+from backend.poker_engine.constants import BettingStructure, Position
 from backend.poker_engine.models import Hand, Player, SeatRecord
 from backend.poker_engine.session import GameSession
 
@@ -82,8 +87,7 @@ def serialize_hand(hand: Hand, hand_number: int) -> dict[str, Any]:
         (seat.name for seat in hand.seats if seat.position == Position.BTN),
         hand.table.dealer.name,
     )
-
-    return {
+    data: dict[str, Any] = {
         "hand_number": hand_number,
         "blind_level": (
             serialize_blind_level(hand.blind_level)
@@ -127,6 +131,11 @@ def serialize_hand(hand: Hand, hand_number: int) -> dict[str, Any]:
         "revealed_after_action": hand.revealed_after_action,
         "timed_out_actions": list(hand.timed_out_actions),
     }
+
+    if hand.betting != BettingStructure.NO_LIMIT or hand.bet_cap is not None:
+        data["betting"] = {"structure": hand.betting, "cap": hand.bet_cap}
+
+    return data
 
 
 def serialize_session(

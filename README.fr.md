@@ -65,6 +65,7 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 
 * [V3.0 — Extras cash game](#v30--extras-cash-game)
 * [V3.1 — Tournois multi-tables](#v31--tournois-multi-tables)
+* [V3.1.1 — Limit Hold'em, tables en direct](#v311--limit-holdem-tables-en-direct)
 
 * [Plus tard / peut-être](#plus-tard--peut-être)
 
@@ -700,6 +701,7 @@ frontend/
 │   ├── guide_window.py    Le Guide : application, styles de bots, vocabulaire (V2.0)
 │   ├── replayer_window.py Le relecteur à côté d'une table (V2.1)
 │   ├── tournament_lobby.py, bot_manager_dialog.py  Lobby et bots (V3.1)
+│   ├── table_spectator_window.py  Regarder une autre table (V3.1.1)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu et bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -936,10 +938,10 @@ Chip integrity
 ```
 
 État actuel de la suite (la suite complète, voir aussi
-[V3.1](#v31--tournois-multi-tables)) :
+[V3.1.1](#v311--limit-holdem-tables-en-direct)) :
 
 ```text
-1803 passed
+1864 passed
 ```
 
 ### État actuel
@@ -1160,6 +1162,7 @@ Les straddles ne sont pas supportés.
 ## Betting Cap
 
 Le moteur ne possède pas encore de limite configurable sur le nombre de raises par street.
+(Ajoutée en V3.1.1, avec le Pot Limit et le Fixed Limit.)
 
 ## Tournament Blinds
 
@@ -3081,9 +3084,129 @@ la difficulté). Les tournois restent hors ligne : pas d'inscription tardive.
 
 ---
 
+# V3.1.1 — Limit Hold'em, tables en direct
+
+La **V3.1.1** corrige le son de l'application empaquetée, ajoute le **Pot
+Limit**, le **Fixed Limit** et une **limite de relances** à tous les modes,
+fait jouer **en direct** les autres tables d'un tournoi multi-tables, et
+permet de les **regarder**.
+
+## Corrections
+
+* **Pas de son dans une version PyInstaller** : les effets sonores sont des
+  fichiers WAV lus dans `frontend/assets/sounds`, et PyInstaller ne copie pas
+  les fichiers de données de lui-même. Construire avec le dossier :
+
+  ```bash
+  uv run pyinstaller --noconfirm --clean --windowed --onedir --name PokerApp \
+      --paths . --add-data "frontend/assets/sounds:frontend/assets/sounds" \
+      frontend/main.py
+  ```
+
+  Le même `--add-data` fonctionne avec `--onefile`. Vérifié sur une version
+  empaquetée : les 12 sons sont trouvés et se chargent. Une version construite
+  sans eux le signale désormais dans la fenêtre **Paramètres** (Son) au lieu
+  de rester muette.
+* Les **niveaux au temps** sont désormais le choix par défaut des écrans
+  Tournoi et Spin & Go (les niveaux aux mains restent disponibles).
+
+## Fonctionnalités
+
+### 🃏 No Limit, Pot Limit, Fixed Limit
+
+* Un choix **Jeu** dans les écrans Cash Game, Tournoi, Spin & Go et Bot Arena,
+  et `--betting nl|pl|fl` en ligne de commande pour les simulations.
+* **Pot Limit** : la plus grosse relance vaut le call plus le pot après le
+  call (blinds 5/10 : la première relance va à 35). Un tapis n'est possible
+  que si le tapis tient dans le pot.
+* **Fixed Limit** : chaque mise et relance a une seule taille, la grosse
+  blind avant le turn (la petite mise), deux grosses blinds au turn et à la
+  river (la grosse mise), avec **quatre mises** par tour (une mise et trois
+  relances). Un tapis d'**une demi-mise ou plus** est une relance complète et
+  rouvre les enchères ; un tapis plus petit non, et le joueur suivant peut
+  seulement compléter la mise. Un straddle compte comme la première relance
+  (la suivante va à 3 BB).
+* **Limite de relances** (case `Cap`, `--cap N`) : le plus de mises et
+  relances d'un tour, dans n'importe quel jeu, la grosse blind étant la mise
+  pré-flop ; une fois atteinte, on peut seulement suivre ou se coucher. Un
+  tapis incomplet ne compte pas. Comme dans les salles en ligne, la limite
+  s'applique aussi en tête-à-tête.
+* À la table, la ligne du haut montre le jeu (« HAND #12 · FL · BLINDS
+  10/20 ») ; en Fixed Limit les boutons de taille et le curseur sont
+  désactivés et le bouton indique « Raise to 20 ». Le titre de la fenêtre et
+  le menu disent Texas Hold'em.
+* Les bots jouent tous les jeux : ils ne choisissent que parmi les actions
+  légales, et un tapis devient la plus grosse relance permise quand la limite
+  l'interdit. Leur stratégie reste réglée pour le No Limit.
+* Les mains sauvegardées retiennent leur jeu : le replayer les redistribue
+  dans la même structure ; les historiques importés d'autres sites restent
+  limités au No Limit.
+
+### ⏱ Tables en direct
+
+* Les autres tables d'un tournoi multi-tables n'attendent plus votre main :
+  elles jouent **à leur rythme**, à la vitesse de votre table avec un peu de
+  variété, une main en cours à chaque table.
+* Un joueur éliminé est classé dès la fin de la main de sa table ; un joueur
+  déplacé s'assoit à la main suivante de sa nouvelle table ; les tables
+  cassent et s'équilibrent entre leurs propres mains.
+* **Main par main** à un joueur des places payées (la bulle) et à un joueur
+  de la table finale : chaque table joue une main, ensemble, les éliminés de
+  ce tour sont classés ensemble, et votre table attend les autres
+  (« Hand-for-hand: waiting for the other tables to finish their hand… »).
+  La ligne d'état affiche HAND-FOR-HAND.
+* Avant la table finale, votre table attend que les dernières tables
+  finissent leur main, puis tout le monde s'assoit à la table finale.
+* **Pause** fige toutes les tables ; une fois éliminé, les tables attendent
+  votre choix : regarder, passer aux résultats ou partir.
+
+### 👀 Regarder une autre table
+
+* Dans l'onglet **Tables** du lobby, **Watch table** (ou un double-clic)
+  ouvre une table dans sa propre fenêtre, à côté de la vôtre : la main en
+  train de se jouer, avec son historique. Les cartes restent comme à votre
+  table (paramètre « Cartes des bots »).
+* La fenêtre indique quand la table casse ; elle se ferme avec votre table.
+
+> 📸 *Emplacement de capture : une table Fixed Limit, et une table regardée à
+> côté du lobby.*
+
+## Changements du moteur et de l'application
+
+* `BettingStructure` (`NO_LIMIT`, `POT_LIMIT`, `FIXED_LIMIT`) et
+  `BettingRules(structure, cap)` ; `GameConfig.betting`. La main compte ses
+  mises et relances complètes (`bets_this_street`) et la dernière mise
+  complète (`full_bet`) ; `get_maximum_raise_to`, `get_fixed_limit_bet`,
+  `counts_as_full_raise`. Le No Limit joue exactement comme avant (mêmes
+  empreintes de référence).
+* Les réglages de chaque mode, `TournamentConfig`, `SpinConfig`,
+  `SimulationConfig` et `TournamentRunConfig` prennent `betting` ; les
+  exports et les mains sauvegardées ne l'enregistrent que hors No Limit
+  simple : les fichiers No Limit ne changent pas.
+* `Tournament(live=True)` (tournois multi-tables de l'application) :
+  `step_table`, `ready_to_deal`, `hand_for_hand`, `final_table_forming`,
+  `stop_live`. Les simulations et les tests gardent les tours.
+
+## Objectifs
+
+* [x] Le son dans la version PyInstaller
+* [x] Niveaux au temps par défaut
+* [x] Limite de relances configurable / Limit Hold'em (Pot Limit, Fixed Limit, limite)
+* [x] Tables en direct, main par main à la bulle et avant la table finale
+* [x] Regarder les autres tables d'un tournoi
+
+## Tests
+
+```text
+1864 passed
+```
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
 # Plus tard / peut-être
 
-* [ ] Limite de relances configurable / Limit Hold'em
 * [ ] Mode spectateur pour les tournois de la Bot Arena : déplacé de la V1.0,
       on peut regarder un tournoi en le jouant depuis le menu principal puis
       en étant éliminé

@@ -23,8 +23,11 @@ from backend.application.cash_rules import (
     MIN_BUY_IN_BIG_BLINDS,
     BuyInRange,
 )
+from backend.application.game_modes import game_name
 from backend.application.setup import GameSettings
+from backend.poker_engine.constants import NO_LIMIT
 from frontend.components.bankroll_bar import BankrollBar
+from frontend.components.betting_picker import BettingPicker
 from frontend.components.bot_picker import BotPicker
 from frontend.components.buy_in_info import BuyInInfo
 from frontend.components.clock_combo import ClockCombo
@@ -72,9 +75,14 @@ class CashSetupScreen(QWidget):
         title = QLabel("♠  CASH GAME")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle = QLabel("No Limit Texas Hold'em")
+        subtitle = QLabel(game_name(NO_LIMIT))
         subtitle.setObjectName("subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle = subtitle
+        self.betting_picker = BettingPicker()
+        self.betting_picker.changed.connect(
+            lambda: subtitle.setText(game_name(self.betting_picker.rules()))
+        )
 
         self.bankroll_bar = BankrollBar()
         self.name_label = player_name_label(DEFAULT_SETTINGS.player_name)
@@ -149,6 +157,7 @@ class CashSetupScreen(QWidget):
         form.addRow("Your name", self.name_label)
         form.addRow("Opponents", self.bot_picker.count_widget)
         form.addRow("Bots", self.bot_picker.style_widget)
+        form.addRow("Game", self.betting_picker)
         form.addRow("Starting stack", self.stack_spin)
         form.addRow("Blinds", self.blinds_combo)
         form.addRow("Table", self.table_options)
@@ -204,6 +213,7 @@ class CashSetupScreen(QWidget):
             small_blind=small_blind,
             big_blind=big_blind,
             straddle=self.straddle_check.isChecked(),
+            betting=self.betting_picker.rules(),
             bots_rebuy=self.bots_rebuy_check.isChecked(),
             auto_top_up=self.auto_top_up_check.isChecked(),
         )

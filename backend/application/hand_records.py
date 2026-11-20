@@ -21,7 +21,14 @@ from pathlib import Path
 from typing import Any
 
 from backend.poker_engine.blinds import AnteType, BlindLevel
-from backend.poker_engine.constants import Card, Position, Street
+from backend.poker_engine.constants import (
+    NO_LIMIT,
+    BettingRules,
+    BettingStructure,
+    Card,
+    Position,
+    Street,
+)
 from backend.poker_engine.hand_evaluator import HandCategory, HandEvaluation
 from backend.poker_engine.models import ActionEvent, PotResult, SeatRecord, StreetEvent
 from backend.poker_engine.session import GameSession
@@ -66,6 +73,8 @@ class HandRecord:
     their seats hold stand-in cards, which are never shown."""
     hand_id: str | None = None
     """The site's number of the hand, for a hand from another site."""
+    betting: BettingRules = NO_LIMIT
+    """The structure and the cap the hand was played with (V3.1.1)."""
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "HandRecord":
@@ -103,6 +112,7 @@ class HandRecord:
             revealed_after_action=data["revealed_after_action"],
             timed_out_actions=tuple(data["timed_out_actions"]),
             finished=data["finished"],
+            betting=_betting(data.get("betting")),
         )
 
     @property
@@ -447,6 +457,15 @@ def _finish(tournament: Mapping[str, Any], human: str) -> TournamentFinish | Non
         buy_in=tournament["buy_in"],
         multiplier=tournament.get("multiplier"),
     )
+
+
+def _betting(data: Mapping[str, Any] | None) -> BettingRules:
+    """No Limit without a cap when the hand does not say (every hand before
+    V3.1.1)."""
+    if data is None:
+        return NO_LIMIT
+
+    return BettingRules(BettingStructure(data["structure"]), data["cap"])
 
 
 def _blind_level(data: Mapping[str, Any]) -> BlindLevel:

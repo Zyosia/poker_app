@@ -33,6 +33,7 @@ from backend.simulation.tournament_runner import (
     RunType,
     TournamentRunConfig,
 )
+from frontend.components.betting_picker import BettingPicker
 
 from .cash_setup_screen import BLIND_LEVELS
 from .guide_window import open_guide
@@ -275,6 +276,7 @@ class ArenaSetupScreen(QWidget):
         )
 
         self.duplicate_check = QCheckBox("Duplicate mode (variance reduction)")
+        self.betting_picker = BettingPicker()
         self.workers_spin = QSpinBox()
         self.workers_spin.setRange(1, max(1, os.cpu_count() or 1))
         self.workers_spin.setValue(default_worker_count())
@@ -292,6 +294,7 @@ class ArenaSetupScreen(QWidget):
         self.form.setVerticalSpacing(10)
         self.form.setHorizontalSpacing(18)
         self.form.addRow("Run type", self.run_type_combo)
+        self.form.addRow("Game", self.betting_picker)
         self.form.addRow("Hands", self.hands_row)
         self.form.addRow("Sessions", self.sessions_spin)
         self.form.addRow("Tournaments", self.tournaments_spin)
@@ -502,6 +505,7 @@ class ArenaSetupScreen(QWidget):
                 rebuys=is_tournament and self.rebuys_check.isChecked(),
                 seed=seed,
                 workers=self.workers_spin.value(),
+                betting=self.betting_picker.rules(),
             )
 
         small_blind, big_blind = self.blinds_combo.currentData()
@@ -517,6 +521,7 @@ class ArenaSetupScreen(QWidget):
             seed=seed,
             workers=self.workers_spin.value(),
             duplicate=self.duplicate_check.isChecked(),
+            betting=self.betting_picker.rules(),
         )
 
     def show_last_seed(self, seed: int) -> None:

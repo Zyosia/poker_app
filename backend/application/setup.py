@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.bots.factory import create_bot, get_bot_type
-from backend.poker_engine.constants import MAX_TABLE_SEATS
+from backend.poker_engine.constants import MAX_TABLE_SEATS, NO_LIMIT, BettingRules
 from backend.poker_engine.session import GameConfig, create_session
 
 from .controllers import PlayerController
@@ -104,6 +104,7 @@ class GameSettings:
     big_blind: int = 10
     straddle: bool = False
     """The player under the gun straddles (two big blinds) every hand."""
+    betting: BettingRules = NO_LIMIT
     bots_rebuy: bool = True
     """Busted bots rebuy and short bots top up: the table stays full."""
     auto_top_up: bool = False
@@ -135,6 +136,7 @@ def create_game(
             small_blind=settings.small_blind,
             big_blind=settings.big_blind,
             straddle=settings.straddle,
+            betting=settings.betting,
         ),
     )
     session.table.dealer_index = rng.randrange(len(session.players))
@@ -176,6 +178,7 @@ class TournamentSettings:
     final_table_size: int = MAX_TABLE_SEATS
     """With more players than this, the tournament starts on several tables
     of ``table_size`` seats (V3.1)."""
+    betting: BettingRules = NO_LIMIT
 
     def __post_init__(self) -> None:
         check_player_name(self.player_name)
@@ -227,6 +230,7 @@ class TournamentSettings:
             rebuys=rebuys,
             table_size=self.table_size,
             final_table_size=self.final_table_size,
+            betting=self.betting,
         )
 
 
@@ -239,6 +243,7 @@ class SpinSettings:
     buy_in: int = DEFAULT_SPIN_BUY_IN
     levels_by: str = LEVELS_BY_HANDS
     multipliers: MultiplierTable = FAIR_MULTIPLIERS
+    betting: BettingRules = NO_LIMIT
 
     def __post_init__(self) -> None:
         check_player_name(self.player_name)
@@ -372,6 +377,7 @@ def create_tournament(
         clock=_clock(settings.levels_by, clock_source),
         keep_hands=True,
         featured=settings.player_name,
+        live=True,  # The other tables play at their own pace (V3.1.1).
     )
 
 
@@ -387,7 +393,11 @@ def create_spin_and_go(
     controllers[settings.player_name] = human_controller
 
     return create_spin(
-        SpinConfig(multipliers=settings.multipliers, buy_in=settings.buy_in),
+        SpinConfig(
+            multipliers=settings.multipliers,
+            buy_in=settings.buy_in,
+            betting=settings.betting,
+        ),
         [settings.player_name, *names],
         controllers,
         random.Random(rng.getrandbits(64)),

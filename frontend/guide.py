@@ -198,7 +198,7 @@ SECTIONS: tuple[Section, ...] = (
         key="welcome",
         title="Welcome",
         intro=(
-            "A No Limit Texas Hold'em poker room on your computer, against bots "
+            "A Texas Hold'em poker room on your computer, against bots "
             "with styles of their own. Everything is offline and the money is "
             "fictional: you start with a bankroll of 100,000."
         ),
@@ -249,6 +249,22 @@ SECTIONS: tuple[Section, ...] = (
                 ),
             ),
             Topic(
+                "No Limit, Pot Limit, Fixed Limit",
+                (
+                    "Every setup (and the Bot Arena) has a <b>Game</b> choice. "
+                    "<b>No Limit</b>: bet any amount up to your stack. <b>Pot "
+                    "Limit</b>: up to the pot, your call included (the first "
+                    "raise goes to 3.5 big blinds). <b>Fixed Limit</b>: one size "
+                    "only, the big blind before the turn and twice it on the turn "
+                    "and the river, with four bets per round at most.",
+                    "The <b>Cap</b> limits the bets and raises of a round in any "
+                    "game (the big blind is the first bet before the flop); once "
+                    "it is reached you can only call or fold. In Fixed Limit, an "
+                    "all-in of half a bet or more counts as a raise; a smaller one "
+                    "is completed by the next player.",
+                ),
+            ),
+            Topic(
                 "♣ Tournament",
                 (
                     "Everyone starts with the same stack; the blinds rise level "
@@ -260,6 +276,12 @@ SECTIONS: tuple[Section, ...] = (
                     "last ones meet at the final table. You stay at table 1; the "
                     "<b>Lobby</b> lists every player by stack, the tables, the "
                     "payouts and the levels.",
+                    "The other tables play <b>live</b>, at the speed of yours. "
+                    "One player away from the money, and from the final table, "
+                    "the tables play <b>hand-for-hand</b>: one hand each, "
+                    "together, and yours waits for the others. In the Lobby's "
+                    "<b>Tables</b> tab, <b>Watch table</b> (or a double-click) "
+                    "opens another table in a window of its own.",
                     "<b>Manage bots…</b> names and styles every bot, or draws a "
                     "whole field at random: <i>Easy</i> (no Shark or Adaptive), "
                     "<i>Normal</i> or <i>Hard</i> (mostly strong bots).",

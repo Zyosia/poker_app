@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .blinds import BlindLevel
-from .constants import Card, Position, Street
+from .constants import BettingStructure, Card, Position, Street
 from .deck import Deck
 from .hand_evaluator import HandEvaluation
 
@@ -170,6 +170,15 @@ class Hand:
     deck: Deck = field(default_factory=Deck)
     min_bet: int = 1
     """Smallest legal opening bet and raise increment (the big blind)."""
+    betting: BettingStructure = BettingStructure.NO_LIMIT
+    bet_cap: int | None = None
+    """Most bets and raises in one betting round (the big blind counts as the
+    pre-flop bet); None for no cap."""
+    bets_this_street: int = 0
+    """Full bets and raises of the round so far; a short all-in is not one."""
+    full_bet: int = 0
+    """The bet of the last full bet or raise of the round (the big blind
+    pre-flop): Fixed Limit raises go one bet above it."""
     blind_level: BlindLevel | None = None
     """The blinds and ante the hand was dealt with."""
 
@@ -223,6 +232,8 @@ class Hand:
         """Clear the betting state before a new street."""
         self.current_bet = 0
         self.last_raise_size = 0
+        self.bets_this_street = 0
+        self.full_bet = 0
         self.last_raiser = None
         self.current_player = None
         self.last_player_to_act = None

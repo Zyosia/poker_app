@@ -68,6 +68,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 
 - [V3.1 — Multi-table Tournaments](#v31--multi-table-tournaments)
 
+- [V3.1.1 — Limit Hold'em, Live Tables](#v311--limit-holdem-live-tables)
+
 - [Later / Maybe](#later--maybe)
 
 - [Development Principles](#development-principles)
@@ -659,6 +661,7 @@ frontend/
 │   ├── guide_window.py    The Guide: application, bot styles, terms (V2.0)
 │   ├── replayer_window.py The replayer beside a table (V2.1)
 │   ├── tournament_lobby.py, bot_manager_dialog.py  Lobby and bots (V3.1)
+│   ├── table_spectator_window.py  Watch another table (V3.1.1)
 │   ├── main_menu_screen.py, bankroll_screen.py         Menu and bankroll
 │   ├── cash_setup_screen.py, game_screen.py            Cash game
 │   ├── tournament_setup_screen.py, tournament_screen.py,
@@ -1097,6 +1100,7 @@ Straddles are not supported.
 ## Betting Cap
 
 The engine does not yet have a configurable limit on the number of raises per street.
+(Added in V3.1.1, with Pot Limit and Fixed Limit.)
 
 ## Tournament Blinds
 
@@ -2888,9 +2892,124 @@ Tournaments stay offline: no late registration.
 
 ---
 
+# V3.1.1 — Limit Hold'em, Live Tables
+
+**V3.1.1** fixes the sound of the packaged application, adds **Pot Limit**,
+**Fixed Limit** and a **betting cap** to every mode, makes the other tables
+of a multi-table tournament play **live**, and lets you **watch** them.
+
+## Fixes
+
+- **No sound in a PyInstaller build**: the sound effects are WAV files read
+  from `frontend/assets/sounds`, and PyInstaller does not copy data files on
+  its own. Build with the folder added:
+
+  ```bash
+  uv run pyinstaller --noconfirm --clean --windowed --onedir --name PokerApp \
+      --paths . --add-data "frontend/assets/sounds:frontend/assets/sounds" \
+      frontend/main.py
+  ```
+
+  The same `--add-data` works with `--onefile`. Checked on a frozen build:
+  the 12 sounds are found and load. A build made without them now says so in
+  the **Settings** window (Sound) instead of staying silent.
+- **Levels by time** are now the default of the Tournament and Spin & Go
+  setups (levels by hands remain available).
+
+## Features
+
+### 🃏 No Limit, Pot Limit, Fixed Limit
+
+- A **Game** choice on the Cash Game, Tournament, Spin & Go and Bot Arena
+  setups, and `--betting nl|pl|fl` on the simulation command line.
+- **Pot Limit**: the largest raise is the call plus the pot after the call
+  (with blinds of 5/10, the first raise goes to 35). An all-in is only
+  possible when the stack fits within the pot.
+- **Fixed Limit**: every bet and raise is one size, the big blind pre-flop
+  and on the flop (the small bet), twice the big blind on the turn and the
+  river (the big bet), with **four bets** per round (a bet and three raises).
+  An all-in of **half a bet or more** is a full raise and reopens the
+  betting; a smaller one is not, and the next player may only complete the
+  bet. A straddle counts as the first raise (the next raise is to 3 BB).
+- **Betting cap** (`Cap` box, `--cap N`): the most bets and raises in one
+  round in any game, the big blind being the pre-flop bet; once reached,
+  players may only call or fold. A short all-in does not count. As in online
+  rooms, the cap also applies heads-up.
+- At the table, the top line shows the game ("HAND #12 · FL · BLINDS
+  10/20"); in Fixed Limit the size buttons and the slider are off and the
+  button reads "Raise to 20". The window title and the menu say Texas
+  Hold'em.
+- The bots play every game: they only choose among the legal actions, and a
+  shove becomes the largest raise allowed when the limit forbids an all-in.
+  Their strategy is still tuned for No Limit.
+- Saved hands remember their game, so the replayer deals them again in the
+  same structure; hand histories imported from other sites stay No Limit
+  only.
+
+### ⏱ Live tables
+
+- The other tables of a multi-table tournament no longer wait for your hand:
+  they play **at their own pace**, at your table speed with some variety, a
+  hand in progress at every table.
+- A player out is ranked as soon as their table's hand ends; a player moved
+  to another table sits down at its next hand; tables break and balance
+  between their own hands.
+- **Hand-for-hand** one player away from the money (the bubble) and one
+  player away from the final table: every table plays one hand, together,
+  the players out in that round are ranked together, and your table waits
+  for the others ("Hand-for-hand: waiting for the other tables to finish
+  their hand…"). The status line shows HAND-FOR-HAND.
+- Before the final table, your table waits for the last tables to finish
+  their hand, then everyone sits down at the final table.
+- **Pause** freezes every table; once you are out, the tables wait for your
+  choice: watch, skip to the results, or leave.
+
+### 👀 Watching another table
+
+- In the lobby's **Tables** tab, **Watch table** (or a double-click) opens a
+  table in a window of its own, beside yours: the hand as it is played, with
+  its history. The cards stay as at your table ("Bots' cards" setting).
+- The window says when the table breaks up; it closes with your table.
+
+> 📸 *Screenshot placeholder: a Fixed Limit table, and a watched table beside
+> the lobby.*
+
+## Engine and application changes
+
+- `BettingStructure` (`NO_LIMIT`, `POT_LIMIT`, `FIXED_LIMIT`) and
+  `BettingRules(structure, cap)`; `GameConfig.betting`. The hand counts its
+  full bets and raises (`bets_this_street`) and the last full bet
+  (`full_bet`); `get_maximum_raise_to`, `get_fixed_limit_bet`,
+  `counts_as_full_raise`. No Limit plays exactly as before (same golden
+  fingerprints).
+- The settings of every mode, `TournamentConfig`, `SpinConfig`,
+  `SimulationConfig` and `TournamentRunConfig` take `betting`; exports and
+  saved hands only record it when it is not plain No Limit, so No Limit
+  files are unchanged.
+- `Tournament(live=True)` (multi-table tournaments of the application):
+  `step_table`, `ready_to_deal`, `hand_for_hand`, `final_table_forming`,
+  `stop_live`. Simulations and tests keep the rounds.
+
+## Objectives
+
+- [x] Sound in the PyInstaller build
+- [x] Levels by time by default
+- [x] Configurable betting cap / Limit Hold'em (Pot Limit, Fixed Limit, cap)
+- [x] Live tables, hand-for-hand at the bubble and before the final table
+- [x] Watch the other tables of a tournament
+
+## Tests
+
+```text
+1864 passed
+```
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
 # Later / Maybe
 
-- [ ] Configurable betting cap / Limit Hold'em
 - [ ] Watch mode for Bot Arena tournament runs: moved from V1.0, a tournament
       can be watched by playing it from the main menu and busting out
 
@@ -2974,7 +3093,7 @@ The engine core now has substantial test coverage, and the main rules for bettin
 
 **Alpha 1.1** continues this stabilization with integration and stress tests covering complete hands and sessions.
 
-The suite now contains **1803 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
+The suite now contains **1864 passing tests** (`uv run pytest`), covering the simulation and the Bot Arena on top of betting rules, all-ins, re-raises, side pots, splits, showdown, eliminations, dealer rotation, chip conservation, and several complete-hand scenarios executed 100 times.
 
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 

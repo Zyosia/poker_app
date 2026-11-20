@@ -16,7 +16,7 @@ import random
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from fractions import Fraction
 from functools import partial
@@ -51,10 +51,16 @@ from backend.application.tournament import (
 )
 from backend.bots.factory import create_bot
 from backend.poker_engine.blinds import BlindStructure
-from backend.poker_engine.constants import MAX_TABLE_SEATS
+from backend.poker_engine.constants import MAX_TABLE_SEATS, NO_LIMIT, BettingRules
 from backend.poker_engine.models import Hand
 
-from .config import MIN_TABLE_SEATS, SeatSpec, derive_seed, seat_names
+from .config import (
+    MIN_TABLE_SEATS,
+    SeatSpec,
+    derive_seed,
+    exported_config,
+    seat_names,
+)
 from .invariants import InvariantError, find_chip_violations
 from .runner import Batch, ProgressCallback, execute_batches
 from .stats import CONFIDENCE_Z
@@ -107,6 +113,7 @@ class TournamentRunConfig:
     seed: int | None = None
     workers: int = 1
     check_invariants: bool = True
+    betting: BettingRules = NO_LIMIT
 
     def __post_init__(self) -> None:
         if not MIN_TABLE_SEATS <= len(self.seats) <= MAX_TABLE_SEATS:
@@ -195,6 +202,7 @@ class TournamentRunConfig:
             payout=PAYOUTS[self.payout] if self.payout else None,
             rebuys=rebuys,
             max_hands=self.max_hands_per_tournament,
+            betting=self.betting,
         )
 
     def with_seed(self) -> "TournamentRunConfig":
@@ -242,6 +250,7 @@ def create_tournament(
             structure=config.blind_structure,
             starting_stack=config.stack,
             max_hands=config.max_hands_per_tournament,
+            betting=config.betting,
         )
 
         return create_spin(
@@ -487,7 +496,7 @@ class TournamentRunResult:
         expected = self.expected_multiplier
 
         return {
-            "config": asdict(self.config),
+            "config": exported_config(self.config),
             "seed": self.config.seed,
             "run_type": self.config.run_type.value,
             "tournaments": self.totals.tournaments,

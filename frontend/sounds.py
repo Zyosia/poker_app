@@ -70,11 +70,17 @@ def spin_prize_sound(multiplier: int) -> Sound:
     return Sound.SPIN_JACKPOT if multiplier >= JACKPOT_MULTIPLIER else Sound.SPIN_PRIZE
 
 
+def missing_sounds() -> list[Sound]:
+    """The sounds whose file is absent, e.g. a build made without the folder."""
+    return [sound for sound in Sound if not sound.path.is_file()]
+
+
 class SoundPlayer(QObject):
     """Plays the sound effects at the user's volume.
 
     Without ``audio`` nothing is heard and Qt's multimedia module is never
-    loaded; the sounds asked for are still remembered in ``recent``.
+    loaded; the sounds asked for are still remembered in ``recent``. With
+    ``audio``, the sounds whose file is absent are listed in ``missing``.
     """
 
     def __init__(self, audio: bool = False, parent: QObject | None = None) -> None:
@@ -84,8 +90,10 @@ class SoundPlayer(QObject):
         """0.0 to 1.0, as the user sees it (the loudness is not linear)."""
         self.recent: deque[Sound] = deque(maxlen=RECENT_SOUNDS)
         self._effects: dict[Sound, QSoundEffect] = {}
+        self.missing: list[Sound] = []
 
         if audio:
+            self.missing = missing_sounds()
             self._load_effects()
 
     @property
@@ -111,6 +119,9 @@ class SoundPlayer(QObject):
         from PySide6.QtMultimedia import QSoundEffect
 
         for sound in Sound:
+            if sound in self.missing:
+                continue
+
             effect = QSoundEffect(self)
             effect.setSource(QUrl.fromLocalFile(str(sound.path)))
             self._effects[sound] = effect

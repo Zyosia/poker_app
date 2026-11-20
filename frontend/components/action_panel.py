@@ -128,7 +128,10 @@ class ActionPanel(QWidget):
         )
 
         raise_action = self._legal.get(ActionType.RAISE)
-        can_size = raise_action is not None
+        # Fixed Limit: one size only, nothing to choose.
+        can_size = raise_action is not None and (
+            raise_action.min_amount != raise_action.max_amount
+        )
 
         for widget in (
             self.amount_slider,
@@ -146,7 +149,9 @@ class ActionPanel(QWidget):
             self.amount_slider.setValue(minimum)
             self.amount_slider.blockSignals(False)
 
-        self.raise_button.setEnabled(can_size or ActionType.ALL_IN in self._legal)
+        self.raise_button.setEnabled(
+            raise_action is not None or ActionType.ALL_IN in self._legal
+        )
         self._configure_spin()
         self._update_labels()
 
@@ -260,8 +265,13 @@ class ActionPanel(QWidget):
             return
 
         text = self._format(self._amount)
+        # Pot Limit and Fixed Limit: the largest raise may leave chips behind;
+        # the engine only offers an all-in when the whole stack fits.
+        is_all_in = (
+            all_in_action is not None and self._amount == raise_action.max_amount
+        )
 
-        if self._amount == raise_action.max_amount:
+        if is_all_in:
             self.raise_button.setText(f"All-in {text}")
         elif self._current_bet == 0:
             self.raise_button.setText(f"Bet {text}")

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from backend.application.game_modes import betting_short_label
 from backend.bots.factory import BOT_TYPES
 from backend.simulation.config import StackPolicy
 from backend.simulation.result import SimulationResult
@@ -280,7 +281,8 @@ class ArenaResultsScreen(QWidget):
         config = result.config
         policy = config.stack_policy.value
         self.title_label.setText(
-            f"RESULTS   ·   {result.totals.hands:,} HANDS   ·   SEED {config.seed}"
+            f"RESULTS   ·   {result.totals.hands:,} HANDS   ·   "
+            f"{betting_short_label(config.betting)}   ·   SEED {config.seed}"
             f"   ·   {policy.upper()}"
             + ("   ·   DUPLICATE" if config.duplicate else "")
         )
@@ -299,6 +301,7 @@ class ArenaResultsScreen(QWidget):
         kind = "SPIN & GO" if result.is_spin else "TOURNAMENTS"
         self.title_label.setText(
             f"RESULTS   ·   {result.totals.tournaments:,} {kind}   ·   "
+            f"{betting_short_label(config.betting)}   ·   "
             f"SEED {config.seed}   ·   {config.blind_structure.name.upper()}"
         )
         self.summary_label.setText(" ".join(summarize_tournaments(result)))

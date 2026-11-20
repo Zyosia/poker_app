@@ -9,7 +9,7 @@ import pytest
 from backend.application.hand_records import HandRecord, load_session_record
 from backend.application.persistence import serialize_session
 from backend.application.replay import HandReplay, ReplayError
-from backend.poker_engine.constants import Street
+from backend.poker_engine.constants import BettingRules, BettingStructure, Street
 from backend.simulation.config import SeatSpec, SimulationConfig, StackPolicy
 from backend.simulation.runner import run_simulation
 from backend.simulation.tournament_runner import (
@@ -162,3 +162,40 @@ def test_steps_outside_the_hand_are_refused(tmp_path: Path) -> None:
 
     with pytest.raises(ReplayError, match="over"):
         replay.advance(replay.hand_at(replay.step_count))
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        BettingRules(BettingStructure.POT_LIMIT),
+        BettingRules(BettingStructure.FIXED_LIMIT),
+        BettingRules(BettingStructure.NO_LIMIT, cap=3),
+    ],
+    ids=["pot_limit", "fixed_limit", "no_limit_cap"],
+)
+def test_limit_hands_are_saved_with_their_betting_and_replay(
+    rules: BettingRules,
+) -> None:
+    config = SimulationConfig(
+        seats=tuple(SeatSpec(bot) for bot in STYLES),
+        hands=150,
+        seed=41,
+        batch_size=150,
+        record_history=True,
+        stack_policy=StackPolicy.AUTO_REBUY,
+        betting=rules,
+    )
+    records = [HandRecord.from_dict(h) for h in run_simulation(config).totals.histories]
+
+    assert records
+    assert {record.betting.table_cap for record in records} == {rules.table_cap}
+
+    for record in records:
+        assert record.betting.structure == rules.structure
+        HandReplay(record)  # Raises if the replay differs.
+
+
+def test_older_hands_are_no_limit_without_a_cap() -> None:
+    record = simulated_records(hands=5, seed=3)[0]
+
+    assert record.betting == BettingRules()

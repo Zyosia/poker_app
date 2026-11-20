@@ -154,7 +154,7 @@ class MainWindow(NavigationWindow):
         plays the sound effects; without one nothing is heard (tests).
         """
         super().__init__(parent)
-        self.setWindowTitle("Poker — No Limit Texas Hold'em")
+        self.setWindowTitle("Poker — Texas Hold'em")
         self.resize(1280, 800)
         self.setMinimumSize(1100, 700)
 

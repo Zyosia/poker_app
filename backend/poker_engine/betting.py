@@ -12,11 +12,12 @@ from .actions import (
     check,
     fold,
     get_call_amount,
+    get_maximum_raise_to,
     get_minimum_raise_size,
     get_minimum_raise_to,
     raise_bet,
 )
-from .constants import ActionType, Street
+from .constants import ActionType, BettingStructure, Street
 from .history import record_action
 from .models import ActionEvent, Hand, Player
 from .showdown import resolve_by_fold
@@ -106,7 +107,8 @@ def can_raise(player: Player, hand: Hand) -> bool:
 
     A player who already acted may only raise again when facing at least a
     full raise: a short all-in does not reopen the betting. Raising is also
-    pointless, hence not offered, when no opponent is able to respond.
+    pointless, hence not offered, when no opponent is able to respond, and
+    not allowed once the round has reached its cap of bets.
     """
     if player.stack <= get_call_amount(player=player, hand=hand):
         return False
@@ -118,8 +120,14 @@ def can_raise(player: Player, hand: Hand) -> bool:
     if not opponent_can_respond:
         return False
 
+    if hand.bet_cap is not None and hand.bets_this_street >= hand.bet_cap:
+        return False
+
     if not player.acted_this_round:
         return True
+
+    if hand.betting == BettingStructure.FIXED_LIMIT:
+        return hand.full_bet > player.current_bet
 
     return hand.current_bet - player.current_bet >= get_minimum_raise_size(hand)
 
@@ -139,7 +147,10 @@ def get_legal_actions(player: Player, hand: Hand) -> tuple[LegalAction, ...]:
 
     if can_raise(player=player, hand=hand):
         minimum_raise_to = get_minimum_raise_to(hand)
-        maximum_raise_to = player.current_bet + player.stack
+        all_in_to = player.current_bet + player.stack
+        # Pot Limit and Fixed Limit: a stack above the limit cannot all go in.
+        limit = get_maximum_raise_to(player=player, hand=hand)
+        maximum_raise_to = min(all_in_to, limit)
 
         if maximum_raise_to >= minimum_raise_to:
             actions.append(
@@ -150,7 +161,8 @@ def get_legal_actions(player: Player, hand: Hand) -> tuple[LegalAction, ...]:
                 )
             )
 
-        actions.append(LegalAction(type=ActionType.ALL_IN, amount=player.stack))
+        if all_in_to <= limit:
+            actions.append(LegalAction(type=ActionType.ALL_IN, amount=player.stack))
 
     return tuple(actions)
 

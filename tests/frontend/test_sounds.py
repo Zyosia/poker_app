@@ -15,8 +15,15 @@ from PySide6.QtWidgets import QApplication
 from backend.application.game_modes import GameMode
 from backend.poker_engine.constants import ActionType, Street
 from backend.poker_engine.models import ActionEvent
+from frontend import sounds
 from frontend.sound_synthesis import SAMPLE_RATE, write_sounds
-from frontend.sounds import Sound, SoundPlayer, action_sound, spin_prize_sound
+from frontend.sounds import (
+    Sound,
+    SoundPlayer,
+    action_sound,
+    missing_sounds,
+    spin_prize_sound,
+)
 from frontend.ui.game_screen import GameScreen
 from frontend.ui.main_window import MainWindow
 from frontend.ui.tournament_screen import TournamentScreen
@@ -76,6 +83,18 @@ def test_the_synthesis_writes_every_sound(tmp_path: Path) -> None:
         written, _ = read_wav(tmp_path / f"{sound.value}.wav")
         shipped, _ = read_wav(sound.path)
         assert written.nframes == shipped.nframes
+
+
+def test_the_shipped_sounds_are_all_found() -> None:
+    assert missing_sounds() == []
+
+
+def test_a_build_without_the_sound_folder_lists_every_sound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sounds, "SOUND_DIR", tmp_path / "absent")
+
+    assert missing_sounds() == list(Sound)
 
 
 # --- What plays --------------------------------------------------------------
