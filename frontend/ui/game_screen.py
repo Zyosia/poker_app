@@ -40,6 +40,7 @@ from backend.application.controllers import HumanController, PlayerController
 from backend.application.game import PokerGame
 from backend.application.game_modes import betting_short_label
 from backend.application.profile import BotCards
+from backend.bots.factory import BOT_TYPES
 from backend.poker_engine.actions import Action
 from backend.poker_engine.betting import IllegalActionError, get_legal_actions
 from backend.poker_engine.models import ActionEvent, Hand, Player
@@ -92,6 +93,15 @@ class TableGame(Protocol):
     def step(self) -> ActionEvent | None: ...
 
 
+def bot_styles(controllers: Mapping[str, PlayerController]) -> dict[str, str]:
+    """The play style of every bot, by name, as the table shows it."""
+    return {
+        name: BOT_TYPES[controller.style].label
+        for name, controller in controllers.items()
+        if controller.style in BOT_TYPES
+    }
+
+
 def hand_big_blind(hand: Hand) -> int:
     """The big blind a hand is played with (the level's, in a tournament)."""
     if hand.blind_level is not None:
@@ -128,6 +138,7 @@ def build_table_state(
     equities: Mapping[str, str] | None = None,
     hidden: Collection[str] = (),
     bot_cards: BotCards = BotCards.SHOWDOWN,
+    styles: Mapping[str, str] | None = None,
 ) -> TableState:
     """Translate the engine state into what the table displays.
 
@@ -139,6 +150,7 @@ def build_table_state(
     amounts are shown in big blinds of the hand. ``equities`` adds each
     player's chance of winning to their status during the run-out. The cards
     of the ``hidden`` players (nobody saw them) always stay face down.
+    ``styles`` shows the play styles of the bots under their names.
     """
     big_blind = hand_big_blind(hand) if in_big_blinds else None
     show_others = (
@@ -148,6 +160,7 @@ def build_table_state(
     )
     revealed = revealed_names(hand)
     equities = equities or {}
+    styles = styles or {}
     players = hand.table.players
     human_index = next((i for i, p in enumerate(players) if p.name == human_name), 0)
     ordered = players[human_index:] + players[:human_index]
@@ -184,6 +197,7 @@ def build_table_state(
                 highlight=highlight,
                 dimmed=player.folded,
                 big_blind=big_blind,
+                style=styles.get(player.name, ""),
             )
         )
 
@@ -203,6 +217,8 @@ class GameScreen(QWidget):
     menu_requested = Signal()
     show_in_big_blinds_changed = Signal(bool)
     """Emitted when the user switches between chips and big blinds."""
+    show_bot_styles_changed = Signal(bool)
+    """Emitted when the user shows or hides the bots' play styles."""
     speed_changed = Signal(str)
     """Emitted with the speed the user picked (see ``frontend.pacing``)."""
     auto_next_hand_changed = Signal(bool)
@@ -315,6 +331,11 @@ class GameScreen(QWidget):
         self.big_blinds_check = QCheckBox("Show in BB")
         self.big_blinds_check.setToolTip("Show stacks, bets and the pot in big blinds.")
         self.big_blinds_check.toggled.connect(self._on_big_blinds_toggled)
+        self.styles_check = QCheckBox("Styles")
+        self.styles_check.setToolTip(
+            "Show each bot's play style under its name (can you spot them?)."
+        )
+        self.styles_check.toggled.connect(self._on_styles_toggled)
 
         self.table_widget = TableWidget()
         self.action_panel = ActionPanel()
@@ -378,6 +399,7 @@ class GameScreen(QWidget):
         top_bar.addWidget(self.speed_combo)
         top_bar.addWidget(self.auto_next_check)
         top_bar.addWidget(self.big_blinds_check)
+        top_bar.addWidget(self.styles_check)
         top_bar.addWidget(self.pause_button)
         top_bar.addWidget(self.tile_button)
         top_bar.addWidget(self.replay_button)
@@ -488,6 +510,28 @@ class GameScreen(QWidget):
         self._refresh_amounts()
         self.show_in_big_blinds_changed.emit(enabled)
 
+    @property
+    def show_bot_styles(self) -> bool:
+        return self.styles_check.isChecked()
+
+    def set_show_bot_styles(self, shown: bool) -> None:
+        """Show or hide the bots' play styles, without emitting the change."""
+        self.styles_check.blockSignals(True)
+        self.styles_check.setChecked(shown)
+        self.styles_check.blockSignals(False)
+        self._refresh_amounts()
+
+    def _on_styles_toggled(self, shown: bool) -> None:
+        self._refresh_amounts()
+        self.show_bot_styles_changed.emit(shown)
+
+    def table_styles(self) -> dict[str, str]:
+        """The play styles to show at the table: none unless asked for."""
+        if not self.show_bot_styles or self._game is None:
+            return {}
+
+        return bot_styles(self._game.controllers)
+
     def _refresh_amounts(self) -> None:
         """Redraw the table and the action panel in the current unit."""
         hand = self._game.hand if self._game is not None else None
@@ -569,6 +613,7 @@ class GameScreen(QWidget):
                 in_big_blinds=self.show_in_big_blinds,
                 equities=self._runout_equity.texts(hand),
                 bot_cards=self.bot_cards,
+                styles=self.table_styles(),
             )
         )
 

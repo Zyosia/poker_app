@@ -1,5 +1,7 @@
 """V3.0 at the table: buy-in limits, top-ups, bots rebuying, the straddle."""
 
+import functools
+import random
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,11 +11,16 @@ from PySide6.QtWidgets import QApplication
 from backend.application.bankroll import TransactionType
 from backend.application.game import PokerGame
 from backend.application.profile import ProfileStore
+from backend.application.setup import create_game
+from frontend.ui import game_window
 from frontend.ui.cash_setup_screen import CashSetupScreen
 from frontend.ui.game_screen import GameScreen
 from frontend.ui.game_window import GameWindow
 from frontend.ui.main_window import MainWindow
 from tests.frontend.windows import ProcessUntil, cash_setup, open_table
+
+SEED = 1
+"""A seed where Hero, folding, does not win the first hand."""
 
 
 @pytest.fixture
@@ -105,8 +112,19 @@ def test_top_up_between_hands(window: MainWindow, process_until: ProcessUntil) -
     assert "tops up" in screen.history_view.text()
 
 
+@pytest.fixture
+def seeded_cash_game(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Seed the dealer, the bots and the deck of the next cash game."""
+    seeded = functools.partial(create_game, rng=random.Random(SEED))
+    monkeypatch.setattr(game_window, "create_game", seeded)
+    state = random.getstate()
+    random.seed(SEED)  # The deck shuffles with the global generator.
+    yield
+    random.setstate(state)
+
+
 def test_auto_top_up_before_every_hand(
-    window: MainWindow, process_until: ProcessUntil
+    window: MainWindow, process_until: ProcessUntil, seeded_cash_game: None
 ) -> None:
     _, screen, game = play_one_hand(window, process_until, auto_top_up=True)
     hero = next(p for p in game.session.players if p.name == screen.human_name)

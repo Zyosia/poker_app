@@ -5,7 +5,7 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 
-from backend.bots.factory import create_bot, get_bot_type
+from backend.bots.factory import Difficulty, create_bot, get_bot_type, random_styles
 from backend.poker_engine.constants import MAX_TABLE_SEATS, NO_LIMIT, BettingRules
 from backend.poker_engine.session import GameConfig, create_session
 
@@ -259,6 +259,53 @@ class SpinSettings:
 
         for bot in self.opponents:
             get_bot_type(bot)
+
+
+# --- Quick Spin & Go (V3.2) -----------------------------------------------------
+
+QUICK_SPIN_BUY_INS = (
+    1,
+    2,
+    5,
+    10,
+    20,
+    25,
+    50,
+    100,
+    500,
+    1_000,
+    2_000,
+    2_500,
+    5_000,
+    10_000,
+    25_000,
+    50_000,
+    100_000,
+)
+"""The buy-ins of the Spin & Go started in one click."""
+QUICK_SPIN_CLOCK = "Standard"
+"""Their action clock (an ``action_clock`` preset)."""
+DEFAULT_QUICK_SPIN_DIFFICULTY = Difficulty.EASY
+
+
+def quick_spin_settings(
+    buy_in: int,
+    difficulty: Difficulty,
+    player_name: str,
+    rng: random.Random,
+) -> SpinSettings:
+    """A Spin & Go started in one click: No Limit, levels by time, the fair
+    multipliers, and two bots drawn at random for ``difficulty``."""
+    first, second = random_styles(SPIN_PLAYERS - 1, difficulty, rng)
+
+    return SpinSettings(
+        player_name=player_name,
+        opponents=(first, second),
+        buy_in=buy_in,
+        levels_by=LEVELS_BY_TIME,
+        multipliers=FAIR_MULTIPLIERS,
+        betting=NO_LIMIT,
+    )
 
 
 def check_player_name(name: str) -> None:

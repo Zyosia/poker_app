@@ -16,6 +16,7 @@ SEAT_SIZE = QSize(150, 136)
 """At full size: the table shrinks its seats in a small window (``set_scale``)."""
 NAME_FONT_PX = 13
 STATUS_FONT_PX = 11
+STYLE_FONT_PX = 10
 STACK_FONT_PX = 14
 MIN_FONT_PX = 9
 LINE_HEIGHT = 1.35
@@ -45,6 +46,8 @@ class SeatState:
     dimmed: bool = False
     big_blind: int | None = None
     """Show the stack in big blinds when set, in chips otherwise."""
+    style: str = ""
+    """The bot's play style, shown under its name ("": not shown)."""
 
 
 BORDER_COLORS = {
@@ -64,10 +67,17 @@ class SeatWidget(QFrame):
 
         self.card_widgets = [CardWidget(CARD_SIZE, self) for _ in range(2)]
         self.name_label = QLabel(self)
+        self.style_label = QLabel(self)
+        self.style_label.hide()
         self.stack_label = QLabel(self)
         self.status_label = QLabel(self)
 
-        for label in (self.name_label, self.stack_label, self.status_label):
+        for label in (
+            self.name_label,
+            self.style_label,
+            self.stack_label,
+            self.status_label,
+        ):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._style_labels()
@@ -85,6 +95,7 @@ class SeatWidget(QFrame):
         layout.setSpacing(1)
         layout.addLayout(cards_layout)
         layout.addWidget(self.name_label)
+        layout.addWidget(self.style_label)
         layout.addWidget(self.stack_label)
         layout.addWidget(self.status_label)
 
@@ -104,9 +115,19 @@ class SeatWidget(QFrame):
 
         self._layout.setContentsMargins(margin + 2, margin, margin + 2, margin)
         self._style_labels()
+        self._apply_size()
 
-        if scale == 1.0:
-            self.setFixedSize(SEAT_SIZE)
+    def _apply_size(self) -> None:
+        """Full size, or as tall as the content once shrunk; one line taller
+        with the play style."""
+        style_line = (
+            round(self._font_px(STYLE_FONT_PX) * LINE_HEIGHT)
+            if self.style_label.text()
+            else 0
+        )
+
+        if self.scale == 1.0:
+            self.setFixedSize(SEAT_SIZE.width(), SEAT_SIZE.height() + style_line)
             return
 
         # The text shrinks less than the cards (it stays readable): the seat
@@ -115,8 +136,10 @@ class SeatWidget(QFrame):
             round(self._font_px(size) * LINE_HEIGHT)
             for size in (NAME_FONT_PX, STACK_FONT_PX, STATUS_FONT_PX)
         )
-        height = card_size.height() + text + 2 * margin + 4
-        self.setFixedSize(round(SEAT_SIZE.width() * scale), height)
+        card_height = scaled(CARD_SIZE, self.scale).height()
+        margin = round(6 * self.scale)
+        height = card_height + text + style_line + 2 * margin + 4
+        self.setFixedSize(round(SEAT_SIZE.width() * self.scale), height)
 
     def _font_px(self, size: int) -> int:
         return max(MIN_FONT_PX, round(size * self.scale))
@@ -124,6 +147,9 @@ class SeatWidget(QFrame):
     def _style_labels(self) -> None:
         self.name_label.setStyleSheet(
             f"font-weight: 700; font-size: {self._font_px(NAME_FONT_PX)}px;"
+        )
+        self.style_label.setStyleSheet(
+            f"color: #8fb8ff; font-size: {self._font_px(STYLE_FONT_PX)}px;"
         )
         self.stack_label.setStyleSheet(
             "color: #f2c14e; font-weight: 600;"
@@ -136,6 +162,12 @@ class SeatWidget(QFrame):
     def set_state(self, state: SeatState) -> None:
         """Update the seat from the given state."""
         self.name_label.setText(state.name)
+
+        if state.style != self.style_label.text():
+            self.style_label.setText(state.style)
+            self.style_label.setVisible(bool(state.style))
+            self._apply_size()
+
         self.stack_label.setText(format_amount(state.stack, state.big_blind))
         self.status_label.setText(state.status)
 

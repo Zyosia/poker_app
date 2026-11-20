@@ -60,6 +60,7 @@ DIALOG_SETTINGS = (
     "sound_volume",
     "turn_alert",
     "bot_cards",
+    "show_bot_styles",
     "table_speed",
     "auto_next_hand",
     "show_in_big_blinds",
@@ -380,6 +381,13 @@ class MainWindow(NavigationWindow):
             window.table_screen.set_show_in_big_blinds(enabled)
 
         self.save_setting("show_in_big_blinds", enabled)
+
+    def set_show_bot_styles(self, shown: bool) -> None:
+        """Show the bots' play styles at every table, and remember it."""
+        for window in self.game_windows:
+            window.table_screen.set_show_bot_styles(shown)
+
+        self.save_setting("show_bot_styles", shown)
 
     def set_table_speed(self, name: str) -> None:
         for window in self.game_windows:

@@ -122,6 +122,9 @@ class PlayerController(ABC):
 
     is_human = False
     """Human players may rebuy when busted; bots are eliminated."""
+    style: str | None = None
+    """The play style key a bot was created with (see ``backend.bots.factory``),
+    shown at the table when the user asks; None for a human (V3.2)."""
 
     @abstractmethod
     def choose_action(self, context: DecisionContext) -> Action:

@@ -110,7 +110,7 @@ def test_the_bankroll_opens_from_a_setup_screen_and_back_returns_there(
     window: MainWindow, store: ProfileStore, mode: str
 ) -> None:
     table = open_table(window, mode)
-    setup = table.setup_screen
+    setup = table.quick_screen or table.setup_screen  # Spin & Go: one click first.
     bar = setup.bankroll_bar
     assert table.current_screen is setup
     assert bar.balance_label.text() == "Bankroll  100 000"

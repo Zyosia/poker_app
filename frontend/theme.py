@@ -172,6 +172,8 @@ QPushButton#toggle:checked {
     font-weight: 700;
 }
 QPushButton#toggle:checked:disabled { background-color: #3a4456; color: #9aa4b2; }
+QPushButton#spinBuyIn { font-size: 16px; font-weight: 700; padding: 12px 6px; }
+QPushButton#spinBuyIn:hover { border-color: #d39b25; color: #f2c14e; }
 
 QLineEdit, QSpinBox, QComboBox {
     background-color: #232a36;
