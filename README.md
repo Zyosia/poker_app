@@ -4,6 +4,14 @@ A **Texas Hold'em No-Limit** session engine developed in Python.
 
 The goal of this project is to progressively build a reliable and extensible poker engine capable of managing a complete multi-hand session, from card dealing to winner determination and pot distribution.
 
+> 🎬 **See the app in action: [DEMO.md](DEMO.md)**, with screenshots and animations of every mode and tool.
+>
+> 📜 **License:** [PolyForm Noncommercial 1.0.0](LICENSE.md). Commercial use is not permitted.
+
+<p align="center">
+  <a href="DEMO.md"><img src="docs/demo/cash_hand.gif" alt="A hand played against the bots" width="720"></a>
+</p>
+
 ---
 
 # Table of Contents
@@ -77,6 +85,8 @@ The goal of this project is to progressively build a reliable and extensible pok
 - [Development Principles](#development-principles)
 
 - [Project Goal](#project-goal)
+
+- [License](#license)
 
 ---
 
@@ -3190,5 +3200,18 @@ The suite now contains **1906 passing tests** (`uv run pytest`), covering the si
 The engine core now has sufficient coverage to move to the next stage: improving the engine architecture and introducing player abstraction before implementing simulation.
 
 Once this architecture is stabilized, advanced features can be added without compromising the engine's fundamental rules.
+
+[↑ Back to table of contents](#table-of-contents)
+
+---
+
+# License
+
+This project is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE.md)**.
+
+- ✅ Personal use, study, hobby projects, research and teaching are allowed, and so are changes and redistribution for those purposes.
+- ❌ **Commercial use is not permitted**: you may not sell the app or use it in a paid product or service.
+
+Anyone who redistributes the software must include the license and its `Required Notice` line.
 
 [↑ Back to table of contents](#table-of-contents)

@@ -4,6 +4,14 @@ Moteur de session **Texas Hold'em No-Limit** développé en Python.
 
 L'objectif de ce projet est de construire progressivement un moteur de poker fiable et extensible, capable de gérer une session complète de plusieurs mains, depuis la distribution des cartes jusqu'à la détermination du ou des gagnants et à la redistribution des pots.
 
+> 🎬 **Voir l'application en action : [DEMO.md](DEMO.md)**, avec des captures d'écran et des animations de chaque mode et outil.
+>
+> 📜 **Licence :** [PolyForm Noncommercial 1.0.0](LICENSE.md). Toute utilisation commerciale est interdite.
+
+<p align="center">
+  <a href="DEMO.md"><img src="docs/demo/cash_hand.gif" alt="Une main jouée contre les bots" width="720"></a>
+</p>
+
 ---
 
 # Sommaire
@@ -73,6 +81,8 @@ L'objectif de ce projet est de construire progressivement un moteur de poker fia
 * [Principes de développement](#principes-de-développement)
 
 * [Objectif du projet](#objectif-du-projet)
+
+* [Licence](#licence)
 
 ---
 
@@ -3392,5 +3402,18 @@ Le cœur du moteur dispose désormais d'une couverture de tests importante et le
 La **Alpha 1.1** poursuit cette stabilisation avec des tests d'intégration couvrant le déroulement de mains et de sessions complètes.
 
 Une fois ce cœur stabilisé et validé de bout en bout, les fonctionnalités avancées pourront être ajoutées sans remettre en cause les règles fondamentales du moteur.
+
+[↑ Retour au sommaire](#sommaire)
+
+---
+
+# Licence
+
+Ce projet est distribué sous la licence **[PolyForm Noncommercial 1.0.0](LICENSE.md)**.
+
+- ✅ L'usage personnel, l'étude, les projets de loisir, la recherche et l'enseignement sont autorisés, de même que la modification et la redistribution à ces fins.
+- ❌ **Toute utilisation commerciale est interdite** : il est interdit de vendre l'application ou de l'utiliser dans un produit ou un service payant.
+
+Toute redistribution doit inclure la licence et sa ligne `Required Notice`.
 
 [↑ Retour au sommaire](#sommaire)
